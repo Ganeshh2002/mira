@@ -131,6 +131,8 @@ These are the recurring ones, listed so you do not discover them in review:
 
 - Invoking a shell, or building a command string instead of an argv array
 - Accepting a filesystem path from the frontend instead of a native picker
+- Running a package manager, or any process outside `mira-platform`
+- Writing to a user's repository from a crate whose job is to read it
 - Reading a file outside a registered project root
 - Opening anything under `~/.ssh` other than `config`
 - Sending a write request to the Docker API

@@ -106,7 +106,7 @@ pub fn run() {
             commands::projects::projects_open,
             commands::projects::projects_remove,
             commands::projects::projects_reveal,
-            commands::git::git_context,
+            commands::context::projects_context,
         ])
         .build(tauri::generate_context!())
         .expect("Mira failed to start")

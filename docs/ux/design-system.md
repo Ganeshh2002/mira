@@ -199,6 +199,16 @@ composited layer — measurably 0% CPU when off-screen.
 
 One effect, one meaning, everywhere. That is the whole personality budget.
 
+### Lists that are not actions
+
+The package list of a monorepo is the first list in Mira whose rows do nothing. That is
+deliberate and it has to *look* deliberate: rows carry no hover state, no chevron, and no
+cursor change, because every one of those would promise a click that is not there.
+
+The rule generalises. A row that can be acted on looks raised and responds to the
+pointer; a row that is a statement of fact looks flat and does not. Mira would rather
+show a fact plainly than dress it up as a control it has not built.
+
 ### The ground, and the platform's material
 
 The window's ground is the one place Mira defers to the operating system rather than to

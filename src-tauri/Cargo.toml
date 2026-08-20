@@ -22,6 +22,7 @@ mira-core = { workspace = true }
 mira-db = { workspace = true }
 mira-fs = { workspace = true }
 mira-git = { workspace = true }
+mira-monorepo = { workspace = true }
 mira-platform = { workspace = true }
 mira-projects = { workspace = true }
 mira-workspaces = { workspace = true }
@@ -39,4 +40,4 @@ ts-rs = { workspace = true }
 
 [dev-dependencies]
 serde_json = { workspace = true }
-toml = "0.9"
+toml = { workspace = true }

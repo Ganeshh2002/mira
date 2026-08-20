@@ -79,6 +79,16 @@ CREATE TABLE project_markers (
 `root_path UNIQUE` enforces one project per directory. A missing directory is a runtime
 state, not a column — Mira stats the path on load.
 
+`git_root` carries the monorepo case: a project may be a package inside a larger
+repository, and then the worktree root differs from the project root. It is stored
+because it is cheap and stable. What is **not** stored is the package list —
+which directories a workspace declares is an observation, it changes whenever
+someone edits `pnpm-workspace.yaml`, and a cached copy is one that goes wrong
+silently (§1 rule 2). Packages are detected on demand alongside the Git read; see
+[ADR-0010](../adr/0010-monorepo-detection.md). **No table holds a detected package,
+and turning one into a Project is the user's decision, never a side effect of
+looking at a repository.**
+
 ### 3.2 Workspaces
 
 ```sql

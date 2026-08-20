@@ -10,7 +10,7 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Added
 - Product definition, product scope, PRD, information architecture, and design system
 - Architecture, platform abstraction, data model, and security/privacy documents
-- ADRs 0001–0009 covering the foundational technical decisions
+- ADRs 0001–0010 covering the foundational technical decisions
 - Locked phase plan (0.1 through 0.6+) and the fourteen-slice implementation roadmap
 - Open-source project files (licence, contributing, code of conduct, security policy)
 - **Foundation (slice 0).** Cargo workspace with `mira-core`, `mira-platform`, `mira-db`,
@@ -28,6 +28,12 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   tracked upstream — labelled as of the last fetch, because Mira does not fetch. Open a
   project's folder in the file manager, or remove a project without touching the folder.
   Read-only throughout: there is no commit, stage, checkout, push, or pull.
+- **Monorepo awareness.** Mira tells a standalone repository, a monorepo root, and a
+  package inside a monorepo apart. It reads workspace manifests — npm, pnpm and Yarn
+  workspaces, Cargo workspaces, Turborepo, Nx — and never runs a package manager,
+  installs anything, or writes to a repository. A package shows the repository it belongs
+  to alongside its own path, so the two scopes are never confused. Detected packages are
+  boundaries, not projects: nothing is adopted, and nothing about a workspace is stored.
 - macOS and Windows ask the platform for its standard window material — Liquid Glass on
   macOS 26, Mica on Windows 11 — rather than drawing an imitation. Linux stays opaque.
 

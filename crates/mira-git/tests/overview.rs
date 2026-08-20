@@ -405,3 +405,51 @@ fn reading_a_repository_makes_no_network_request() {
 
     assert_eq!(upstream.expect("tracked").ahead, 0);
 }
+
+#[test]
+fn a_repository_nested_inside_another_discovers_its_own_root() {
+    // A repository checked out inside a monorepo — a vendored dependency, a
+    // half-migrated submodule — belongs to itself. Walking past it to the outer
+    // repository would attach a project to a repository it is not in, and would
+    // make the outer workspace's configuration appear to describe it.
+    let outer = TempDir::new().expect("tempdir");
+    let outer_repo = empty_repo(outer.path());
+    write(outer.path(), "README.md", "outer");
+    commit(&outer_repo, "outer");
+
+    let inner = outer.path().join("vendor/inner");
+    fs::create_dir_all(&inner).expect("mkdir");
+    let inner_repo = empty_repo(&inner);
+    write(&inner, "README.md", "inner");
+    commit(&inner_repo, "inner");
+
+    let found = Libgit2.discover(&inner).expect("a worktree root");
+
+    assert_eq!(
+        found.canonicalize().expect("canonical"),
+        inner.canonicalize().expect("canonical"),
+        "the nearest .git wins, which is what git itself does"
+    );
+    assert_ne!(
+        found.canonicalize().expect("canonical"),
+        outer.path().canonicalize().expect("canonical")
+    );
+}
+
+#[test]
+fn a_nested_repository_reports_its_own_head_not_the_outer_one() {
+    let outer = TempDir::new().expect("tempdir");
+    let outer_repo = empty_repo(outer.path());
+    write(outer.path(), "README.md", "outer");
+    commit(&outer_repo, "outer only");
+
+    let inner = outer.path().join("vendor/inner");
+    fs::create_dir_all(&inner).expect("mkdir");
+    let inner_repo = empty_repo(&inner);
+    write(&inner, "README.md", "inner");
+    commit(&inner_repo, "inner only");
+
+    let (_, _, _, last, _) = ready(Libgit2.overview(&inner));
+
+    assert_eq!(last.expect("a commit").subject, "inner only");
+}

@@ -145,6 +145,73 @@ fn the_frontend_has_no_shell_plugin() {
     }
 }
 
+#[test]
+fn only_the_platform_layer_starts_a_child_process() {
+    // The shell rule above says *how* a process may be started; this says *who*
+    // may start one. It is what makes "Mira never runs your package manager" a
+    // property of the build rather than a promise: monorepo detection reads
+    // manifests as files, and there is nowhere else a `npm install`, a
+    // `cargo metadata`, or an `nx graph` could be hiding.
+    let allowed = repo_root().join("crates/mira-platform");
+
+    let violations: Vec<String> = sources(&["rs"])
+        .into_iter()
+        .filter(|(path, text)| {
+            !path.starts_with(&allowed) && code_only(text).contains("Command::new")
+        })
+        .map(|(path, _)| relative(&path))
+        .collect();
+
+    assert!(
+        violations.is_empty(),
+        "spawning a process belongs to mira-platform, and to one reviewed function \
+         in it: {violations:#?}"
+    );
+}
+
+#[test]
+fn reading_a_repository_never_writes_to_it() {
+    // Mira is a companion, not a build tool. It reads what is in a project and
+    // changes nothing — no lockfile touched, no cache directory created, no
+    // manifest rewritten. The crates that read a user's repository therefore
+    // contain no write at all.
+    let readers = ["crates/mira-monorepo", "crates/mira-git"];
+    let writes = [
+        "fs::write",
+        "fs::create_dir",
+        "fs::remove_",
+        "fs::rename",
+        "fs::copy",
+        "File::create",
+        "OpenOptions",
+    ];
+
+    let mut violations = Vec::new();
+    for (path, text) in sources(&["rs"]) {
+        let relative_path = relative(&path);
+        // Test fixtures build repositories to read; the crates themselves do not.
+        if !readers
+            .iter()
+            .any(|reader| relative_path.starts_with(reader))
+            || relative_path.contains("/tests/")
+        {
+            continue;
+        }
+        let code = code_only(&text);
+        for write in writes {
+            if code.contains(write) {
+                violations.push(format!("{relative_path}: {write}"));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "detection is read-only; a write here would change a repository the user \
+         did not ask Mira to change: {violations:#?}"
+    );
+}
+
 // ── Platform code stays behind the platform boundary ─────────────────────────
 
 #[test]

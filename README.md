@@ -12,7 +12,8 @@ points the tools you already use at the right context.
 > ### Status: early, and honest about it
 >
 > **One feature is built.** Mira can hold a set of projects and read each one's Git
-> state: branch, last commit, clean or changed, ahead and behind. Everything else below —
+> state: branch, last commit, clean or changed, ahead and behind — and it knows the
+> difference between a repository, a monorepo, and one package inside one. Everything else below —
 > ports, processes, launching your editor, the Shelf — is a plan, and is labelled as one
 > on purpose. Nothing is installable yet. See
 > [what's actually built](#project-status).
@@ -117,6 +118,7 @@ block the first release.
 | Documentation | Product, scope, architecture, roadmap | — | ✅ Complete |
 | Foundation | Crates, capability model, database, IPC boundary, app shell, CI | 0 | ✅ Complete |
 | Projects & Git | Add/list/switch/remove projects, read-only Git context, open folder | 1 | ✅ Complete |
+| Monorepo awareness | Repository vs monorepo vs package, six workspace tools, read-only | 1.1 | ✅ Complete |
 | **0.1 — Core Companion** | Projects, Git status and history, ports, processes, editor/terminal/browser, tray, global shortcut | 1–3, 5a | 🟡 In progress |
 | 0.2 — Workspace | Workspace model, app groups, restoration, Git graph and diff | 4, 5b, 11 | ⬜ Not started |
 | 0.3 — Shelf | Drag-drop, temporary storage, Quick Peek | 6–7 | ⬜ Not started |

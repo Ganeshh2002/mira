@@ -5,6 +5,7 @@ members = [
     "crates/mira-db",
     "crates/mira-fs",
     "crates/mira-git",
+    "crates/mira-monorepo",
     "crates/mira-platform",
     "crates/mira-projects",
     "crates/mira-workspaces",
@@ -27,6 +28,7 @@ mira-core = { path = "crates/mira-core" }
 mira-db = { path = "crates/mira-db" }
 mira-fs = { path = "crates/mira-fs" }
 mira-git = { path = "crates/mira-git" }
+mira-monorepo = { path = "crates/mira-monorepo" }
 mira-platform = { path = "crates/mira-platform" }
 mira-projects = { path = "crates/mira-projects" }
 mira-workspaces = { path = "crates/mira-workspaces" }
@@ -39,6 +41,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"
 tempfile = "3"
+toml = "0.9"
 ts-rs = "11"
 
 [profile.release]

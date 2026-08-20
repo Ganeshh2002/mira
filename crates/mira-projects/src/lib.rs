@@ -15,7 +15,7 @@
 
 mod markers;
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use mira_core::{MiraError, Project, ProjectId, Result};
 use mira_db::{NewProject, ProjectRepo};
@@ -97,7 +97,13 @@ impl<R: ProjectRepo, G: GitProvider> ProjectService for Projects<R, G> {
             ));
         }
 
-        let worktree = self.git.discover(&root);
+        // libgit2 reports a worktree with a trailing separator. Paths compare by
+        // components, so it changes no behaviour — but it is shown to a person,
+        // and re-collecting the components is what drops it.
+        let worktree: Option<PathBuf> = self
+            .git
+            .discover(&root)
+            .map(|found| found.components().collect());
         let git_root = worktree
             .as_deref()
             .filter(|found| !self.matching.same_path(found, &root))

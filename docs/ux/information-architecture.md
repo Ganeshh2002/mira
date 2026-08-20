@@ -19,6 +19,15 @@ cleanly, it is probably out of scope.
 ### Project — *where the code lives*
 
 A directory on disk plus what Mira learned about it (repo, type markers, colour, name).
+
+**A project is not the same thing as a repository, and not the same thing as a package.**
+One repository may hold many packages, and a person may add the monorepo root, one
+package, or several packages as separate projects — all three are legitimate. Mira shows
+which case it is looking at and never collapses them: a package selected inside a
+monorepo displays the repository it belongs to alongside its own path, because its Git
+state belongs to the repository and its identity belongs to the package. Detected
+packages are **boundaries, not projects**; adopting one is an explicit act
+([ADR-0010](../adr/0010-monorepo-detection.md)).
 Long-lived. Created by the user, one per repository or per logical codebase. **Nouns
 that belong to a project:** repo, Git state, shelf items, SSH hosts, containers,
 default apps.

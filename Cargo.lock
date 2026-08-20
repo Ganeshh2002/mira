@@ -2172,6 +2172,7 @@ dependencies = [
  "mira-db",
  "mira-fs",
  "mira-git",
+ "mira-monorepo",
  "mira-platform",
  "mira-projects",
  "mira-workspaces",
@@ -2220,6 +2221,18 @@ dependencies = [
  "mira-core",
  "serde",
  "tempfile",
+ "ts-rs",
+]
+
+[[package]]
+name = "mira-monorepo"
+version = "0.1.0"
+dependencies = [
+ "mira-core",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "toml 0.9.12+spec-1.1.0",
  "ts-rs",
 ]
 

@@ -17,6 +17,7 @@ the map, the ADRs are the reasoning.
 | Platform abstraction | Capability traits per OS | [0005](../adr/0005-platform-abstraction.md) |
 | Extension boundary | Modules over a stable command surface | [0008](../adr/0008-modular-architecture.md) |
 | Git | libgit2 (`git2`) behind a provider trait | [0009](../adr/0009-git-via-libgit2.md) |
+| Monorepo layout | Manifest reading in its own crate, never stored | [0010](../adr/0010-monorepo-detection.md) |
 
 Chosen because the constraints in
 [product-definition.md](../product/product-definition.md) — ≤ 30 MB installer, ≤ 150 MB
@@ -72,6 +73,7 @@ crates/
   mira-workspaces/
   mira-sessions/
   mira-git/                 # libgit2 behind a trait
+  mira-monorepo/            # workspace manifests → package boundaries
   mira-ports/
   mira-processes/
   mira-fs/                  # path safety, watching, shelf, peek reads
@@ -125,6 +127,7 @@ depend on* — and nothing outside it may reach past its interface.
 | **workspaces** | Workspace CRUD, active-workspace resolution | `WorkspaceService` | core, db |
 | **sessions** | Session start/pause/resume/close from lock+focus events | `SessionService` | core, db, platform |
 | **git** | Status, HEAD, branches, ahead/behind, commit walk, lane layout | `GitProvider` trait | core |
+| **monorepo** | Workspace manifests → tools and package boundaries, read-only | `detect(selected, git_root)` | core |
 | **ports** | Listening sockets → (port, pid, process) + attribution | `PortScanner` | core, processes |
 | **processes** | Process facts, safe termination | `ProcessProvider` | core, platform |
 | **filesystem** | Path canonicalisation, **root containment checks**, watching, safe reads | pure functions, then `FsService` | core |
@@ -163,7 +166,7 @@ projects.add()                        → Project | null
 projects.open({ projectId })          → Project
 projects.remove({ projectId })        → void
 projects.reveal({ projectId })        → void
-git.context({ projectId })            → ProjectContext
+projects.context({ projectId })        → ProjectContext
 git.log({ projectId, limit, cursor }) → CommitPage
 ports.scan({ projectId? })            → PortEntry[]
 processes.terminate({ pid, force })   → TerminateOutcome

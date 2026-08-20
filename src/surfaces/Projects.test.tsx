@@ -28,6 +28,7 @@ function project(overrides: Partial<Project> = {}): Project {
 const readyContext: ProjectContext = {
   project: project(),
   directoryExists: true,
+  layout: { kind: 'standalone' },
   git: {
     state: 'ready',
     head: { kind: 'branch', name: 'main' },
@@ -57,7 +58,7 @@ function backend(handlers: Record<string, unknown>) {
 
 const shell = {
   projects_list: [],
-  git_context: readyContext,
+  projects_context: readyContext,
 };
 
 beforeEach(() => {
@@ -183,7 +184,7 @@ describe('adding a project', () => {
           detail: '/home/dev/aviora is already open as "Aviora".',
         });
       }
-      if (command === 'git_context') return Promise.resolve(readyContext);
+      if (command === 'projects_context') return Promise.resolve(readyContext);
       return Promise.resolve(second);
     });
     renderApp(<App surface="main" />);

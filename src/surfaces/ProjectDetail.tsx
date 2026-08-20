@@ -5,6 +5,7 @@ import type { Project } from '../bindings/Project';
 import { Button } from '../components/Button';
 import { Chip } from '../components/Chip';
 import { GitPanel } from '../components/GitPanel';
+import { LayoutPanel } from '../components/LayoutPanel';
 import { Row } from '../components/Row';
 import { MissingFolder } from '../components/MissingFolder';
 import { Section } from '../components/Section';
@@ -28,8 +29,8 @@ export function ProjectDetail({
   const [confirming, setConfirming] = useState(false);
 
   const context = useQuery({
-    queryKey: ['git', 'context', project.id],
-    queryFn: () => commands.gitContext(project.id),
+    queryKey: ['projects', 'context', project.id],
+    queryFn: () => commands.projectsContext(project.id),
   });
 
   const reveal = useMutation({ mutationFn: () => commands.projectsReveal(project.id) });
@@ -71,9 +72,12 @@ export function ProjectDetail({
         </Section>
       ) : !context.data.directoryExists ? (
         <MissingFolder path={project.rootPath} />
-      ) : context.data.git ? (
-        <GitPanel git={context.data.git} />
-      ) : null}
+      ) : (
+        <>
+          {context.data.layout ? <LayoutPanel layout={context.data.layout} /> : null}
+          {context.data.git ? <GitPanel git={context.data.git} /> : null}
+        </>
+      )}
 
       {failure ? (
         <p role="alert" className="t-body m-0 text-signal-danger">

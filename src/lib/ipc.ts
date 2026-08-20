@@ -107,7 +107,10 @@ export const commands = {
   /** `projects.reveal` — open a project's folder in the file manager. */
   projectsReveal: (projectId: number): Promise<void> => call('projects_reveal', { projectId }),
 
-  /** `git.context` — the project's Git state, read on demand. */
-  gitContext: (projectId: number): Promise<ProjectContext> =>
-    call('git_context', { projectId }),
+  /**
+   * `projects.context` — the project's Git state and repository layout, read on
+   * demand.
+   */
+  projectsContext: (projectId: number): Promise<ProjectContext> =>
+    call('projects_context', { projectId }),
 };

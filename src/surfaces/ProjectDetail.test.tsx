@@ -31,18 +31,22 @@ const commit = {
   committedAt: Math.floor(Date.now() / 1000) - 7200,
 };
 
-function context(
-  git: GitOverview | null,
-  overrides: Partial<ProjectContext> = {},
-): ProjectContext {
-  return { project: aviora, directoryExists: git !== null, git, ...overrides };
+function context(git: GitOverview | null): ProjectContext {
+  return {
+    project: aviora,
+    directoryExists: git !== null,
+    git,
+    // Layout is the monorepo question and these tests are about Git; a
+    // standalone repository is the shape that keeps them about one thing.
+    layout: git === null ? null : { kind: 'standalone' },
+  };
 }
 
 /** Render the detail view for the one project, with this Git answer. */
-function show(git: GitOverview | null, overrides: Partial<ProjectContext> = {}) {
+function show(git: GitOverview | null) {
   invoke.mockImplementation((command: string) => {
     if (command === 'projects_list') return Promise.resolve([aviora]);
-    if (command === 'git_context') return Promise.resolve(context(git, overrides));
+    if (command === 'projects_context') return Promise.resolve(context(git));
     return Promise.resolve(null);
   });
   return renderApp(<App surface="main" />);
@@ -95,7 +99,7 @@ describe('the project overview', () => {
 
     await screen.findByRole('heading', { name: 'Aviora' });
 
-    const reads = invoke.mock.calls.filter(([command]) => command === 'git_context');
+    const reads = invoke.mock.calls.filter(([command]) => command === 'projects_context');
     expect(reads).toHaveLength(1);
     expect(reads[0]?.[1]).toEqual({ projectId: 1 });
   });
@@ -245,7 +249,7 @@ describe('refreshing', () => {
     let clean = true;
     invoke.mockImplementation((command: string) => {
       if (command === 'projects_list') return Promise.resolve([aviora]);
-      if (command === 'git_context') {
+      if (command === 'projects_context') {
         const git: GitOverview = {
           state: 'ready',
           head: { kind: 'branch', name: 'main' },
@@ -280,7 +284,7 @@ describe('switching projects', () => {
     };
     invoke.mockImplementation((command: string) => {
       if (command === 'projects_list') return Promise.resolve([aviora, second]);
-      if (command === 'git_context')
+      if (command === 'projects_context')
         return Promise.resolve(context({ state: 'notARepository' }));
       if (command === 'projects_reveal') {
         return Promise.reject({ kind: 'notFound', what: 'The folder for "Aviora"' });
@@ -308,7 +312,7 @@ describe('switching projects', () => {
     };
     invoke.mockImplementation((command: string) => {
       if (command === 'projects_list') return Promise.resolve([aviora, second]);
-      if (command === 'git_context')
+      if (command === 'projects_context')
         return Promise.resolve(context({ state: 'notARepository' }));
       return Promise.resolve(second);
     });
@@ -335,20 +339,24 @@ describe('switching projects', () => {
     };
     invoke.mockImplementation((command: string) => {
       if (command === 'projects_list') return Promise.resolve([aviora, second]);
-      if (command === 'git_context')
+      if (command === 'projects_context')
         return Promise.resolve(context({ state: 'notARepository' }));
       return Promise.resolve(second);
     });
     renderApp(<App surface="main" />);
 
     await screen.findByRole('heading', { name: 'Aviora' });
-    const before = invoke.mock.calls.filter(([command]) => command === 'git_context').length;
+    const before = invoke.mock.calls.filter(
+      ([command]) => command === 'projects_context',
+    ).length;
 
     await userEvent.click(screen.getByRole('button', { name: /Mobile App/ }));
     await userEvent.click(screen.getByRole('button', { name: /Aviora/ }));
 
     await waitFor(() => {
-      const after = invoke.mock.calls.filter(([command]) => command === 'git_context').length;
+      const after = invoke.mock.calls.filter(
+        ([command]) => command === 'projects_context',
+      ).length;
       expect(after).toBeGreaterThan(before + 1);
     });
   });
@@ -363,7 +371,7 @@ describe('switching projects', () => {
     invoke.mockImplementation((command: string, args?: { projectId?: number }) => {
       if (command === 'projects_list') return Promise.resolve([aviora, second]);
       if (command === 'projects_open') return Promise.resolve(second);
-      if (command === 'git_context') {
+      if (command === 'projects_context') {
         return Promise.resolve(
           args?.projectId === 2
             ? {
@@ -409,7 +417,7 @@ describe('switching projects', () => {
     };
     invoke.mockImplementation((command: string) => {
       if (command === 'projects_list') return Promise.resolve([aviora, second]);
-      if (command === 'git_context')
+      if (command === 'projects_context')
         return Promise.resolve(context({ state: 'notARepository' }));
       return Promise.resolve(second);
     });

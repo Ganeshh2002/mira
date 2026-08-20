@@ -62,7 +62,7 @@ export function Projects() {
     // FR-3.3's first refresh trigger. Coming back to a project is a statement
     // that you want its state *now*; without this the panel would show whatever
     // was true when you last looked, because nothing here polls.
-    void client.invalidateQueries({ queryKey: ['git', 'context', project.id] });
+    void client.invalidateQueries({ queryKey: ['projects', 'context', project.id] });
   }
 
   return (

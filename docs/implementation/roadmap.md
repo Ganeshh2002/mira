@@ -96,6 +96,13 @@ demand, open the project folder, and remove a project. `mira-fs`, `mira-git` (li
 [ADR-0009](../adr/0009-git-via-libgit2.md)), the project repository and the project
 service. macOS and Windows now ask the platform for its standard window material.
 
+**Slice 1.1 — monorepo awareness.** Added before slice 2, because the distinction it
+draws is one slice 2 depends on: attributing a port to a project means knowing whether
+that project is a repository, a monorepo, or one package inside one. Detection reads
+workspace manifests for npm, pnpm, Yarn, Cargo, Turborepo and Nx; it runs nothing, stores
+nothing, and is bounded by named constants
+([ADR-0010](../adr/0010-monorepo-detection.md)). New crate: `mira-monorepo`.
+
 **Deferred out of slice 1, and why.** The dirty dot in the *list* needs Git for every
 project on every render; the changed-path list, the 5 s refresh and the filesystem
 watcher all need somewhere for recurring work to live. Both wait for the scheduler

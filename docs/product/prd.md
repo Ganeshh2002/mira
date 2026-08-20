@@ -111,6 +111,17 @@ detail view. `⌘1…⌘9` / `Ctrl+1…9` jump to the first nine.
   *Relocate* and *Remove* actions. It is never auto-deleted.
 - FR-1.6 Ordering: manual drag order, persisted; default is most-recently-opened first.
 - FR-1.7 Filter list by typed substring over name and path.
+- FR-1.8 Distinguish a standalone repository, the root of a monorepo, and a package
+  inside one. Where the selected directory is a package, show the Git repository it
+  belongs to **and** the package path, so the two scopes are never confused.
+- FR-1.9 Detect monorepo tooling by **reading manifests only**: npm, pnpm and Yarn
+  workspaces, Cargo workspaces, Turborepo, and Nx. Never run a package manager, never
+  install anything, never write to the repository.
+- FR-1.10 Report a package only where a manifest confirms it, and a monorepo only where
+  at least one package is confirmed. Package names come from the package's own manifest
+  or its directory; they are never invented.
+- FR-1.11 Detected packages are **not** projects. They are shown as boundaries; adopting
+  one as a project stays an explicit user action.
 
 **Platform considerations.** Path handling must be case-insensitive-aware on
 macOS/Windows and case-sensitive on Linux; store the canonicalised absolute path and
@@ -126,8 +137,15 @@ potentially slow (detection runs with a timeout).
 - AC-1.4 Restarting Mira restores the full list, order, and last selection.
 - AC-1.5 Adding a directory on an unmounted network share fails with a clear error
   within 5 s instead of hanging.
+- AC-1.6 A pnpm/Turborepo monorepo shows its tools and its packages; selecting one of
+  those packages shows the repository root and the package path together.
+- AC-1.7 A repository nested inside a monorepo is treated as its own repository, and the
+  outer workspace's configuration is not applied to it.
+- AC-1.8 Detection over a repository with a populated `node_modules` stays bounded: no
+  dependency is reported as a package, and the walk has a fixed visit budget.
 
-**Dependencies.** SQLite persistence; `projects` module; filesystem probe.
+**Dependencies.** SQLite persistence; `projects` module; filesystem probe; `monorepo`
+module ([ADR-0010](../adr/0010-monorepo-detection.md)).
 
 **Risks.** Directory-based identity breaks when users move folders (mitigated by
 *Relocate*). Scanning very large directories on add — mitigated by probing only for
@@ -142,6 +160,12 @@ missing project is shown as missing with *Remove* offered, and is never auto-del
 manual drag ordering (FR-1.6), the filter field (FR-1.7), and the `⌘1…⌘9` jumps. UNC and
 network-path flagging (AC-1.5) is not implemented; a slow share currently blocks the add
 for as long as the operating system takes to answer.
+
+**Monorepo awareness (slice 1.1).** FR-1.8 through FR-1.11 are done, for all six tools.
+Detection is read-only and computed on demand — nothing about a workspace is stored, and
+no package becomes a project on its own. **Not yet built:** adding a detected package as
+a project in one click, and per-package Git scoping (a package shows its repository's
+state, which is what Git itself reports for a path inside a worktree).
 
 ---
 

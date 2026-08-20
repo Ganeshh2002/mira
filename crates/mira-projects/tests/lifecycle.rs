@@ -182,6 +182,31 @@ fn a_worktree_root_above_the_project_is_recorded() {
 }
 
 #[test]
+fn a_stored_worktree_root_has_no_trailing_separator() {
+    // libgit2 reports a worktree as `/home/dev/aviora/`. Paths compare by
+    // components so the trailing separator changes no behaviour, but it is shown
+    // to a person under "Repository", and a path with a dangling slash reads like
+    // a bug in Mira.
+    let dir = TempDir::new().expect("tempdir");
+    let root = dir.path().canonicalize().expect("canonical");
+    let inner = root.join("web");
+    fs::create_dir(&inner).expect("mkdir");
+    let db = Db::open_in_memory().expect("db");
+
+    let trailing = PathBuf::from(format!("{}/", root.display()));
+    let project = service(&db, FakeGit::rooted_at(&trailing))
+        .add(&inner, 1)
+        .expect("add");
+
+    let stored = project.git_root.expect("a worktree root");
+    assert!(
+        !stored.ends_with('/') && !stored.ends_with('\\'),
+        "stored as {stored:?}"
+    );
+    assert_eq!(Path::new(&stored), root);
+}
+
+#[test]
 fn a_worktree_root_equal_to_the_project_root_is_not_repeated() {
     let dir = TempDir::new().expect("tempdir");
     let root = dir.path().canonicalize().expect("canonical");
