@@ -209,6 +209,15 @@ The rule generalises. A row that can be acted on looks raised and responds to th
 pointer; a row that is a statement of fact looks flat and does not. Mira would rather
 show a fact plainly than dress it up as a control it has not built.
 
+### Absent controls stay absent
+
+A workspace's Context section lists an editor, a terminal and a browser, and none of
+them can be clicked. Launching is a later slice, and the temptation is to put a disabled
+Launch button there so the shape is ready. Mira does not: a disabled control is a promise
+with a date attached, and a person who tries it learns only that the product is
+unfinished. A sentence saying what opening a workspace does — and does not — is more
+honest and takes less room.
+
 ### Freshness, and never implying it
 
 Observed data is only as good as its age, so every reading of it is dated: "Updated

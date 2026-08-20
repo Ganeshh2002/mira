@@ -2315,6 +2315,8 @@ name = "mira-platform"
 version = "0.1.0"
 dependencies = [
  "mira-core",
+ "serde",
+ "ts-rs",
 ]
 
 [[package]]
@@ -2366,6 +2368,7 @@ version = "0.1.0"
 dependencies = [
  "mira-core",
  "mira-db",
+ "tempfile",
 ]
 
 [[package]]

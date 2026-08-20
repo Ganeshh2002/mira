@@ -459,37 +459,109 @@ fn no_command_lets_the_frontend_name_a_path_on_disk() {
     // that moment belongs to a native file picker driven by the person at the
     // keyboard — not to a JSON argument a compromised page could forge
     // (`security-and-privacy.md` §5).
-    let commands = repo_root().join("src-tauri/src/commands");
+    //
+    // Path *types* are banned outright, and so is any parameter whose name reads
+    // like a location. Free text is handled by the reviewed list below, because
+    // a `String` is only dangerous when something treats it as a path, and that
+    // is a judgement a scanner cannot make.
+    let banned_types = [": PathBuf", ": &Path", ": Option<PathBuf>", ": &str"];
+    let banned_names = [
+        "path",
+        "dir",
+        "directory",
+        "folder",
+        "file",
+        "root",
+        "cwd",
+        "target",
+        "url",
+    ];
+
     let mut violations = Vec::new();
-    let mut scanned = 0_usize;
+    for (path, signature) in command_parameters() {
+        for banned in banned_types {
+            if signature.contains(banned) {
+                violations.push(format!("{path}: {signature}"));
+            }
+        }
+        for parameter in parameters_of(&signature) {
+            let name = parameter_name(&parameter).to_lowercase();
+            if banned_names.iter().any(|banned| name == *banned) {
+                violations.push(format!("{path}: {parameter}"));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "a command names a location the frontend chose; the picker must supply it \
+         instead: {violations:#?}"
+    );
+}
+
+#[test]
+fn every_command_parameter_is_one_that_has_been_reviewed() {
+    // The privilege surface, enumerated. `capabilities/default.json` says what the
+    // webview may *call*; this says what it may *say*, and a new parameter fails
+    // the build until someone adds it here on purpose.
+    //
+    // Reviewed, with why each is safe to accept from a page:
+    //
+    // - `project_id`, `workspace_id` — row ids. Naming a row you do not have is
+    //   `NotFound`, not access to anything.
+    // - `port`      — a `u16`, and only one Mira is already observing.
+    // - `name`, `description` — text the user typed, stored and shown back. Never
+    //   resolved against the filesystem.
+    // - `kinds`     — a fixed enum; anything else fails to deserialise.
+    // - `app`, `state` — injected by Tauri, not sent by the page.
+    let reviewed = [
+        "app",
+        "description",
+        "kinds",
+        "name",
+        "port",
+        "project_id",
+        "state",
+        "workspace_id",
+    ];
+
+    let mut unreviewed: Vec<String> = Vec::new();
+    for (path, signature) in command_parameters() {
+        for parameter in parameters_of(&signature) {
+            let name = parameter_name(&parameter);
+            if name.is_empty() || reviewed.contains(&name.as_str()) {
+                continue;
+            }
+            unreviewed.push(format!("{path}: {name}"));
+        }
+    }
+
+    assert!(
+        unreviewed.is_empty(),
+        "a command accepts something nobody has reviewed; add it to the list above \
+         with the reason it is safe: {unreviewed:#?}"
+    );
+}
+
+/// Every command's parameter list, with the file it came from.
+fn command_parameters() -> Vec<(String, String)> {
+    let commands = repo_root().join("src-tauri/src/commands");
+    let mut found = Vec::new();
 
     for (path, text) in sources(&["rs"]) {
         if !path.starts_with(&commands) {
             continue;
         }
-
         for signature in command_signatures(&code_only(&text)) {
-            scanned += 1;
-            for suspect in [
-                ": String",
-                ": &str",
-                ": PathBuf",
-                ": &Path",
-                ": Option<String>",
-            ] {
-                if signature.contains(suspect) {
-                    violations.push(format!("{}: {signature}", relative(&path)));
-                }
-            }
+            found.push((relative(&path), signature));
         }
     }
 
-    assert!(scanned > 0, "the command scan found nothing — it is broken");
     assert!(
-        violations.is_empty(),
-        "a command takes a string the frontend controls; if it names a path, the \
-         picker must supply it instead: {violations:#?}"
+        !found.is_empty(),
+        "the command scan found nothing — it is broken"
     );
+    found
 }
 
 /// The parameter list of every `#[tauri::command]` in `code`, as one line each.
@@ -510,18 +582,78 @@ fn command_signatures(code: &str) -> Vec<String> {
                 break;
             }
         }
-        // Everything between the first `(` and the last `)` is the parameter list.
-        let params = signature
-            .find('(')
-            .zip(signature.rfind(')'))
-            .filter(|(open, close)| open < close)
-            .map_or(String::new(), |(open, close)| {
-                signature[open + 1..close].to_owned()
-            });
-        signatures.push(params);
+        signatures.push(between_parentheses(&signature));
     }
 
     signatures
+}
+
+/// What sits between a signature's first `(` and the `)` that closes it.
+///
+/// Depth-counted rather than `rfind`, because `-> Result<()>` puts a closing
+/// parenthesis after the parameter list and the naive version swallowed the
+/// return type into the parameters.
+fn between_parentheses(signature: &str) -> String {
+    let Some(open) = signature.find('(') else {
+        return String::new();
+    };
+
+    let mut depth = 0_usize;
+    for (at, character) in signature.char_indices().skip(open) {
+        match character {
+            '(' => depth += 1,
+            ')' => {
+                depth -= 1;
+                if depth == 0 {
+                    return signature[open + 1..at].to_owned();
+                }
+            }
+            _ => {}
+        }
+    }
+
+    String::new()
+}
+
+/// One parameter list, split into parameters.
+///
+/// Splits on commas at depth zero only: `State<'_, Arc<AppState>>` is one
+/// parameter, and a naive split made it look like two.
+fn parameters_of(signature: &str) -> Vec<String> {
+    let mut parameters = Vec::new();
+    let mut depth = 0_i32;
+    let mut current = String::new();
+
+    for character in signature.chars() {
+        match character {
+            '<' | '(' | '[' => depth += 1,
+            '>' | ')' | ']' => depth -= 1,
+            ',' if depth == 0 => {
+                parameters.push(std::mem::take(&mut current));
+                continue;
+            }
+            _ => {}
+        }
+        current.push(character);
+    }
+    parameters.push(current);
+
+    parameters
+        .into_iter()
+        .map(|parameter| parameter.trim().to_owned())
+        .filter(|parameter| !parameter.is_empty())
+        .collect()
+}
+
+/// The name of one parameter, as written.
+fn parameter_name(parameter: &str) -> String {
+    parameter
+        .split(':')
+        .next()
+        .unwrap_or_default()
+        .trim()
+        .trim_start_matches("mut ")
+        .to_owned()
 }
 
 #[test]

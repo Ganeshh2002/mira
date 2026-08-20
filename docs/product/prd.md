@@ -59,7 +59,7 @@ working core with named gaps, listed in its own section.
 | 12 | Browser integration | **0.1** | 3 | — |
 | 20 | Global shortcut | **0.1** | 1 | Partial |
 | 21 | Menu bar / tray | **0.1** | 1 | Partial |
-| 2 | Project/workspace management | 0.2 | 4 | — |
+| 2 | Project/workspace management | 0.2 | 4 | Partial |
 | 23 | App groups *(shape only)* | 0.2 | 4 | — |
 | 24 | Workspace restoration *(shape only)* | 0.2 | 11 | — |
 | 15 | File Shelf | 0.3 | 6 | — |
@@ -739,6 +739,21 @@ are surfaced. Switching never kills anything.
 workspaces until a second exists, which is a hard requirement, not a nicety.
 
 ---
+
+**As built (slice 3).** A workspace is a user-defined working context on one project:
+a name, an optional description, and the kinds of application it works with. Create,
+list, rename, open and remove are all in, workspaces persist across restarts, and a
+project may hold as many as the user wants. Opening one records *when* and changes the
+view; it starts nothing ([ADR-0012](../adr/0012-workspace-semantics.md)).
+
+Application context is a **kind** — editor, terminal, browser — not an application.
+`mira-platform` discovers what this machine actually has and the interface says
+"Editor · Not installed" rather than dropping the association.
+
+**Not yet built:** a workspace does not narrow anything. It shows the whole project's
+Git and all of its services, so several workspaces on one project differ only by name,
+description and application context. Expected ports, per-package scoping, commands, app
+groups, the default workspace, and restoration are all still ahead. Nothing launches.
 
 ## 23. App groups *(shape only)*
 

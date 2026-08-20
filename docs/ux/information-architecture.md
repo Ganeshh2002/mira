@@ -42,6 +42,13 @@ implicit `Default` workspace that stays invisible until a second one exists.
 and offers*; it never starts or stops anything. This is the rule that keeps the concept
 safe to explore.
 
+**As built (slice 3).** A workspace is a name, an optional description, a project, and
+the kinds of application it works with. It has **no directory of its own** and never
+needs one. Everything it displays — Git, packages, services — belongs to the project
+underneath it and is observed once for that project, so two workspaces can never
+disagree and switching between them costs no observation. Opening one records *when*;
+it launches nothing ([ADR-0012](../adr/0012-workspace-semantics.md)).
+
 ### Session — *one stretch of actually working*
 
 A time-bounded record created by Mira, not by the user: opened at `T`, project P,

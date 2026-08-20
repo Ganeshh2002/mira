@@ -29,8 +29,8 @@ that supersedes the old one, not a quiet exception.
   [capability matrix](docs/architecture/platform-abstraction.md#5-capability-matrix) makes
   specific claims per OS. If one is wrong on your machine, tell us — accuracy there is a
   core promise.
-- **Take a slice task.** Slices 0, 1 and 1.1 are done, and slice 2's scheduler and
-  live context are in. Issues are labelled `slice:N`.
+- **Take a slice task.** Slices 0, 1 and 1.1 are done; slice 2's scheduler and live
+  context are in, and workspaces have landed early. Issues are labelled `slice:N`.
 
 ## Development setup
 
@@ -133,6 +133,8 @@ These are the recurring ones, listed so you do not discover them in review:
 - Accepting a filesystem path from the frontend instead of a native picker
 - Running a package manager, or any process outside `mira-platform`
 - Writing to a user's repository from a crate whose job is to read it
+- Storing anything observed on a workspace — Git, ports and processes belong to the
+  project and are read live
 - Reading a file outside a registered project root
 - Opening anything under `~/.ssh` other than `config`
 - Sending a write request to the Docker API

@@ -172,6 +172,13 @@ pub fn run() {
             commands::live::live_snapshot,
             commands::live::live_refresh,
             commands::live::live_open_service,
+            commands::workspaces::workspaces_list,
+            commands::workspaces::workspaces_create,
+            commands::workspaces::workspaces_rename,
+            commands::workspaces::workspaces_open,
+            commands::workspaces::workspaces_remove,
+            commands::workspaces::workspaces_set_applications,
+            commands::workspaces::workspaces_applications,
         ])
         .build(tauri::generate_context!())
         .expect("Mira failed to start")

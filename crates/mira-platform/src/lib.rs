@@ -7,12 +7,16 @@
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
 
+pub mod applications;
 pub mod env;
 pub mod platform;
 pub mod resolve;
 pub mod shell;
 pub mod surface;
 
+pub use applications::{
+    candidates, first_present, AppPresence, AppReport, Applications, Candidate, Probe,
+};
 pub use env::{DisplayServer, EnvFacts, LinuxPackaging, Os};
 pub use platform::{Platform, PlatformCapabilities};
 pub use resolve::{resolve, resolve_all};

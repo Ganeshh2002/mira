@@ -57,6 +57,8 @@ const readyContext: LiveSnapshot = {
 /** Route each command name to a canned answer. */
 function backend(handlers: Record<string, unknown>) {
   invoke.mockImplementation((command: string) => {
+    if (command === 'workspaces_list') return Promise.resolve([]);
+    if (command === 'workspaces_applications') return Promise.resolve([]);
     if (!(command in handlers)) {
       return Promise.reject({ kind: 'notFound', what: command });
     }
@@ -131,6 +133,8 @@ describe('adding a project', () => {
     const added = project({ id: 7, name: 'Experiment', rootPath: '/home/dev/experiment' });
     let listed: Project[] = [];
     invoke.mockImplementation((command: string) => {
+      if (command === 'workspaces_list') return Promise.resolve([]);
+      if (command === 'workspaces_applications') return Promise.resolve([]);
       if (command === 'projects_list') return Promise.resolve(listed);
       if (command === 'projects_add') {
         listed = [added];
@@ -149,6 +153,8 @@ describe('adding a project', () => {
 
   it('says nothing changed when the picker is dismissed', async () => {
     invoke.mockImplementation((command: string) => {
+      if (command === 'workspaces_list') return Promise.resolve([]);
+      if (command === 'workspaces_applications') return Promise.resolve([]);
       if (command === 'projects_list') return Promise.resolve([]);
       if (command === 'projects_add') return Promise.resolve(null);
       return Promise.resolve(readyContext);
@@ -165,6 +171,8 @@ describe('adding a project', () => {
 
   it('explains a directory that is already open', async () => {
     invoke.mockImplementation((command: string) => {
+      if (command === 'workspaces_list') return Promise.resolve([]);
+      if (command === 'workspaces_applications') return Promise.resolve([]);
       if (command === 'projects_list') return Promise.resolve([project()]);
       if (command === 'projects_add') {
         return Promise.reject({
@@ -188,6 +196,8 @@ describe('adding a project', () => {
     // being information and becomes furniture.
     const second = project({ id: 2, name: 'Mobile App', rootPath: '/home/dev/mobile' });
     invoke.mockImplementation((command: string) => {
+      if (command === 'workspaces_list') return Promise.resolve([]);
+      if (command === 'workspaces_applications') return Promise.resolve([]);
       if (command === 'projects_list') return Promise.resolve([project(), second]);
       if (command === 'projects_add') {
         return Promise.reject({

@@ -117,6 +117,34 @@ CREATE TABLE project_active_workspace (
 The partial unique index is what makes "exactly one default workspace per project" a
 database guarantee rather than a code convention.
 
+**Migration 0002** adds `description` and `last_opened_at`, and one table:
+
+```sql
+-- Which kinds of application a workspace works with. Intent; *which* editor is
+-- on this machine is discovered by mira-platform and never written here.
+CREATE TABLE workspace_applications (
+  workspace_id INTEGER NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  kind         TEXT    NOT NULL CHECK (kind IN ('editor','terminal','browser')),
+  added_at     INTEGER NOT NULL,
+  PRIMARY KEY (workspace_id, kind)
+);
+```
+
+Three things are **not** here and will not be ([ADR-0012](../adr/0012-workspace-semantics.md)):
+a branch, a port, a process. A workspace has no runtime state of its own — Git and
+services belong to the project underneath it, are observed once, and are read by every
+workspace on that project, so two workspaces can never disagree about one repository.
+
+`subpath` is from `0001` and is still unused. A workspace is deliberately *not* a place;
+if the column is still unused at the end of 0.2 it should be dropped by a migration
+rather than left as a suggestion.
+
+**Deletion policy.** A project's workspaces go with it, by `ON DELETE CASCADE`. A
+workspace describes a project, so without the project there is nothing left for it to
+describe, and the removal confirmation names what goes. A project whose *folder* went
+missing keeps everything: the folder is observed, the project and its workspaces are
+stated (FR-1.5).
+
 ### 3.3 Sessions
 
 ```sql

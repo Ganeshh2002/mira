@@ -10,7 +10,7 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Added
 - Product definition, product scope, PRD, information architecture, and design system
 - Architecture, platform abstraction, data model, and security/privacy documents
-- ADRs 0001–0011 covering the foundational technical decisions
+- ADRs 0001–0012 covering the foundational technical decisions
 - Locked phase plan (0.1 through 0.6+) and the fourteen-slice implementation roadmap
 - Open-source project files (licence, contributing, code of conduct, security policy)
 - **Foundation (slice 0).** Cargo workspace with `mira-core`, `mira-platform`, `mira-db`,
@@ -44,6 +44,16 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   and that it cannot place it. Every reading shows its age, and a failed refresh appears
   beside what it could not replace rather than instead of it. Actions are read-only:
   open the address, copy the URL, the port, or the PID. Nothing here can stop a process.
+- **Workspace context (slice 3).** A workspace is a user-defined working context on one
+  project: a name, an optional description, and the kinds of application it works with.
+  It has no directory of its own. Create as many as you like per project, switch between
+  them, and each shows the project's Git state, its packages and its services — observed
+  once for the project, so two workspaces can never disagree and switching costs no
+  observation. Opening one records when; it starts nothing. Application context is a
+  *kind* — editor, terminal, browser — with Mira discovering what this machine actually
+  has, so a workspace that wants an editor says "Not installed" rather than forgetting it
+  wanted one. Removing a project removes its workspaces, and the confirmation says so; a
+  project whose folder went missing keeps everything.
 - macOS and Windows ask the platform for its standard window material — Liquid Glass on
   macOS 26, Mica on Windows 11 — rather than drawing an imitation. Linux stays opaque.
 

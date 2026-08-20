@@ -1,6 +1,6 @@
 [package]
 name = "mira-workspaces"
-description = "Workspace lifecycle. Slice 0 establishes the boundary only; workspaces themselves are 0.2."
+description = "Workspaces: a named way of working on one project, and the kinds of application it works with."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -12,3 +12,6 @@ publish.workspace = true
 [dependencies]
 mira-core = { workspace = true }
 mira-db = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }

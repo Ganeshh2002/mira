@@ -19,6 +19,7 @@ the map, the ADRs are the reasoning.
 | Git | libgit2 (`git2`) behind a provider trait | [0009](../adr/0009-git-via-libgit2.md) |
 | Monorepo layout | Manifest reading in its own crate, never stored | [0010](../adr/0010-monorepo-detection.md) |
 | Recurring work | One gated scheduler, blocking observers | [0011](../adr/0011-one-scheduler.md) |
+| Workspaces | Stated, not observed; opening is a view change | [0012](../adr/0012-workspace-semantics.md) |
 
 Chosen because the constraints in
 [product-definition.md](../product/product-definition.md) — ≤ 30 MB installer, ≤ 150 MB
@@ -126,7 +127,7 @@ depend on* — and nothing outside it may reach past its interface.
 | **core** | Domain types (`ProjectId`, `Workspace`, `Capability`, `MiraError`), no I/O | Types + traits | — |
 | **db** | Owns the SQLite connection, migrations, repositories | `ProjectRepo`, `WorkspaceRepo`, … | core |
 | **projects** | Project lifecycle, directory probing, type markers | `ProjectService` | core, db, fs |
-| **workspaces** | Workspace CRUD, active-workspace resolution | `WorkspaceService` | core, db |
+| **workspaces** | Workspace CRUD, application context | `WorkspaceService` | core, db |
 | **sessions** | Session start/pause/resume/close from lock+focus events | `SessionService` | core, db, platform |
 | **git** | Status, HEAD, branches, ahead/behind, commit walk, lane layout | `GitProvider` trait | core |
 | **monorepo** | Workspace manifests → tools and package boundaries, read-only | `detect(selected, git_root)` | core |
@@ -140,7 +141,7 @@ depend on* — and nothing outside it may reach past its interface.
 | **docker** | Read-only container listing over the local socket | `DockerClient` | core |
 | **media** | Now-playing where the OS permits | `MediaProvider` | core, platform |
 | **system** | CPU/memory/disk/battery/network sampling | `SystemProvider` | core, platform |
-| **platform** | Every OS-specific call in the product | Capability traits | core |
+| **platform** | Every OS-specific call in the product, plus application discovery | Capability traits, `Applications` | core |
 | **automation** | *(Future)* | — | — |
 
 ### Boundary tests
@@ -172,6 +173,11 @@ projects.reveal({ projectId })        → void
 live.snapshot()                       → LiveSnapshot
 live.refresh()                        → LiveSnapshot
 live.open_service({ port })           → void
+workspaces.list({ projectId })        → Workspace[]
+workspaces.create({ projectId, name, description }) → Workspace
+workspaces.open({ workspaceId })      → Workspace
+workspaces.set_applications({ workspaceId, kinds }) → Workspace
+workspaces.applications()             → AppReport[]
 git.log({ projectId, limit, cursor }) → CommitPage
 ports.scan({ projectId? })            → PortEntry[]
 processes.terminate({ pid, force })   → TerminateOutcome

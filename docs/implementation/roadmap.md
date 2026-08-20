@@ -186,6 +186,17 @@ ranking is where the palette either feels instant or does not; it is worth the t
 
 ---
 
+**Delivered (part), out of order.** Workspaces were built before slice 3's application
+launching, because the workspace is what launching would hang off — a context to launch
+*into* is worth having before the launching. What is in: the workspace model and
+service, create/list/rename/open/remove, application **context** as a set of kinds with
+platform discovery behind it, and a workspace surface that composes the project's
+existing observations ([ADR-0012](../adr/0012-workspace-semantics.md)).
+
+**Still to come in this slice.** Expected ports, per-workspace commands, app groups, the
+implicit default workspace, and the workspace switcher in the project header. Slice 3's
+launching remains ahead of them.
+
 ## Slice 5a — Git history *(S, 0.1)*
 
 **Delivers.** Commit walking with pagination; the History view as a linear list with

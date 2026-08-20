@@ -35,6 +35,8 @@ const clean: LiveSnapshot['projects'][number]['git'] = {
 
 function show(layout: RepositoryLayout, project: Project = aviora) {
   invoke.mockImplementation((command: string) => {
+    if (command === 'workspaces_list') return Promise.resolve([]);
+    if (command === 'workspaces_applications') return Promise.resolve([]);
     if (command === 'projects_list') return Promise.resolve([project]);
     if (command === 'live_refresh' || command === 'live_snapshot') {
       return Promise.resolve({
@@ -182,6 +184,8 @@ describe('a package inside a monorepo', () => {
 describe('a project whose folder is gone', () => {
   it('says nothing about layout it could not read', async () => {
     invoke.mockImplementation((command: string) => {
+      if (command === 'workspaces_list') return Promise.resolve([]);
+      if (command === 'workspaces_applications') return Promise.resolve([]);
       if (command === 'projects_list') return Promise.resolve([aviora]);
       if (command === 'live_refresh' || command === 'live_snapshot') {
         return Promise.resolve({

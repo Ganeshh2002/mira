@@ -1,6 +1,10 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 
+import { useQuery } from '@tanstack/react-query';
+
+import type { Workspace } from '../bindings/Workspace';
+
 import type { Project } from '../bindings/Project';
 import { Button } from '../components/Button';
 import { Chip } from '../components/Chip';
@@ -10,8 +14,11 @@ import { Row } from '../components/Row';
 import { MissingFolder } from '../components/MissingFolder';
 import { Section } from '../components/Section';
 import { ServicesPanel } from '../components/ServicesPanel';
+import { WorkspaceDetail } from './WorkspaceDetail';
+import { WorkspaceList } from './Workspaces';
 import { commands, describeUnknown } from '../lib/ipc';
 import { liveKey, observationOf, servicesOf, unplacedServices, useLive } from '../lib/live';
+import { workspaceKeys } from '../lib/workspaces';
 import { Freshness } from '../components/Freshness';
 
 /**
@@ -33,8 +40,34 @@ export function ProjectDetail({
 
   const live = useLive();
   const observation = observationOf(live.data, project.id);
+  // Only the *id* is held. The workspace itself is read from the query, so it
+  // stays current after every mutation — holding the object meant a toggle
+  // computed its next state from a copy taken before the last one.
+  const [openedId, setOpenedId] = useState<number | null>(null);
+  const workspaces = useQuery({
+    queryKey: workspaceKeys.of(project.id),
+    queryFn: () => commands.workspacesList(project.id),
+  });
+  const workspace = workspaces.data?.find((candidate) => candidate.id === openedId) ?? null;
+
+  const serviceObservation = live.data?.services ?? {
+    services: [],
+    error: null,
+    observedAt: null,
+  };
+
+  function open(chosen: Workspace) {
+    // The selection is local; opening records *when* on the backend. Neither
+    // starts anything, and neither disturbs another workspace.
+    setOpenedId(chosen.id);
+    openWorkspace.mutate(chosen.id);
+  }
 
   const reveal = useMutation({ mutationFn: () => commands.projectsReveal(project.id) });
+  const openWorkspace = useMutation({
+    mutationFn: commands.workspacesOpen,
+    onSuccess: () => client.invalidateQueries({ queryKey: workspaceKeys.of(project.id) }),
+  });
   const remove = useMutation({
     mutationFn: () => commands.projectsRemove(project.id),
     onSuccess: async () => {
@@ -48,21 +81,47 @@ export function ProjectDetail({
 
   return (
     <div className="flex min-w-0 flex-col gap-[var(--section-gap)]">
-      <header className="flex flex-col gap-[var(--space-2)]">
-        <h1 className="t-value-lg m-0 truncate text-ink-0">{project.name}</h1>
-        <p className="t-ui m-0 truncate text-ink-1" title={project.rootPath}>
-          {project.rootPath}
-        </p>
-        {project.markers.length > 0 ? (
-          <div className="flex flex-wrap gap-[var(--space-2)]">
-            {project.markers.map((marker) => (
-              <Chip key={marker}>{marker}</Chip>
-            ))}
-          </div>
-        ) : null}
-      </header>
+      {/*
+        With a workspace open the header collapses to a breadcrumb. The workspace
+        surface below already says where the project is and what is in it, and
+        repeating the path two inches above it is noise that makes the screen
+        look busier than the information in it.
+      */}
+      {workspace ? (
+        <header className="flex flex-col gap-[var(--space-1)]">
+          <p className="t-ui m-0 truncate text-ink-1">{project.name}</p>
+        </header>
+      ) : (
+        <header className="flex flex-col gap-[var(--space-2)]">
+          <h1 className="t-value-lg m-0 truncate text-ink-0">{project.name}</h1>
+          <p className="t-ui m-0 truncate text-ink-1" title={project.rootPath}>
+            {project.rootPath}
+          </p>
+          {project.markers.length > 0 ? (
+            <div className="flex flex-wrap gap-[var(--space-2)]">
+              {project.markers.map((marker) => (
+                <Chip key={marker}>{marker}</Chip>
+              ))}
+            </div>
+          ) : null}
+        </header>
+      )}
 
-      {live.isPending && !observation ? (
+      <WorkspaceList project={project} selected={workspace?.id ?? null} onSelect={open} />
+
+      {workspace ? (
+        <>
+          <Button onClick={() => setOpenedId(null)}>Back to the project</Button>
+          <WorkspaceDetail
+            workspace={workspace}
+            project={project}
+            observation={observation}
+            services={servicesOf(live.data, project.id)}
+            unplaced={unplacedServices(live.data)}
+            serviceObservation={serviceObservation}
+          />
+        </>
+      ) : live.isPending && !observation ? (
         <p className="t-ui text-ink-1">Reading…</p>
       ) : live.isError ? (
         <Section label="Git">
@@ -94,7 +153,7 @@ export function ProjectDetail({
             </p>
           ) : null}
           <ServicesPanel
-            observation={live.data?.services ?? { services: [], error: null, observedAt: null }}
+            observation={serviceObservation}
             services={servicesOf(live.data, project.id)}
             unplaced={unplacedServices(live.data)}
           />
@@ -116,7 +175,9 @@ export function ProjectDetail({
         </Button>
         {confirming ? (
           <>
-            <span className="t-ui text-ink-1">Remove “{project.name}” from Mira?</span>
+            <span className="t-ui text-ink-1">
+              Remove “{project.name}” and its workspaces from Mira?
+            </span>
             <Button kind="danger" onClick={() => remove.mutate()}>
               Remove
             </Button>
@@ -127,7 +188,8 @@ export function ProjectDetail({
         )}
       </div>
       <p className="t-ui m-0 text-ink-1">
-        Removing a project takes it out of Mira. The folder on disk is not touched.
+        Removing a project takes it and its workspaces out of Mira. The folder on disk is not
+        touched.
       </p>
     </div>
   );

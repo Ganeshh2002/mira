@@ -76,6 +76,8 @@ function snapshot(overrides: Partial<LiveSnapshot> = {}): LiveSnapshot {
 /** Serve a project list and a live snapshot; remember the event handler. */
 function backend(projects: Project[], live: LiveSnapshot) {
   invoke.mockImplementation((command: string) => {
+    if (command === 'workspaces_list') return Promise.resolve([]);
+    if (command === 'workspaces_applications') return Promise.resolve([]);
     if (command === 'projects_list') return Promise.resolve(projects);
     if (command === 'live_snapshot' || command === 'live_refresh') return Promise.resolve(live);
     return Promise.resolve(null);
@@ -105,6 +107,8 @@ describe('live Git state', () => {
   it('updates when the backend says something moved', async () => {
     let current = snapshot();
     invoke.mockImplementation((command: string) => {
+      if (command === 'workspaces_list') return Promise.resolve([]);
+      if (command === 'workspaces_applications') return Promise.resolve([]);
       if (command === 'projects_list') return Promise.resolve([project()]);
       return Promise.resolve(current);
     });

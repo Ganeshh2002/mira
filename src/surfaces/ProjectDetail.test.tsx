@@ -55,6 +55,8 @@ function context(git: GitOverview | null, projectId = 1): LiveSnapshot {
 /** Render the detail view for the one project, with this Git answer. */
 function show(git: GitOverview | null) {
   invoke.mockImplementation((command: string) => {
+    if (command === 'workspaces_list') return Promise.resolve([]);
+    if (command === 'workspaces_applications') return Promise.resolve([]);
     if (command === 'projects_list') return Promise.resolve([aviora]);
     if (command === 'live_refresh' || command === 'live_snapshot')
       return Promise.resolve(context(git));
@@ -103,6 +105,8 @@ describe('the project overview', () => {
 
   it('reads every project in one snapshot rather than one command each', async () => {
     invoke.mockImplementation((command: string) => {
+      if (command === 'workspaces_list') return Promise.resolve([]);
+      if (command === 'workspaces_applications') return Promise.resolve([]);
       if (command === 'projects_list') {
         return Promise.resolve([aviora, { ...aviora, id: 2, name: 'Second', rootPath: '/b' }]);
       }
@@ -232,6 +236,8 @@ describe('Git states', () => {
 
   it('shows a pending state while Git is being read', async () => {
     invoke.mockImplementation((command: string) => {
+      if (command === 'workspaces_list') return Promise.resolve([]);
+      if (command === 'workspaces_applications') return Promise.resolve([]);
       if (command === 'projects_list') return Promise.resolve([aviora]);
       return new Promise(() => {});
     });
@@ -242,6 +248,8 @@ describe('Git states', () => {
 
   it('reports a Git read that ran out of time', async () => {
     invoke.mockImplementation((command: string) => {
+      if (command === 'workspaces_list') return Promise.resolve([]);
+      if (command === 'workspaces_applications') return Promise.resolve([]);
       if (command === 'projects_list') return Promise.resolve([aviora]);
       return Promise.reject({
         kind: 'timeout',
@@ -262,6 +270,8 @@ describe('refreshing', () => {
     // out an interval to confirm what they already know.
     let clean = true;
     invoke.mockImplementation((command: string) => {
+      if (command === 'workspaces_list') return Promise.resolve([]);
+      if (command === 'workspaces_applications') return Promise.resolve([]);
       if (command === 'projects_list') return Promise.resolve([aviora]);
       if (command === 'live_refresh' || command === 'live_snapshot') {
         const git: GitOverview = {
@@ -297,6 +307,8 @@ describe('switching projects', () => {
       rootPath: '/home/dev/mobile',
     };
     invoke.mockImplementation((command: string) => {
+      if (command === 'workspaces_list') return Promise.resolve([]);
+      if (command === 'workspaces_applications') return Promise.resolve([]);
       if (command === 'projects_list') return Promise.resolve([aviora, second]);
       if (command === 'live_refresh' || command === 'live_snapshot')
         return Promise.resolve(context({ state: 'notARepository' }));
@@ -325,6 +337,8 @@ describe('switching projects', () => {
       rootPath: '/home/dev/mobile',
     };
     invoke.mockImplementation((command: string) => {
+      if (command === 'workspaces_list') return Promise.resolve([]);
+      if (command === 'workspaces_applications') return Promise.resolve([]);
       if (command === 'projects_list') return Promise.resolve([aviora, second]);
       if (command === 'live_refresh' || command === 'live_snapshot')
         return Promise.resolve(context({ state: 'notARepository' }));
@@ -334,7 +348,9 @@ describe('switching projects', () => {
 
     await screen.findByRole('heading', { name: 'Aviora' });
     await userEvent.click(screen.getByRole('button', { name: /remove project/i }));
-    expect(screen.getByText(/Remove .Aviora. from Mira\?/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/Remove .Aviora. and its workspaces from Mira\?/),
+    ).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole('button', { name: /Mobile App/ }));
 
@@ -352,6 +368,8 @@ describe('switching projects', () => {
       rootPath: '/home/dev/mobile',
     };
     invoke.mockImplementation((command: string) => {
+      if (command === 'workspaces_list') return Promise.resolve([]);
+      if (command === 'workspaces_applications') return Promise.resolve([]);
       if (command === 'projects_list') return Promise.resolve([aviora, second]);
       if (command === 'live_refresh' || command === 'live_snapshot')
         return Promise.resolve(context({ state: 'notARepository' }));
@@ -379,6 +397,8 @@ describe('switching projects', () => {
       rootPath: '/home/dev/mobile',
     };
     invoke.mockImplementation((command: string) => {
+      if (command === 'workspaces_list') return Promise.resolve([]);
+      if (command === 'workspaces_applications') return Promise.resolve([]);
       if (command === 'projects_list') return Promise.resolve([aviora, second]);
       if (command === 'projects_open') return Promise.resolve(second);
       if (command === 'live_refresh' || command === 'live_snapshot') {
@@ -438,6 +458,8 @@ describe('switching projects', () => {
       rootPath: '/home/dev/mobile',
     };
     invoke.mockImplementation((command: string) => {
+      if (command === 'workspaces_list') return Promise.resolve([]);
+      if (command === 'workspaces_applications') return Promise.resolve([]);
       if (command === 'projects_list') return Promise.resolve([aviora, second]);
       if (command === 'live_refresh' || command === 'live_snapshot')
         return Promise.resolve(context({ state: 'notARepository' }));

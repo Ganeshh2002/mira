@@ -2,8 +2,11 @@ import { invoke } from '@tauri-apps/api/core';
 
 import type { FoundationStatus } from '../bindings/FoundationStatus';
 import type { MiraError } from '../bindings/MiraError';
+import type { AppKind } from '../bindings/AppKind';
+import type { AppReport } from '../bindings/AppReport';
 import type { LiveSnapshot } from '../bindings/LiveSnapshot';
 import type { Project } from '../bindings/Project';
+import type { Workspace } from '../bindings/Workspace';
 
 /**
  * The typed IPC client.
@@ -121,4 +124,42 @@ export const commands = {
    * `file://` path (`security-and-privacy.md` §5 rule 5).
    */
   openService: (port: number): Promise<void> => call('live_open_service', { port }),
+
+  /** `workspaces.list` — one project's workspaces, most recently opened first. */
+  workspacesList: (projectId: number): Promise<Workspace[]> =>
+    call('workspaces_list', { projectId }),
+
+  /** `workspaces.create` — a name and a project is all it takes. */
+  workspacesCreate: (
+    projectId: number,
+    name: string,
+    description: string | null,
+  ): Promise<Workspace> => call('workspaces_create', { projectId, name, description }),
+
+  /** `workspaces.rename` — change the name and description. */
+  workspacesRename: (
+    workspaceId: number,
+    name: string,
+    description: string | null,
+  ): Promise<Workspace> => call('workspaces_rename', { workspaceId, name, description }),
+
+  /**
+   * `workspaces.open` — make a workspace the one being worked in.
+   *
+   * Records when, and nothing else. Opening does not launch an editor or start a
+   * server; the project's context is already being observed.
+   */
+  workspacesOpen: (workspaceId: number): Promise<Workspace> =>
+    call('workspaces_open', { workspaceId }),
+
+  /** `workspaces.remove` — forget a workspace. Its project is untouched. */
+  workspacesRemove: (workspaceId: number): Promise<void> =>
+    call('workspaces_remove', { workspaceId }),
+
+  /** `workspaces.set_applications` — the whole list of kinds, every time. */
+  workspacesSetApplications: (workspaceId: number, kinds: AppKind[]): Promise<Workspace> =>
+    call('workspaces_set_applications', { workspaceId, kinds }),
+
+  /** `workspaces.applications` — what this machine actually has. */
+  workspacesApplications: (): Promise<AppReport[]> => call('workspaces_applications'),
 };

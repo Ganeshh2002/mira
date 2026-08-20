@@ -11,3 +11,5 @@ publish.workspace = true
 
 [dependencies]
 mira-core = { workspace = true }
+serde = { workspace = true }
+ts-rs = { workspace = true }

@@ -76,9 +76,12 @@ pub fn projects_open(project_id: ProjectId, state: State<'_, Arc<AppState>>) -> 
     state.projects().open(project_id, now())
 }
 
-/// `projects.remove` — forget a project.
+/// `projects.remove` — forget a project, and the workspaces that describe it.
 ///
-/// The directory on disk is never touched (`prd.md` AC-1.3).
+/// The directory on disk is never touched (`prd.md` AC-1.3). Its workspaces do
+/// go, by `ON DELETE CASCADE`: a workspace is a way of working on a project, so
+/// without the project there is nothing left for it to describe. The interface's
+/// confirmation says so before this is called.
 #[tauri::command]
 pub fn projects_remove(project_id: ProjectId, state: State<'_, Arc<AppState>>) -> Result<()> {
     state.projects().remove(project_id)?;

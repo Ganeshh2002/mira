@@ -15,11 +15,18 @@ pub struct Migration {
 ///
 /// Applied migrations are **never edited** — a mistake is corrected by adding a new
 /// one (`docs/architecture/data-model.md` §4).
-pub const MIGRATIONS: &[Migration] = &[Migration {
-    version: 1,
-    name: "init",
-    sql: include_str!("../migrations/0001_init.sql"),
-}];
+pub const MIGRATIONS: &[Migration] = &[
+    Migration {
+        version: 1,
+        name: "init",
+        sql: include_str!("../migrations/0001_init.sql"),
+    },
+    Migration {
+        version: 2,
+        name: "workspace_context",
+        sql: include_str!("../migrations/0002_workspace_context.sql"),
+    },
+];
 
 /// The version a fully migrated database reports.
 #[must_use]

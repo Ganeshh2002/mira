@@ -32,11 +32,15 @@ fn user_version(path: &std::path::Path) -> i32 {
 fn a_fresh_database_reports_the_latest_version() {
     let db = Db::open_in_memory().expect("open");
     assert_eq!(db.schema_version(), mira_db::target_version());
-    assert_eq!(db.schema_version(), 1, "0001_init is the baseline");
+    assert_eq!(
+        db.schema_version(),
+        2,
+        "0001_init, then 0002_workspace_context"
+    );
 }
 
 #[test]
-fn the_baseline_creates_every_table_in_the_data_model() {
+fn the_schema_creates_every_table_in_the_data_model() {
     let db = Db::open_in_memory().expect("open");
     let tables = table_names(&db);
 
@@ -56,13 +60,16 @@ fn the_baseline_creates_every_table_in_the_data_model() {
         "ssh_hosts",
         "themes",
         "workspaces",
+        // 0002: which kinds of application a workspace works with. Intent; the
+        // application itself is discovered on the machine, never stored.
+        "workspace_applications",
     ] {
         assert!(
             tables.iter().any(|t| t == expected),
             "table {expected} is missing; tables were {tables:?}"
         );
     }
-    assert_eq!(tables.len(), 15, "15 tables, no more: {tables:?}");
+    assert_eq!(tables.len(), 16, "16 tables, no more: {tables:?}");
 }
 
 #[test]
@@ -96,7 +103,7 @@ fn opening_an_existing_database_twice_changes_nothing() {
     drop(first);
 
     let second = Db::open(&path).expect("second open");
-    assert_eq!(second.schema_version(), 1);
+    assert_eq!(second.schema_version(), mira_db::target_version());
     assert_eq!(
         table_names(&second),
         tables_before,
@@ -349,4 +356,49 @@ fn checkpointing_folds_the_write_ahead_log_back_into_the_database() {
         1,
         "the checkpointed write survives"
     );
+}
+
+#[test]
+fn a_version_one_database_gains_the_workspace_context_without_losing_anything() {
+    // `data-model.md` §4: every migration is tested against the previous
+    // version's database. A person upgrading Mira must not lose the projects and
+    // workspaces they already had.
+    let dir = TempDir::new().expect("tempdir");
+    let path = dir.path().join("mira.db");
+
+    let baseline: Vec<Migration> = MIGRATIONS
+        .iter()
+        .filter(|migration| migration.version == 1)
+        .copied()
+        .collect();
+    let old = Db::open_with(&path, &baseline).expect("open at v1");
+    assert_eq!(old.schema_version(), 1);
+    old.with_connection(|conn| {
+        conn.execute(
+            "INSERT INTO projects (id, name, root_path, created_at, updated_at) \
+             VALUES (1, 'Aviora', '/home/dev/aviora', 1, 1)",
+            [],
+        )?;
+        conn.execute(
+            "INSERT INTO workspaces (id, project_id, name, created_at, updated_at) \
+             VALUES (1, 1, 'Web Development', 1, 1)",
+            [],
+        )
+    })
+    .expect("seed at v1");
+    drop(old);
+
+    let upgraded = Db::open(&path).expect("upgrade");
+
+    assert_eq!(upgraded.schema_version(), mira_db::target_version());
+    let workspace = upgraded
+        .get_workspace(mira_core::WorkspaceId::new(1))
+        .expect("the workspace survived");
+    assert_eq!(workspace.name, "Web Development");
+    assert_eq!(
+        workspace.description, None,
+        "a column added by a migration starts empty, not invented"
+    );
+    assert_eq!(workspace.last_opened_at, None);
+    assert!(workspace.applications.is_empty());
 }

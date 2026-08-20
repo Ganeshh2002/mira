@@ -15,11 +15,12 @@ const KINDS: Record<Kind, string> = {
 
 export function Button({
   kind = 'quiet',
+  type = 'button',
   ...props
 }: { kind?: Kind } & ButtonHTMLAttributes<HTMLButtonElement>) {
   return (
     <button
-      type="button"
+      type={type}
       {...props}
       className={`t-ui cursor-default rounded-sm border px-[var(--space-3)] py-[var(--space-1)] transition-colors duration-[var(--motion-instant)] ${KINDS[kind]}`}
     />

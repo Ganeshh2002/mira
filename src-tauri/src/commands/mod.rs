@@ -7,3 +7,4 @@
 pub mod app;
 pub mod live;
 pub mod projects;
+pub mod workspaces;

@@ -10,9 +10,9 @@
 pub mod db;
 pub mod migrations;
 pub mod projects;
-pub mod repos;
+pub mod workspaces;
 
 pub use db::{target_version, Db};
 pub use migrations::{Migration, MIGRATIONS};
 pub use projects::{NewProject, ProjectRepo};
-pub use repos::WorkspaceRepo;
+pub use workspaces::{NewWorkspace, WorkspaceRepo};

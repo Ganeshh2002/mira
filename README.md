@@ -121,8 +121,9 @@ block the first release.
 | Projects & Git | Add/list/switch/remove projects, read-only Git context, open folder | 1 | ✅ Complete |
 | Monorepo awareness | Repository vs monorepo vs package, six workspace tools, read-only | 1.1 | ✅ Complete |
 | Live context | Scheduler, live Git, listening ports, process attribution | 2 (part) | 🟡 In progress |
+| Workspace context | Workspaces per project, application context, discovery | 4 (part) | 🟡 In progress |
 | **0.1 — Core Companion** | Projects, Git status and history, ports, processes, editor/terminal/browser, tray, global shortcut | 1–3, 5a | 🟡 In progress |
-| 0.2 — Workspace | Workspace model, app groups, restoration, Git graph and diff | 4, 5b, 11 | ⬜ Not started |
+| 0.2 — Workspace | Workspace model, app groups, restoration, Git graph and diff | 4, 5b, 11 | 🟡 In progress |
 | 0.3 — Shelf | Drag-drop, temporary storage, Quick Peek | 6–7 | ⬜ Not started |
 | 0.4 — System | CPU/RAM/battery, network, lock/session, media, displays | 9 | ⬜ Not started |
 | 0.5 — Personality | Atmospheres, ambient effects, workspace identities | 10 | ⬜ Not started |
