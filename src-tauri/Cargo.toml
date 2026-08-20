@@ -20,6 +20,8 @@ tauri-build = { version = "2", features = ["config-json"] }
 [dependencies]
 mira-core = { workspace = true }
 mira-db = { workspace = true }
+mira-fs = { workspace = true }
+mira-git = { workspace = true }
 mira-platform = { workspace = true }
 mira-projects = { workspace = true }
 mira-workspaces = { workspace = true }
@@ -27,8 +29,12 @@ mira-workspaces = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tauri = { version = "2", features = ["tray-icon"] }
+tauri-plugin-dialog = "2"
 tauri-plugin-global-shortcut = "2"
 tauri-plugin-single-instance = "2"
+# `sync` for the picker's one-shot reply, `time` for the per-repository
+# read timeout. No interval, no ticker: nothing here starts a recurring task.
+tokio = { version = "1", features = ["sync", "time"] }
 ts-rs = { workspace = true }
 
 [dev-dependencies]

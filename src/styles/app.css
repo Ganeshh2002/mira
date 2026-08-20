@@ -49,6 +49,36 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+/*
+ * The window ground.
+ *
+ * `data-surface` is set from what the shell reports it achieved — never from a
+ * platform check in here (ADR-0005, and a guard test). The default is opaque, so
+ * a machine that never reports anything gets a solid window rather than a
+ * transparent one.
+ *
+ * Where the material was applied, the ground steps back and lets it through — but
+ * only a little. The figure is measured, not chosen: a contrast test composites
+ * the ground over a white desktop, the worst case a window can sit on, and every
+ * ink allowed on the ground has to clear AA there. That is why panels keep their
+ * own opaque background and why the dimmer inks are not used on the ground at
+ * all. The material is a depth cue; it may never buy itself contrast.
+ */
+:root[data-surface='systemMaterial'] body {
+  background: color-mix(in srgb, var(--ground-0) 92%, transparent);
+}
+
+/*
+ * Accessibility beats aesthetics without a discussion. A person who has asked
+ * their operating system to reduce transparency gets the solid ground, and the
+ * native material behind it simply goes unseen.
+ */
+@media (prefers-reduced-transparency: reduce) {
+  :root[data-surface='systemMaterial'] body {
+    background: var(--ground-0);
+  }
+}
+
 /* Tabular figures everywhere numbers can change, so rows do not jitter. */
 .mira-value {
   font-family: var(--font-data);

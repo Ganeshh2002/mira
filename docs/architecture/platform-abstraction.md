@@ -1,6 +1,6 @@
 # Aviora Mira — Cross-Platform Architecture
 
-Status: **pre-implementation.**
+Status: **in progress.** Slices 0 and 1 are built; the rest is the design target.
 
 This document exists because of one failure mode: OS-specific code leaking into the UI,
 and features quietly pretending to work where they do not. Both are prevented
@@ -261,6 +261,37 @@ window geometry per display id.
 Linux/Wayland cannot position windows programmatically — the compositor decides. The
 compact window's "appear at the cursor's display" behaviour is therefore `Degraded` on
 Wayland: it appears wherever the compositor places it.
+
+**Window material.** Mira asks the operating system for its *standard* window material
+rather than drawing an imitation of one. On macOS 26 that material is Liquid Glass; on
+earlier macOS it is vibrancy; on Windows 11 it is Mica. Nothing checks a version,
+because the platform decides what its own material looks like — which is the difference
+between using a platform's design and copying its screenshots.
+
+| OS | Material | Treatment reported |
+|---|---|---|
+| macOS | `NSVisualEffectView`, standard window material (Liquid Glass on 26) | `systemMaterial` |
+| Windows 11 | Mica | `systemMaterial` |
+| Windows 10 | none applied | `opaque` |
+| Linux | none — blur depends on the compositor and the desktop | `opaque` |
+
+Three rules make this honest rather than decorative:
+
+1. **The treatment is reported, not assumed.** Applying the effect can fail. The shell
+   reports what it *achieved*, and a machine that refused it is told `opaque` so the
+   window is solid rather than translucent over nothing. This is §2's parity rule
+   applied to visuals.
+2. **The interface never names an operating system.** It applies
+   `data-surface="<treatment>"` and styles that. A guard test fails the build if a
+   platform name appears in the frontend or the stylesheet (ADR-0005).
+3. **The material is a backdrop, never a contrast mechanism.** Panels, rows and text
+   stay fully opaque, and `prefers-reduced-transparency: reduce` returns the ground to
+   solid. A person who asked their system to reduce transparency gets that answer, and
+   the contrast floors in `design-system.md` §2 hold in every case.
+
+Linux is not given a fake glass layer to match. That would be exactly the parity lie
+this document exists to prevent, and a cross-platform imitation would also become the
+design — which is worse than three platforms each looking like themselves.
 
 ### 4.12 Power / battery
 

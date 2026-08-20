@@ -1,0 +1,16 @@
+[package]
+name = "mira-fs"
+description = "Path safety for Mira: canonical absolute paths, and containment checks that keep every read inside a registered root."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[dependencies]
+mira-core = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }

@@ -7,6 +7,7 @@
 //! Slice 0 wires the shell and nothing else: a window, a tray, a global shortcut,
 //! a migrated database, and two typed commands that prove the spine works.
 
+pub mod clock;
 pub mod commands;
 pub mod shortcut;
 pub mod state;
@@ -16,7 +17,8 @@ pub mod windows;
 use std::sync::Arc;
 
 use mira_db::Db;
-use mira_platform::Platform;
+use mira_fs::PathMatching;
+use mira_platform::{surface_treatment, Platform};
 use tauri::Manager;
 
 use state::AppState;
@@ -47,6 +49,9 @@ pub fn run() {
                 shortcut::show_window(app, "main");
             }
         }))
+        // The picker runs in Rust on a user gesture; the webview is granted none of
+        // this plugin's permissions (guard test).
+        .plugin(tauri_plugin_dialog::init())
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(|app, _shortcut, event| {
@@ -66,6 +71,7 @@ pub fn run() {
             let db = Db::open(&database_path).map_err(|e| e.to_string())?;
 
             let shortcut_registered = shortcut::register_default(&handle, &platform, os);
+            let surface = windows::apply_surface(&handle, surface_treatment(platform.facts()));
 
             if let Err(error) = tray::build(&handle, Some(chord_label)) {
                 // A missing tray is a reduced Mira, not a broken one.
@@ -78,6 +84,11 @@ pub fn run() {
                 database_path,
                 shortcut_chord: chord_label.to_owned(),
                 shortcut_registered,
+                os,
+                matching: PathMatching::from_case_sensitivity(
+                    platform.facts().paths_are_case_sensitive(),
+                ),
+                surface,
             });
 
             // `mira --toggle` on the very first launch, before another instance exists.
@@ -90,6 +101,12 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::app::app_foundation_status,
             commands::app::app_open_settings,
+            commands::projects::projects_list,
+            commands::projects::projects_add,
+            commands::projects::projects_open,
+            commands::projects::projects_remove,
+            commands::projects::projects_reveal,
+            commands::git::git_context,
         ])
         .build(tauri::generate_context!())
         .expect("Mira failed to start")

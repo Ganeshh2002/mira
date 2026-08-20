@@ -2,7 +2,7 @@
 
 use mira_core::{CapabilityReport, MiraError, Result};
 use mira_platform::PlatformCapabilities;
-use mira_projects::{ProjectService, Projects};
+use mira_projects::ProjectService;
 use mira_workspaces::{WorkspaceService, Workspaces};
 use serde::Serialize;
 use tauri::{AppHandle, Runtime, State};
@@ -32,7 +32,7 @@ pub struct FoundationStatus {
     pub database_path: String,
     /// The applied schema version.
     pub schema_version: i32,
-    /// How many projects exist. Zero until Slice 1 can add one.
+    /// How many projects the user has added.
     pub project_count: u32,
     /// How many workspaces exist. Zero until 0.2.
     pub workspace_count: u32,
@@ -40,6 +40,11 @@ pub struct FoundationStatus {
     pub shortcut_chord: String,
     /// Whether that registration succeeded here.
     pub shortcut_registered: bool,
+    /// The window material actually achieved on this machine.
+    ///
+    /// The interface selects its ground treatment on this name and never on an
+    /// operating system (ADR-0005, enforced by a guard test).
+    pub surface: String,
     /// Every capability and its honest status on this machine.
     pub capabilities: Vec<CapabilityReport>,
 }
@@ -47,7 +52,7 @@ pub struct FoundationStatus {
 /// `app.foundation_status` — read the shell's own state.
 #[tauri::command]
 pub fn app_foundation_status(state: State<'_, AppState>) -> Result<FoundationStatus> {
-    let projects = Projects::new(state.db.as_ref());
+    let projects = state.projects();
     let workspaces = Workspaces::new(state.db.as_ref());
 
     Ok(FoundationStatus {
@@ -61,6 +66,7 @@ pub fn app_foundation_status(state: State<'_, AppState>) -> Result<FoundationSta
         workspace_count: workspaces.count()?,
         shortcut_chord: state.shortcut_chord.clone(),
         shortcut_registered: state.shortcut_registered,
+        surface: state.surface.token().to_owned(),
         capabilities: state.platform.report(),
     })
 }

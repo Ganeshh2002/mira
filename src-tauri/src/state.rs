@@ -4,7 +4,10 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use mira_db::Db;
-use mira_platform::Platform;
+use mira_fs::PathMatching;
+use mira_git::Libgit2;
+use mira_platform::{Os, Platform, SurfaceTreatment};
+use mira_projects::Projects;
 
 /// Everything a command handler may reach.
 ///
@@ -21,4 +24,24 @@ pub struct AppState {
     pub shortcut_chord: String,
     /// Whether that registration actually succeeded on this machine.
     pub shortcut_registered: bool,
+    /// This operating system, held only so the platform layer can be handed it
+    /// back. Nothing in `src-tauri` branches on it.
+    pub os: Os,
+    /// Whether this filesystem tells `Aviora` and `aviora` apart.
+    pub matching: PathMatching,
+    /// The window material actually achieved, which is not always the one asked
+    /// for. The interface renders what this says, never what the OS implies.
+    pub surface: SurfaceTreatment,
+}
+
+impl AppState {
+    /// The project service, composed for this machine.
+    ///
+    /// Built per call rather than stored: it is three borrowed handles and a
+    /// copy of one enum, so constructing it is free, and keeping it out of the
+    /// struct means the database stays the only shared, long-lived thing here.
+    #[must_use]
+    pub fn projects(&self) -> Projects<&Db, Libgit2> {
+        Projects::new(self.db.as_ref(), Libgit2, self.matching)
+    }
 }

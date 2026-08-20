@@ -1,10 +1,10 @@
 # Contributing to Aviora Mira
 
 Thanks for looking. Mira is early. The repository holds the product definition,
-architecture, and roadmap, plus the **technical foundation** — the crate layout, the
-capability model, the database and its migrations, the typed command boundary, and the
-application shell. No user-facing feature is built yet. That is a good moment to arrive:
-the decisions are written down and open to challenge.
+architecture, and roadmap, the **technical foundation** — crate layout, capability model,
+database and migrations, typed command boundary, application shell — and the **first
+feature**: projects and their read-only Git context. That is a good moment to arrive: the
+decisions are written down and open to challenge, and most of the product is still ahead.
 
 ---
 
@@ -29,7 +29,7 @@ that supersedes the old one, not a quiet exception.
   [capability matrix](docs/architecture/platform-abstraction.md#5-capability-matrix) makes
   specific claims per OS. If one is wrong on your machine, tell us — accuracy there is a
   core promise.
-- **Take a slice task.** The foundation is in place and feature work starts at slice 1.
+- **Take a slice task.** Slices 0 and 1 are done; slice 2 is ports and processes.
   Issues are labelled `slice:N`.
 
 ## Development setup
@@ -130,6 +130,7 @@ Full detail in [docs/development/git-strategy.md](docs/development/git-strategy.
 These are the recurring ones, listed so you do not discover them in review:
 
 - Invoking a shell, or building a command string instead of an argv array
+- Accepting a filesystem path from the frontend instead of a native picker
 - Reading a file outside a registered project root
 - Opening anything under `~/.ssh` other than `config`
 - Sending a write request to the Docker API

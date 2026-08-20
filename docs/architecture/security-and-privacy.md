@@ -1,6 +1,6 @@
 # Aviora Mira — Security & Privacy
 
-Status: **pre-implementation.** These rules are binding on every future change. A pull
+Status: **in progress.** Slices 0 and 1 are built; the rest is the design target. These rules are binding on every future change. A pull
 request that weakens one needs an ADR, not a review comment.
 
 ---
@@ -146,6 +146,22 @@ Launching applications is Mira's most dangerous capability, so the rules are abs
    Mira's database, entered by the user, not in the repository. This deliberately forgoes
    a convenient feature (per-repo committed config) because it would make cloning a
    hostile repo dangerous.
+
+### Registering a project root
+
+Adding a project is the moment Mira is granted read access to a directory tree, so it is
+treated as a privileged act rather than a form submission.
+
+8. **No command takes a filesystem path from the frontend.** The webview names a
+   *project*; it never names a *directory*. `projects.add` has no arguments — it opens a
+   native folder picker in Rust on a user gesture and registers what the person chose.
+   A compromised page therefore cannot ask Mira to adopt `/` or a sibling's home
+   directory, because it has no way to say so. A guard test scans every command
+   signature and fails the build if a path-shaped argument appears.
+9. **Paths are canonicalised before they mean anything.** `mira-fs` resolves the chosen
+   directory to one absolute path with no `..` left in it, and that canonical form is
+   the project's identity. Containment checks compare whole path components, never
+   string prefixes, so `/home/dev/aviora-secrets` is not inside `/home/dev/aviora`.
 
 ### Process termination
 

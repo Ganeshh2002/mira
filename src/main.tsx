@@ -1,9 +1,10 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClientProvider } from '@tanstack/react-query';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 
 import { App, type Surface } from './App';
+import { createQueryClient } from './lib/query';
 import './styles/app.css';
 
 /**
@@ -12,17 +13,7 @@ import './styles/app.css';
  */
 const surface: Surface = getCurrentWindow().label === 'settings' ? 'settings' : 'main';
 
-const client = new QueryClient({
-  defaultOptions: {
-    queries: {
-      // Nothing polls in Slice 0. Refetching is driven by explicit invalidation
-      // and, from Slice 1, by backend events — never by a timer started here.
-      refetchOnWindowFocus: false,
-      staleTime: Infinity,
-      retry: false,
-    },
-  },
-});
+const client = createQueryClient();
 
 const root = document.getElementById('root');
 if (!root) {

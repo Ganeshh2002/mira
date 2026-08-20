@@ -1,0 +1,19 @@
+[package]
+name = "mira-git"
+description = "Read-only Git context for Mira: head, working-tree cleanliness, and upstream distance, behind a provider trait."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[dependencies]
+git2 = { workspace = true }
+mira-core = { workspace = true }
+serde = { workspace = true }
+ts-rs = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }

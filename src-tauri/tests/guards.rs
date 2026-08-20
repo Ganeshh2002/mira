@@ -240,6 +240,41 @@ fn mira_core_depends_on_nothing_in_the_workspace() {
     );
 }
 
+#[test]
+fn only_mira_git_depends_on_libgit2() {
+    // ADR-0009: libgit2 is reached through the `GitProvider` trait and nowhere
+    // else, which is what keeps the eventual move to gitoxide a change inside one
+    // crate rather than a change to every caller.
+    let mut violations = Vec::new();
+
+    for entry in fs::read_dir(repo_root().join("crates"))
+        .expect("crates/")
+        .flatten()
+    {
+        let name = entry.file_name().to_string_lossy().into_owned();
+        if name == "mira-git" {
+            continue;
+        }
+        let manifest = entry.path().join("Cargo.toml");
+        let Ok(text) = fs::read_to_string(&manifest) else {
+            continue;
+        };
+        if text.contains("git2") {
+            violations.push(relative(&manifest));
+        }
+    }
+
+    let shell = fs::read_to_string(repo_root().join("src-tauri/Cargo.toml")).expect("manifest");
+    if shell.contains("git2") {
+        violations.push("src-tauri/Cargo.toml".to_owned());
+    }
+
+    assert!(
+        violations.is_empty(),
+        "git2 belongs to mira-git alone: {violations:#?}"
+    );
+}
+
 // ── The frontend's privilege surface ─────────────────────────────────────────
 
 #[test]
@@ -347,6 +382,113 @@ fn only_one_window_is_created_at_startup() {
         ["main"],
         "only the main window may be declared; anything else is built on demand \
          so it does not spend a webview process at launch"
+    );
+}
+
+#[test]
+fn no_command_lets_the_frontend_name_a_path_on_disk() {
+    // The webview may say *which project*; it may never say *which directory*.
+    // Registering a root is the moment Mira is granted read access to a tree, so
+    // that moment belongs to a native file picker driven by the person at the
+    // keyboard — not to a JSON argument a compromised page could forge
+    // (`security-and-privacy.md` §5).
+    let commands = repo_root().join("src-tauri/src/commands");
+    let mut violations = Vec::new();
+    let mut scanned = 0_usize;
+
+    for (path, text) in sources(&["rs"]) {
+        if !path.starts_with(&commands) {
+            continue;
+        }
+
+        for signature in command_signatures(&code_only(&text)) {
+            scanned += 1;
+            for suspect in [
+                ": String",
+                ": &str",
+                ": PathBuf",
+                ": &Path",
+                ": Option<String>",
+            ] {
+                if signature.contains(suspect) {
+                    violations.push(format!("{}: {signature}", relative(&path)));
+                }
+            }
+        }
+    }
+
+    assert!(scanned > 0, "the command scan found nothing — it is broken");
+    assert!(
+        violations.is_empty(),
+        "a command takes a string the frontend controls; if it names a path, the \
+         picker must supply it instead: {violations:#?}"
+    );
+}
+
+/// The parameter list of every `#[tauri::command]` in `code`, as one line each.
+fn command_signatures(code: &str) -> Vec<String> {
+    let mut signatures = Vec::new();
+    let mut lines = code.lines().peekable();
+
+    while let Some(line) = lines.next() {
+        if !line.trim_start().starts_with("#[tauri::command]") {
+            continue;
+        }
+
+        let mut signature = String::new();
+        for line in lines.by_ref() {
+            signature.push_str(line.trim());
+            signature.push(' ');
+            if line.contains('{') {
+                break;
+            }
+        }
+        // Everything between the first `(` and the last `)` is the parameter list.
+        let params = signature
+            .find('(')
+            .zip(signature.rfind(')'))
+            .filter(|(open, close)| open < close)
+            .map_or(String::new(), |(open, close)| {
+                signature[open + 1..close].to_owned()
+            });
+        signatures.push(params);
+    }
+
+    signatures
+}
+
+#[test]
+fn the_frontend_is_granted_no_file_dialog_permission() {
+    // Mira opens the folder picker from Rust, on a user gesture. Handing the
+    // webview `dialog:allow-open` would let a page raise a picker of its own.
+    let text = fs::read_to_string(repo_root().join("src-tauri/capabilities/default.json"))
+        .expect("read capabilities");
+
+    assert!(
+        !text.contains("dialog:"),
+        "the dialog plugin's frontend permissions must stay unclaimed: {text}"
+    );
+}
+
+#[test]
+fn the_frontend_never_names_an_operating_system_to_choose_a_look() {
+    // The macOS material, Mica, and the opaque ground are selected by the
+    // treatment `mira-platform` resolved, never by sniffing the platform. This is
+    // the visual half of ADR-0005.
+    let violations: Vec<String> = sources(&["ts", "tsx", "css"])
+        .into_iter()
+        .filter(|(_, text)| {
+            let code = code_only(text);
+            ["macos", "macOS", "windows", "isMac", "isWindows", "darwin"]
+                .iter()
+                .any(|needle| code.contains(needle))
+        })
+        .map(|(path, _)| relative(&path))
+        .collect();
+
+    assert!(
+        violations.is_empty(),
+        "the interface selects on a capability or a treatment, never an OS: {violations:#?}"
     );
 }
 
@@ -465,7 +607,6 @@ fn no_crate_exists_for_a_feature_this_slice_does_not_build() {
 
     for absent in [
         "mira-automation",
-        "mira-git",
         "mira-ports",
         "mira-processes",
         "mira-ssh",

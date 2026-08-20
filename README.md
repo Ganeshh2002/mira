@@ -9,13 +9,12 @@ answers the small questions that break flow — *what branch am I on, what's run
 It is not an IDE, a terminal, a file manager, or a Git client. It is the thin layer that
 points the tools you already use at the right context.
 
-> ### Status: foundation only
+> ### Status: early, and honest about it
 >
-> **No feature has been written yet.** The repository contains the product definition,
-> architecture, and roadmap, and the technical foundation the features will sit on — the
-> crate layout, the runtime capability model, the database and its migrations, the typed
-> command boundary, and the application shell. Nothing described below is installable
-> today. Everything else here is a plan, and it is labelled as one on purpose — see
+> **One feature is built.** Mira can hold a set of projects and read each one's Git
+> state: branch, last commit, clean or changed, ahead and behind. Everything else below —
+> ports, processes, launching your editor, the Shelf — is a plan, and is labelled as one
+> on purpose. Nothing is installable yet. See
 > [what's actually built](#project-status).
 
 ---
@@ -59,8 +58,8 @@ maintained honestly; the gaps that matter most:
 
 ## Screenshots
 
-*Placeholder — screenshots will be added when the first slice is implemented. Nothing is
-shown here that does not exist.*
+*Sketch of the 0.1 target, not a screenshot. Today's window is the left rail and the Git
+section only; everything else below is planned. Nothing here is shown as if it existed.*
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
@@ -117,7 +116,8 @@ block the first release.
 |---|---|---|---|
 | Documentation | Product, scope, architecture, roadmap | — | ✅ Complete |
 | Foundation | Crates, capability model, database, IPC boundary, app shell, CI | 0 | ✅ Complete |
-| **0.1 — Core Companion** | Projects, Git status and history, ports, processes, editor/terminal/browser, tray, global shortcut | 1–3, 5a | ⬜ Not started |
+| Projects & Git | Add/list/switch/remove projects, read-only Git context, open folder | 1 | ✅ Complete |
+| **0.1 — Core Companion** | Projects, Git status and history, ports, processes, editor/terminal/browser, tray, global shortcut | 1–3, 5a | 🟡 In progress |
 | 0.2 — Workspace | Workspace model, app groups, restoration, Git graph and diff | 4, 5b, 11 | ⬜ Not started |
 | 0.3 — Shelf | Drag-drop, temporary storage, Quick Peek | 6–7 | ⬜ Not started |
 | 0.4 — System | CPU/RAM/battery, network, lock/session, media, displays | 9 | ⬜ Not started |

@@ -1,32 +1,97 @@
-//! The crate's whole job in Slice 0: sit between the shell and the repository
-//! without reaching around it.
+//! The crate's boundary: sit between the shell and the repository without
+//! reaching around it, and without editorialising what the repository says.
+//!
+//! A database failure is one of the states Slice 1 must handle. The rule is that
+//! the reason survives the trip: the shell shows a person what actually happened,
+//! not a generic "something went wrong" invented on the way up.
 
-use mira_core::{MiraError, Result};
-use mira_db::ProjectRepo;
+use std::path::{Path, PathBuf};
+
+use mira_core::{MiraError, Project, ProjectId, Result};
+use mira_db::{NewProject, ProjectRepo};
+use mira_fs::PathMatching;
+use mira_git::{GitOverview, GitProvider};
 use mira_projects::{ProjectService, Projects};
+use tempfile::TempDir;
 
-struct FakeRepo(Result<u32>);
+/// A repository whose every operation fails the same way.
+struct BrokenRepo(MiraError);
 
-impl ProjectRepo for FakeRepo {
+impl ProjectRepo for BrokenRepo {
     fn count(&self) -> Result<u32> {
-        self.0.clone()
+        Err(self.0.clone())
+    }
+    fn list(&self) -> Result<Vec<Project>> {
+        Err(self.0.clone())
+    }
+    fn get(&self, _id: ProjectId) -> Result<Project> {
+        Err(self.0.clone())
+    }
+    fn find_by_root(&self, _root_path: &str) -> Result<Option<Project>> {
+        Err(self.0.clone())
+    }
+    fn insert(&self, _new: &NewProject, _now: i64) -> Result<Project> {
+        Err(self.0.clone())
+    }
+    fn touch_opened(&self, _id: ProjectId, _now: i64) -> Result<()> {
+        Err(self.0.clone())
+    }
+    fn remove(&self, _id: ProjectId) -> Result<()> {
+        Err(self.0.clone())
     }
 }
 
-#[test]
-fn the_service_reports_what_the_repository_reports() {
-    let service = Projects::new(FakeRepo(Ok(3)));
-    assert_eq!(service.count().expect("count"), 3);
+struct NoGit;
+
+impl GitProvider for NoGit {
+    fn discover(&self, _start: &Path) -> Option<PathBuf> {
+        None
+    }
+    fn overview(&self, _root: &Path) -> GitOverview {
+        GitOverview::NotARepository
+    }
+}
+
+fn broken(failure: &MiraError) -> Projects<BrokenRepo, NoGit> {
+    Projects::new(
+        BrokenRepo(failure.clone()),
+        NoGit,
+        PathMatching::CaseSensitive,
+    )
 }
 
 #[test]
-fn a_repository_failure_reaches_the_caller_intact() {
+fn a_database_failure_while_listing_reaches_the_caller_intact() {
     let failure = MiraError::external("SQLite", "disk I/O error");
-    let service = Projects::new(FakeRepo(Err(failure.clone())));
 
     assert_eq!(
-        service.count().expect_err("must not be swallowed"),
+        broken(&failure).list().expect_err("must not be swallowed"),
         failure,
         "the shell needs the real reason to show a person, not a generic error"
+    );
+}
+
+#[test]
+fn a_database_failure_while_adding_reaches_the_caller_intact() {
+    let dir = TempDir::new().expect("tempdir");
+    let failure = MiraError::external("SQLite", "database is locked");
+
+    assert_eq!(
+        broken(&failure)
+            .add(dir.path(), 1)
+            .expect_err("must not be swallowed"),
+        failure
+    );
+}
+
+#[test]
+fn a_database_failure_while_opening_reaches_the_caller_intact() {
+    let failure = MiraError::external("SQLite", "attempt to write a readonly database");
+
+    assert_eq!(
+        broken(&failure)
+            .open(ProjectId::new(1), 1)
+            .expect_err("must not be swallowed"),
+        failure
     );
 }

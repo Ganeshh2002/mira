@@ -90,6 +90,20 @@ CPU is ~0% with the window closed; Wayland users have a working fallback.
 Wayland/X11 split appearing on day one (deliberate — it is better to meet it now than to
 design around a false assumption).
 
+**Delivered.** Add a project through a native picker, list projects most-recently-opened
+first, switch between them, read branch / last commit / clean-dirty / ahead-behind on
+demand, open the project folder, and remove a project. `mira-fs`, `mira-git` (libgit2,
+[ADR-0009](../adr/0009-git-via-libgit2.md)), the project repository and the project
+service. macOS and Windows now ask the platform for its standard window material.
+
+**Deferred out of slice 1, and why.** The dirty dot in the *list* needs Git for every
+project on every render; the changed-path list, the 5 s refresh and the filesystem
+watcher all need somewhere for recurring work to live. Both wait for the scheduler
+(`architecture.md` §6), which arrives with slice 2's polling — starting a timer before it
+exists is the thing the guard tests forbid. Project entries in the tray menu and the
+compact window are likewise not built: they are the same status data in two more
+surfaces, and cost more than they teach until that data refreshes on its own.
+
 ---
 
 ## Slice 2 — Ports and processes *(M)*

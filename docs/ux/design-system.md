@@ -1,6 +1,6 @@
 # Aviora Mira — Design System
 
-Status: **pre-implementation.** Structure and navigation live in
+Status: **in progress.** Structure and navigation live in
 [information-architecture.md](information-architecture.md); this document is the visual
 and interaction language.
 
@@ -198,6 +198,35 @@ in the tray icon (tray icons that animate are a cost people notice), it respects
 composited layer — measurably 0% CPU when off-screen.
 
 One effect, one meaning, everywhere. That is the whole personality budget.
+
+### The ground, and the platform's material
+
+The window's ground is the one place Mira defers to the operating system rather than to
+this document.
+
+Mira asks the platform for its **standard window material** and lets `--ground-0` step
+back to let it through: Liquid Glass on macOS 26, vibrancy on earlier macOS, Mica on
+Windows 11. Mira does not draw a glass panel of its own, and there is no cross-platform
+"glass" layer — an imitation built once and applied everywhere would quietly become the
+design, and it would look wrong on all three platforms instead of right on any.
+
+Where no material exists — Linux, Windows 10, a refused effect — the ground is solid.
+That is a first-class outcome, not a degraded one, and Linux is emphatically not given a
+hand-drawn blur to match (`platform-abstraction.md` §4.11).
+
+What the material may **never** do:
+
+1. **Carry information.** It is a backdrop. Status is still luminance, hue and shape.
+2. **Lower contrast.** Panels, rows, cards and text stay fully opaque. Every contrast
+   floor in §2 holds with the material on, because none of them is measured against it.
+3. **Override the person.** `prefers-reduced-transparency: reduce` returns the ground to
+   solid, immediately and without a preference to find.
+4. **Be assumed.** The interface applies `data-surface` from what the shell reports it
+   achieved, and never from a platform check — a guard test fails the build if a
+   platform name appears in the frontend or the stylesheet.
+
+The atmospheres in §7 layer *inside* this, and none of them may reach the ground
+treatment: an atmosphere changes light, never the window's relationship to the OS.
 
 ---
 

@@ -90,6 +90,23 @@ pub struct EnvFacts {
 }
 
 impl EnvFacts {
+    /// Whether this filesystem tells `Aviora` and `aviora` apart.
+    ///
+    /// Linux does; macOS and Windows normally do not. This is the fact `mira-fs`
+    /// needs to decide whether two spellings name one project, and it lives here
+    /// because it is the sort of thing only the platform layer may know
+    /// (ADR-0005).
+    ///
+    /// It is a statement about the common case, not about every mount: a
+    /// case-sensitive APFS volume exists, and a project added on one is compared
+    /// case-insensitively. The consequence is bounded — Mira may refuse to add a
+    /// second project whose path differs only in case — and the alternative,
+    /// probing every volume, costs more than the mistake.
+    #[must_use]
+    pub const fn paths_are_case_sensitive(&self) -> bool {
+        matches!(self.os, Os::Linux)
+    }
+
     /// Observe the real machine.
     ///
     /// Cheap: environment variables and one `stat`. No network, no subprocess, no

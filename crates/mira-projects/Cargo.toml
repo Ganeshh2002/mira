@@ -1,6 +1,6 @@
 [package]
 name = "mira-projects"
-description = "Project lifecycle. Slice 0 establishes the boundary only; detection and CRUD arrive in Slice 1."
+description = "Project lifecycle: validation, Git and type-marker detection, and the CRUD the interface drives."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -12,3 +12,8 @@ publish.workspace = true
 [dependencies]
 mira-core = { workspace = true }
 mira-db = { workspace = true }
+mira-fs = { workspace = true }
+mira-git = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }

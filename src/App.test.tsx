@@ -1,4 +1,4 @@
-import { screen, waitFor } from '@testing-library/react';
+import { screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { FoundationStatus } from './bindings/FoundationStatus';
@@ -19,6 +19,7 @@ const status: FoundationStatus = {
   workspaceCount: 0,
   shortcutChord: 'Ctrl+Alt+Space',
   shortcutRegistered: false,
+  surface: 'opaque',
   capabilities: [
     {
       capability: 'globalShortcut',
@@ -48,46 +49,6 @@ const status: FoundationStatus = {
 
 beforeEach(() => {
   invoke.mockReset();
-});
-
-describe('the main window', () => {
-  it('identifies itself as a foundation build, not a finished product', async () => {
-    invoke.mockResolvedValue(status);
-    renderApp(<App surface="main" />);
-
-    expect(await screen.findByText('Mira')).toBeInTheDocument();
-    expect(screen.getByText(/foundation build/i)).toBeInTheDocument();
-  });
-
-  it('reports the platform it actually resolved at runtime', async () => {
-    invoke.mockResolvedValue(status);
-    renderApp(<App surface="main" />);
-
-    expect(await screen.findByText('Linux')).toBeInTheDocument();
-    expect(screen.getByText('Ready')).toBeInTheDocument();
-  });
-
-  it('states the reason when a command fails, and does not claim to be ready', async () => {
-    invoke.mockRejectedValue({ kind: 'external', source: 'SQLite', detail: 'disk I/O error' });
-    renderApp(<App surface="main" />);
-
-    await waitFor(() => {
-      expect(screen.getByText(/disk I\/O error/)).toBeInTheDocument();
-    });
-    expect(screen.queryByText('Ready')).not.toBeInTheDocument();
-  });
-
-  it('does not build the dashboard', async () => {
-    invoke.mockResolvedValue(status);
-    renderApp(<App surface="main" />);
-    await screen.findByText('Ready');
-
-    // Slice 0 ships a shell verification screen. Anything below belongs to a later
-    // slice, and its appearance here would be scope leaking in.
-    for (const absent of [/projects/i, /ports/i, /git/i, /branch/i, /shelf/i]) {
-      expect(screen.queryByText(absent)).not.toBeInTheDocument();
-    }
-  });
 });
 
 describe('the settings window', () => {

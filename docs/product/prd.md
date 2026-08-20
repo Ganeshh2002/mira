@@ -41,35 +41,38 @@ Capability language used throughout: a feature is **Full** (works as specified),
 
 ### Feature index
 
-| # | Feature | Phase | Slice |
-|---|---|---|---|
-| 1 | Multiple projects | **0.1** | 1 |
-| 3 | Git status | **0.1** | 1 |
-| 4 | Last commit | **0.1** | 1 |
-| 5 | Branch information | **0.1** | 1 |
-| 6 | Basic Git graph | **0.1** | 5a |
-| 7 | Running ports | **0.1** | 2 |
-| 8 | Process information | **0.1** | 2 |
-| 9 | Application launching | **0.1** | 3 |
-| 10 | Terminal integration | **0.1** | 3 |
-| 11 | Editor integration | **0.1** | 3 |
-| 12 | Browser integration | **0.1** | 3 |
-| 20 | Global shortcut | **0.1** | 1 |
-| 21 | Menu bar / tray | **0.1** | 1 |
-| 2 | Project/workspace management | 0.2 | 4 |
-| 23 | App groups *(shape only)* | 0.2 | 4 |
-| 24 | Workspace restoration *(shape only)* | 0.2 | 11 |
-| 15 | File Shelf | 0.3 | 6 |
-| 16 | Quick Peek | 0.3 | 7 |
-| 17 | System status | 0.4 | 9 |
-| 18 | Media detection | 0.4 | 9 |
-| 19 | Lock/session awareness | 0.4 | 9 |
-| 25 | Displays *(shape only)* | 0.4 | 9 |
-| 22 | Themes and personalization | 0.5 | 10 |
-| 26 | Workspace identities *(shape only)* | 0.5 | 10 |
-| 27 | Music-reactive ambience *(shape only)* | 0.5 | 10 |
-| 13 | SSH awareness | 0.6+ | 8 |
-| 14 | Docker awareness | 0.6+ | 8 |
+**Status** records what is *built*, not what is planned. Partial means the feature has a
+working core with named gaps, listed in its own section.
+
+| # | Feature | Phase | Slice | Status |
+|---|---|---|---|---|
+| 1 | Multiple projects | **0.1** | 1 | Partial |
+| 3 | Git status | **0.1** | 1 | Partial |
+| 4 | Last commit | **0.1** | 1 | Built |
+| 5 | Branch information | **0.1** | 1 | Built |
+| 6 | Basic Git graph | **0.1** | 5a | — |
+| 7 | Running ports | **0.1** | 2 | — |
+| 8 | Process information | **0.1** | 2 | — |
+| 9 | Application launching | **0.1** | 3 | — |
+| 10 | Terminal integration | **0.1** | 3 | — |
+| 11 | Editor integration | **0.1** | 3 | — |
+| 12 | Browser integration | **0.1** | 3 | — |
+| 20 | Global shortcut | **0.1** | 1 | Partial |
+| 21 | Menu bar / tray | **0.1** | 1 | Partial |
+| 2 | Project/workspace management | 0.2 | 4 | — |
+| 23 | App groups *(shape only)* | 0.2 | 4 | — |
+| 24 | Workspace restoration *(shape only)* | 0.2 | 11 | — |
+| 15 | File Shelf | 0.3 | 6 | — |
+| 16 | Quick Peek | 0.3 | 7 | — |
+| 17 | System status | 0.4 | 9 | — |
+| 18 | Media detection | 0.4 | 9 | — |
+| 19 | Lock/session awareness | 0.4 | 9 | — |
+| 25 | Displays *(shape only)* | 0.4 | 9 | — |
+| 22 | Themes and personalization | 0.5 | 10 | — |
+| 26 | Workspace identities *(shape only)* | 0.5 | 10 | — |
+| 27 | Music-reactive ambience *(shape only)* | 0.5 | 10 | — |
+| 13 | SSH awareness | 0.6+ | 8 | — |
+| 14 | Docker awareness | 0.6+ | 8 | — |
 
 ---
 
@@ -130,6 +133,16 @@ potentially slow (detection runs with a timeout).
 *Relocate*). Scanning very large directories on add — mitigated by probing only for
 known marker files at depth 1, never a recursive walk.
 
+**As built (slice 1).** FR-1.1, 1.2, 1.3, 1.5 and 1.6 are done, and removal is done
+except for the confirmation copy naming the project, which it does. The folder is chosen
+by a native picker opened in Rust: the interface never sends a path, so a directory
+already registered is reported by name rather than as a constraint violation. **Not yet
+built:** rename and recolour (FR-1.4), *Relocate* for a missing project (FR-1.5 — a
+missing project is shown as missing with *Remove* offered, and is never auto-deleted),
+manual drag ordering (FR-1.6), the filter field (FR-1.7), and the `⌘1…⌘9` jumps. UNC and
+network-path flagging (AC-1.5) is not implemented; a slow share currently blocks the add
+for as long as the operating system takes to answer.
+
 ---
 
 ## 3. Git status
@@ -173,6 +186,15 @@ state.
 
 **Risks.** Status on very large monorepos is inherently slow. Mitigation: per-repo
 timeout (2 s) after which Mira shows counts-unknown rather than hanging.
+
+**As built (slice 1).** FR-3.1, 3.4, 3.6 and 3.7 are done, and the 2 s timeout is in
+place: a repository that takes longer reports the timeout with the project named, rather
+than hanging the view. Status is a **count and a clean/dirty state**, not yet the
+per-path list. **Not yet built:** the grouped path list and its per-state counts
+(FR-3.2), so FR-3.5's truncation does not apply yet either; and refresh (FR-3.3) is
+manual — Git is read when a project is selected, and there is no watcher and no poll
+because Slice 1 has no scheduler to gate one. Conflicted state is not yet distinguished
+from dirty (AC-3.4).
 
 ---
 

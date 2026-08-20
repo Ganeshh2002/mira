@@ -2,6 +2,8 @@ import { invoke } from '@tauri-apps/api/core';
 
 import type { FoundationStatus } from '../bindings/FoundationStatus';
 import type { MiraError } from '../bindings/MiraError';
+import type { Project } from '../bindings/Project';
+import type { ProjectContext } from '../bindings/ProjectContext';
 
 /**
  * The typed IPC client.
@@ -39,8 +41,23 @@ export function describeError(error: MiraError): string {
     case 'external':
       return `${error.source} failed. ${error.detail}`;
     case 'invalid':
-      return `${error.field} is not valid. ${error.detail}`;
+      // `field` says which input failed, for code that needs to know. Showing it
+      // turns a clear sentence into "path is not valid. …" — form-validation
+      // language in a product with no form. The detail is the whole message.
+      return error.detail;
   }
+}
+
+/**
+ * Anything thrown, as one sentence for a person.
+ *
+ * Errors state the fact and the fix; a raw exception never reaches the screen
+ * (design-system §9).
+ */
+export function describeUnknown(error: unknown): string {
+  if (error instanceof MiraCommandError) return error.message;
+  if (isMiraError(error)) return describeError(error);
+  return error instanceof Error ? error.message : String(error);
 }
 
 function isMiraError(value: unknown): value is MiraError {
@@ -68,4 +85,29 @@ export const commands = {
   foundationStatus: (): Promise<FoundationStatus> => call('app_foundation_status'),
   /** `app.open_settings` — reveal the Settings window. */
   openSettings: (): Promise<void> => call('app_open_settings'),
+
+  /** `projects.list` — every project, most recently opened first. */
+  projectsList: (): Promise<Project[]> => call('projects_list'),
+
+  /**
+   * `projects.add` — register a folder the user picks.
+   *
+   * No argument, deliberately: the folder is chosen by a native dialog in Rust,
+   * so the interface has no path to send and cannot invent one. `null` means the
+   * picker was dismissed, which is an outcome rather than an error.
+   */
+  projectsAdd: (): Promise<Project | null> => call('projects_add'),
+
+  /** `projects.open` — record that a project was opened. */
+  projectsOpen: (projectId: number): Promise<Project> => call('projects_open', { projectId }),
+
+  /** `projects.remove` — forget a project. The folder on disk is untouched. */
+  projectsRemove: (projectId: number): Promise<void> => call('projects_remove', { projectId }),
+
+  /** `projects.reveal` — open a project's folder in the file manager. */
+  projectsReveal: (projectId: number): Promise<void> => call('projects_reveal', { projectId }),
+
+  /** `git.context` — the project's Git state, read on demand. */
+  gitContext: (projectId: number): Promise<ProjectContext> =>
+    call('git_context', { projectId }),
 };

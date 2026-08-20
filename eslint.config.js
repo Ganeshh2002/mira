@@ -43,7 +43,13 @@ export default tseslint.config(
   },
   {
     files: ['**/*.test.{ts,tsx}', 'src/test/**'],
-    rules: { '@typescript-eslint/no-unsafe-assignment': 'off' },
+    rules: {
+      '@typescript-eslint/no-unsafe-assignment': 'off',
+      // Tauri rejects with the serialised `MiraError` — a plain object, not an
+      // Error. Tests that stand in for the IPC boundary have to reject the same
+      // way, or they would be testing a shape the real backend never sends.
+      '@typescript-eslint/prefer-promise-reject-errors': 'off',
+    },
   },
   {
     files: ['vite.config.ts', 'eslint.config.js'],

@@ -34,7 +34,7 @@ databasePath: string,
  */
 schemaVersion: number, 
 /**
- * How many projects exist. Zero until Slice 1 can add one.
+ * How many projects the user has added.
  */
 projectCount: number, 
 /**
@@ -49,6 +49,13 @@ shortcutChord: string,
  * Whether that registration succeeded here.
  */
 shortcutRegistered: boolean, 
+/**
+ * The window material actually achieved on this machine.
+ *
+ * The interface selects its ground treatment on this name and never on an
+ * operating system (ADR-0005, enforced by a guard test).
+ */
+surface: string, 
 /**
  * Every capability and its honest status on this machine.
  */

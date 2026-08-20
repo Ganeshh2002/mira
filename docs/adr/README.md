@@ -16,6 +16,7 @@ one; the old file stays, marked superseded, because the reasoning is the point.
 | [0006](0006-no-account-no-cloud.md) | No account, no mandatory cloud, no telemetry | Accepted |
 | [0007](0007-mit-license.md) | MIT licence | Accepted |
 | [0008](0008-modular-architecture.md) | Modular crates with a one-way dependency rule | Accepted |
+| [0009](0009-git-via-libgit2.md) | Git through libgit2, behind a provider trait | Accepted |
 
 Decisions **not** recorded here because they are reversible in an afternoon: Tailwind,
 TanStack Query, Zustand, Vite, the icon set. Those live in

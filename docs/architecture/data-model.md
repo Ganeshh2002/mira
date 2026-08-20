@@ -1,6 +1,7 @@
 # Aviora Mira — Data Model
 
-Status: **pre-implementation.** SQLite, local, single-user, single-file.
+Status: **in progress.** SQLite, local, single-user, single-file. Slices 0 and 1 use
+`projects` and `project_markers`; the rest of the schema is created and unused.
 
 Schema below is the design target for Slice 1–12. Migrations are additive from `0001`;
 this document is kept in sync with the migration files, which are the truth once code

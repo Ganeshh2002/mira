@@ -1,6 +1,6 @@
 # Aviora Mira — Information Architecture & UX
 
-Status: **pre-implementation.** This document defines structure and navigation, not
+Status: **in progress.** This document defines structure and navigation, not
 visual style. Visuals live in [design-system.md](design-system.md).
 
 ---

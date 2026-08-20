@@ -1,7 +1,8 @@
 # Aviora Mira — Architecture
 
-Status: **pre-implementation.** Decisions here are recorded as ADRs in
-[../adr/](../adr/). This document is the map; the ADRs are the reasoning.
+Status: **in progress.** Slices 0 and 1 are built; the rest of this document is the
+design target. Decisions are recorded as ADRs in [../adr/](../adr/) — this document is
+the map, the ADRs are the reasoning.
 
 ---
 
@@ -15,6 +16,7 @@ Status: **pre-implementation.** Decisions here are recorded as ADRs in
 | Persistence | SQLite via `rusqlite` (bundled), Rust-owned | [0004](../adr/0004-sqlite-local-first.md) |
 | Platform abstraction | Capability traits per OS | [0005](../adr/0005-platform-abstraction.md) |
 | Extension boundary | Modules over a stable command surface | [0008](../adr/0008-modular-architecture.md) |
+| Git | libgit2 (`git2`) behind a provider trait | [0009](../adr/0009-git-via-libgit2.md) |
 
 Chosen because the constraints in
 [product-definition.md](../product/product-definition.md) — ≤ 30 MB installer, ≤ 150 MB
@@ -125,7 +127,7 @@ depend on* — and nothing outside it may reach past its interface.
 | **git** | Status, HEAD, branches, ahead/behind, commit walk, lane layout | `GitProvider` trait | core |
 | **ports** | Listening sockets → (port, pid, process) + attribution | `PortScanner` | core, processes |
 | **processes** | Process facts, safe termination | `ProcessProvider` | core, platform |
-| **filesystem** | Path canonicalisation, **root containment checks**, watching, safe reads | `FsService` | core |
+| **filesystem** | Path canonicalisation, **root containment checks**, watching, safe reads | pure functions, then `FsService` | core |
 | **shelf** | Shelf item references, scopes, missing detection | `ShelfService` | core, db, fs |
 | **peek** | Bounded, read-only previews with type sniffing | `PeekService` | core, fs |
 | **ssh** | Parse `~/.ssh/config` names; optional reachability probe | `SshService` | core, fs |
@@ -157,9 +159,11 @@ Namespaced `domain.verb`, snake_case params, typed results:
 
 ```ts
 projects.list()                       → Project[]
-projects.add({ path })                → Project
-projects.remove({ id })               → void
-git.status({ projectId })             → GitStatus
+projects.add()                        → Project | null
+projects.open({ projectId })          → Project
+projects.remove({ projectId })        → void
+projects.reveal({ projectId })        → void
+git.context({ projectId })            → ProjectContext
 git.log({ projectId, limit, cursor }) → CommitPage
 ports.scan({ projectId? })            → PortEntry[]
 processes.terminate({ pid, force })   → TerminateOutcome
@@ -177,6 +181,11 @@ Rules:
    webview's event loop.
 4. Types are defined once in Rust and exported to TypeScript by `ts-rs` at build time.
    A drift between the two fails the build rather than reaching runtime.
+5. **No command takes a filesystem path from the frontend.** The webview may name a
+   *project*; it may never name a *directory*. Registering a root is the moment Mira is
+   granted read access to a tree, so that moment belongs to a native picker opened in
+   Rust on a user gesture — which is why `projects.add` has no arguments. Enforced by a
+   guard test that scans every command signature.
 
 ### Events (backend tells)
 
@@ -291,12 +300,15 @@ repository boundary, since queries would spread through React. Mira instead uses
 `rusqlite` inside `mira-db` behind repository traits, exposed only as typed commands.
 See [ADR-0004](../adr/0004-sqlite-local-first.md).
 
-**Git through libgit2 (`git2`), behind a trait.** `git2` is mature and covers everything
-the 0.x line needs. `gitoxide` is the more attractive long-term choice — pure Rust, faster, no C
-build — and is genuinely production-ready for reads, which is all Mira does. The trait
-means the swap is a crate-internal change once its status/graph APIs settle. Shelling
-out to `git` was rejected: it depends on the user's PATH, costs a process per query, and
-would make the command-injection surface real.
+**Git through libgit2 (`git2`), behind a trait.** Recorded in full as
+[ADR-0009](../adr/0009-git-via-libgit2.md), including the licence analysis: the crates
+declare MIT/Apache-2.0, and the C library they vendor is GPLv2 *with a linking
+exception* that permits exactly this use. `git2` is built with default features off, so
+its HTTPS and SSH transports are not compiled in — Mira could not fetch if it tried.
+`gitoxide` remains the expected destination once its status and graph APIs settle; the
+trait keeps that a change inside one crate. Shelling out to `git` was rejected: it
+depends on the user's PATH, costs a process per query, and would make the
+command-injection surface real.
 
 **No shell, anywhere.** All child processes are spawned with an argv array. There is no
 code path where a user-supplied string reaches a shell parser. This is checked by test.
