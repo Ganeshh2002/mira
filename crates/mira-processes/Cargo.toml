@@ -1,0 +1,19 @@
+[package]
+name = "mira-processes"
+description = "Read-only process facts: pid, name, executable, parent, and working directory where the platform exposes one."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[dependencies]
+mira-core = { workspace = true }
+serde = { workspace = true }
+sysinfo = { workspace = true }
+ts-rs = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }

@@ -3,12 +3,14 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { Project } from '../bindings/Project';
-import type { ProjectContext } from '../bindings/ProjectContext';
+import type { LiveSnapshot } from '../bindings/LiveSnapshot';
 import { App } from '../App';
 import { renderApp } from '../test/render';
 
 const invoke = vi.hoisted(() => vi.fn());
+const listen = vi.hoisted(() => vi.fn());
 vi.mock('@tauri-apps/api/core', () => ({ invoke }));
+vi.mock('@tauri-apps/api/event', () => ({ listen }));
 
 function project(overrides: Partial<Project> = {}): Project {
   return {
@@ -25,24 +27,31 @@ function project(overrides: Partial<Project> = {}): Project {
   };
 }
 
-const readyContext: ProjectContext = {
-  project: project(),
-  directoryExists: true,
-  layout: { kind: 'standalone' },
-  git: {
-    state: 'ready',
-    head: { kind: 'branch', name: 'main' },
-    clean: true,
-    changed: 0,
-    lastCommit: {
-      sha: '9f2c1a4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b',
-      shortSha: '9f2c1a4',
-      subject: 'feat: improve workspace restoration',
-      author: 'Blacknit',
-      committedAt: 1_700_000_000,
+const readyContext: LiveSnapshot = {
+  projects: [
+    {
+      projectId: 1,
+      directoryExists: true,
+      git: {
+        state: 'ready',
+        head: { kind: 'branch', name: 'main' },
+        clean: true,
+        changed: 0,
+        lastCommit: {
+          sha: '9f2c1a4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b',
+          shortSha: '9f2c1a4',
+          subject: 'feat: improve workspace restoration',
+          author: 'Blacknit',
+          committedAt: 1_700_000_000,
+        },
+        upstream: { name: 'origin/main', ahead: 2, behind: 0 },
+      },
+      layout: { kind: 'standalone' },
+      error: null,
+      observedAt: 1_800_000_000,
     },
-    upstream: { name: 'origin/main', ahead: 2, behind: 0 },
-  },
+  ],
+  services: { services: [], error: null, observedAt: 1_800_000_000 },
 };
 
 /** Route each command name to a canned answer. */
@@ -58,11 +67,14 @@ function backend(handlers: Record<string, unknown>) {
 
 const shell = {
   projects_list: [],
-  projects_context: readyContext,
+  live_refresh: readyContext,
+  live_snapshot: readyContext,
 };
 
 beforeEach(() => {
   invoke.mockReset();
+  listen.mockReset();
+  listen.mockResolvedValue(() => {});
 });
 
 describe('the project list', () => {
@@ -184,7 +196,8 @@ describe('adding a project', () => {
           detail: '/home/dev/aviora is already open as "Aviora".',
         });
       }
-      if (command === 'projects_context') return Promise.resolve(readyContext);
+      if (command === 'live_refresh' || command === 'live_snapshot')
+        return Promise.resolve(readyContext);
       return Promise.resolve(second);
     });
     renderApp(<App surface="main" />);

@@ -2,8 +2,8 @@ import { invoke } from '@tauri-apps/api/core';
 
 import type { FoundationStatus } from '../bindings/FoundationStatus';
 import type { MiraError } from '../bindings/MiraError';
+import type { LiveSnapshot } from '../bindings/LiveSnapshot';
 import type { Project } from '../bindings/Project';
-import type { ProjectContext } from '../bindings/ProjectContext';
 
 /**
  * The typed IPC client.
@@ -107,10 +107,18 @@ export const commands = {
   /** `projects.reveal` — open a project's folder in the file manager. */
   projectsReveal: (projectId: number): Promise<void> => call('projects_reveal', { projectId }),
 
+  /** `live.snapshot` — what the observers last saw. A read of memory. */
+  liveSnapshot: (): Promise<LiveSnapshot> => call('live_snapshot'),
+
+  /** `live.refresh` — observe now rather than at the next tick. */
+  liveRefresh: (): Promise<LiveSnapshot> => call('live_refresh'),
+
   /**
-   * `projects.context` — the project's Git state and repository layout, read on
-   * demand.
+   * `live.open_service` — open a listening port in the browser.
+   *
+   * The port, never a URL. Mira builds `http://localhost:<port>` in Rust, so
+   * there is no argument here through which a page could ask it to open a
+   * `file://` path (`security-and-privacy.md` §5 rule 5).
    */
-  projectsContext: (projectId: number): Promise<ProjectContext> =>
-    call('projects_context', { projectId }),
+  openService: (port: number): Promise<void> => call('live_open_service', { port }),
 };

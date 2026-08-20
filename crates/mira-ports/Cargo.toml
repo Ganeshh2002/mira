@@ -1,0 +1,21 @@
+[package]
+name = "mira-ports"
+description = "Listening sockets, and the rule that decides which project a listener belongs to."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[dependencies]
+mira-core = { workspace = true }
+mira-fs = { workspace = true }
+mira-processes = { workspace = true }
+netstat2 = { workspace = true }
+serde = { workspace = true }
+ts-rs = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }

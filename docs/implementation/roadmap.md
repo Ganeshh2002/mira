@@ -129,6 +129,17 @@ workspace showing as "expected, not running".
 it frees the port; unattributable ports say so; the guard tests for termination safety
 pass; polling stops when no window is visible.
 
+**Delivered (part).** The scheduler ([ADR-0011](../adr/0011-one-scheduler.md)) and the
+live context it exists for: Git re-read every five seconds with a dirty indicator in the
+project list, listening ports enumerated natively, process facts for the pids that own
+them, and attribution by working directory — including to the right package inside a
+monorepo. Read-only actions only. New crates: `mira-scheduler`, `mira-ports`,
+`mira-processes`.
+
+**Still to come in this slice.** The machine-wide Ports view, expected ports, process
+detail, and **termination** — which is the destructive half and keeps its own design
+work, below.
+
 **Risks.** This slice contains the product's most destructive action. The confirmation
 flow, the refusal rules (PID 0/1, self, other users), and the absence of any keyboard-only
 kill path are part of the slice, not a follow-up. Windows attribution is Degraded from the

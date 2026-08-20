@@ -24,6 +24,9 @@ mira-fs = { workspace = true }
 mira-git = { workspace = true }
 mira-monorepo = { workspace = true }
 mira-platform = { workspace = true }
+mira-ports = { workspace = true }
+mira-processes = { workspace = true }
+mira-scheduler = { workspace = true }
 mira-projects = { workspace = true }
 mira-workspaces = { workspace = true }
 

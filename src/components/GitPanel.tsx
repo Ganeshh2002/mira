@@ -13,10 +13,11 @@ import { Section } from './Section';
  * commit button is deliberate and visible, not a hint at something coming
  * (`information-architecture.md` §5, "Git view").
  */
-export function GitPanel({ git }: { git: GitOverview }) {
+export function GitPanel({ git, labelled = true }: { git: GitOverview; labelled?: boolean }) {
+  const label = labelled ? 'Git' : '';
   if (git.state === 'notARepository') {
     return (
-      <Section label="Git">
+      <Section label={label}>
         <Row mark={<span className="text-ink-3">○</span>} label="Not a repository" />
       </Section>
     );
@@ -24,7 +25,7 @@ export function GitPanel({ git }: { git: GitOverview }) {
 
   if (git.state === 'unreadable') {
     return (
-      <Section label="Git">
+      <Section label={label}>
         <Row
           mark={<span className="text-signal-warn">◐</span>}
           label="Cannot be read"
@@ -35,7 +36,7 @@ export function GitPanel({ git }: { git: GitOverview }) {
   }
 
   return (
-    <Section label="Git">
+    <Section label={label}>
       <Row
         mark={<HeadMark head={git.head} />}
         label={headLabel(git.head)}

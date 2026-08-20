@@ -8,6 +8,8 @@ use serde::Serialize;
 use tauri::{AppHandle, Runtime, State};
 use ts_rs::TS;
 
+use std::sync::Arc;
+
 use crate::state::AppState;
 use crate::windows;
 
@@ -51,7 +53,7 @@ pub struct FoundationStatus {
 
 /// `app.foundation_status` — read the shell's own state.
 #[tauri::command]
-pub fn app_foundation_status(state: State<'_, AppState>) -> Result<FoundationStatus> {
+pub fn app_foundation_status(state: State<'_, Arc<AppState>>) -> Result<FoundationStatus> {
     let projects = state.projects();
     let workspaces = Workspaces::new(state.db.as_ref());
 

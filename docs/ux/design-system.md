@@ -209,6 +209,23 @@ The rule generalises. A row that can be acted on looks raised and responds to th
 pointer; a row that is a statement of fact looks flat and does not. Mira would rather
 show a fact plainly than dress it up as a control it has not built.
 
+### Freshness, and never implying it
+
+Observed data is only as good as its age, so every reading of it is dated: "Updated
+just now", "Updated 3 min ago". The two sentences are the same shape; only one invites
+you to trust what is under it.
+
+Three rules follow:
+
+1. **A reading with no timestamp is not shown as a reading.** "Not observed yet" is a
+   real state with its own words, and the project-list mark has its own glyph for it
+   rather than borrowing the clean tick.
+2. **A failed refresh appears beside what it could not replace**, not instead of it.
+   Something true and old beats nothing — as long as it says how old.
+3. **Except where staleness is the whole question.** A list of running servers has no
+   useful old version, so a failed port read empties the list and says "Port information
+   unavailable" rather than showing servers that may have stopped.
+
 ### The ground, and the platform's material
 
 The window's ground is the one place Mira defers to the operating system rather than to

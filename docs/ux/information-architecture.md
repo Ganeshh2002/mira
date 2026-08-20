@@ -117,6 +117,19 @@ future feature needs one, it is the wrong feature.
 Nothing is computed while no window is visible, except tray-menu status refreshed on
 menu open.
 
+**As built (slice 2).** The always-fresh tier is a five-second poll owned by the one
+scheduler ([ADR-0011](../adr/0011-one-scheduler.md)), gated on *a window being visible*
+and *at least one project existing*. With either false, the clock ticks and nothing is
+read. The watcher half of the tier is deferred: bounded polling gives a five-second
+worst case for a fifth of the code, and a watcher becomes an optimisation on top of a
+scheduler that already exists.
+
+Everything observed carries **when it was read**, and the interface shows it — "Updated
+3 s ago". Stale data is never presented as current. Where a refresh fails, a project's
+last Git reading stays visible with the failure beside it, and the service list is
+emptied rather than kept, because "what is running right now" has no useful stale
+answer.
+
 ---
 
 ## 4. Surfaces
@@ -233,6 +246,15 @@ buttons hinting at a future.
 All listening ports, grouped: *this project*, *other projects*, *unattributed*. Same row
 actions as the project section. This is the one place Mira shows machine-wide data
 prominently, because "what has :3000" is asked without a project in mind.
+
+**A project's Services section is not that place.** It answers "what is running in *this*
+project", so a listener Mira positively determined is outside every project stays out of
+it — an editor's language server and another app's helper are noise under your project's
+name. One exception, and it is the honest one: where the platform would not say which
+process owns a socket, or would not expose its working directory, Mira did not decide the
+service is elsewhere — it failed to tell. Those are shown with the reason, because on
+Windows that is every service, and an empty list beside a running dev server would be a
+worse lie than an uncertain row.
 
 ### Shelf
 Two scopes in one panel: **Project** and **Global**, switchable. Items are references;

@@ -16,5 +16,5 @@ pub mod surface;
 pub use env::{DisplayServer, EnvFacts, LinuxPackaging, Os};
 pub use platform::{Platform, PlatformCapabilities};
 pub use resolve::{resolve, resolve_all};
-pub use shell::{reveal_command, Shell, ShellHost};
+pub use shell::{is_openable, open_url_command, reveal_command, Shell, ShellHost};
 pub use surface::{surface_treatment, SurfaceTreatment};

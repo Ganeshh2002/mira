@@ -1,9 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 
+import type { GitOverview } from '../bindings/GitOverview';
 import type { Project } from '../bindings/Project';
 import { Button } from '../components/Button';
+import { DirtyMark } from '../components/DirtyMark';
 import { commands, describeUnknown } from '../lib/ipc';
+import { liveKey, observationOf, useLive } from '../lib/live';
 import { ProjectDetail } from './ProjectDetail';
 
 /**
@@ -22,6 +25,7 @@ export function Projects() {
     queryKey: ['projects'],
     queryFn: commands.projectsList,
   });
+  const live = useLive();
 
   const add = useMutation({
     mutationFn: commands.projectsAdd,
@@ -59,10 +63,9 @@ export function Projects() {
     add.reset();
     setSelected(project.id);
     open.mutate(project.id);
-    // FR-3.3's first refresh trigger. Coming back to a project is a statement
-    // that you want its state *now*; without this the panel would show whatever
-    // was true when you last looked, because nothing here polls.
-    void client.invalidateQueries({ queryKey: ['projects', 'context', project.id] });
+    // FR-3.3's first refresh trigger. The scheduler would get there within five
+    // seconds anyway; five seconds is long enough to doubt what you are reading.
+    void client.invalidateQueries({ queryKey: liveKey });
   }
 
   return (
@@ -81,6 +84,7 @@ export function Projects() {
               <li key={project.id}>
                 <ProjectButton
                   project={project}
+                  git={observationOf(live.data, project.id)?.git ?? null}
                   selected={project.id === current?.id}
                   onSelect={() => choose(project)}
                 />
@@ -120,10 +124,12 @@ export function Projects() {
 
 function ProjectButton({
   project,
+  git,
   selected,
   onSelect,
 }: {
   project: Project;
+  git: GitOverview | null;
   selected: boolean;
   onSelect: () => void;
 }) {
@@ -136,11 +142,8 @@ function ProjectButton({
         selected ? 'bg-ember-wash text-ink-0' : 'text-ink-1 hover:bg-ground-2'
       }`}
     >
-      <span
-        aria-hidden="true"
-        className={`shrink-0 ${project.isGit ? 'text-ember-dim' : 'text-ink-1'}`}
-      >
-        {project.isGit ? '●' : '○'}
+      <span className="shrink-0">
+        <DirtyMark git={git} />
       </span>
       <span className="min-w-0 truncate">{project.name}</span>
     </button>

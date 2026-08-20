@@ -5,5 +5,5 @@
 //! `Result<T, MiraError>`; there are no `unwrap`s on the command path.
 
 pub mod app;
-pub mod context;
+pub mod live;
 pub mod projects;

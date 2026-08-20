@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 
 import type { Project } from '../bindings/Project';
@@ -9,7 +9,10 @@ import { LayoutPanel } from '../components/LayoutPanel';
 import { Row } from '../components/Row';
 import { MissingFolder } from '../components/MissingFolder';
 import { Section } from '../components/Section';
+import { ServicesPanel } from '../components/ServicesPanel';
 import { commands, describeUnknown } from '../lib/ipc';
+import { liveKey, observationOf, servicesOf, unplacedServices, useLive } from '../lib/live';
+import { Freshness } from '../components/Freshness';
 
 /**
  * One project: where it is, what Git says about it, and the way in.
@@ -28,10 +31,8 @@ export function ProjectDetail({
   const client = useQueryClient();
   const [confirming, setConfirming] = useState(false);
 
-  const context = useQuery({
-    queryKey: ['projects', 'context', project.id],
-    queryFn: () => commands.projectsContext(project.id),
-  });
+  const live = useLive();
+  const observation = observationOf(live.data, project.id);
 
   const reveal = useMutation({ mutationFn: () => commands.projectsReveal(project.id) });
   const remove = useMutation({
@@ -39,6 +40,7 @@ export function ProjectDetail({
     onSuccess: async () => {
       onRemoved();
       await client.invalidateQueries({ queryKey: ['projects'] });
+      await client.invalidateQueries({ queryKey: liveKey });
     },
   });
 
@@ -60,22 +62,42 @@ export function ProjectDetail({
         ) : null}
       </header>
 
-      {context.isPending ? (
-        <p className="t-ui text-ink-1">Reading Git…</p>
-      ) : context.isError ? (
+      {live.isPending && !observation ? (
+        <p className="t-ui text-ink-1">Reading…</p>
+      ) : live.isError ? (
         <Section label="Git">
           <Row
             mark={<span className="text-signal-warn">◐</span>}
             label="Could not be read"
-            detail={describeUnknown(context.error)}
+            detail={describeUnknown(live.error)}
           />
         </Section>
-      ) : !context.data.directoryExists ? (
+      ) : !observation ? (
+        <p className="t-ui text-ink-1">Not observed yet.</p>
+      ) : !observation.directoryExists ? (
         <MissingFolder path={project.rootPath} />
       ) : (
         <>
-          {context.data.layout ? <LayoutPanel layout={context.data.layout} /> : null}
-          {context.data.git ? <GitPanel git={context.data.git} /> : null}
+          {observation.layout ? <LayoutPanel layout={observation.layout} /> : null}
+          {observation.git ? (
+            <>
+              <div className="flex items-baseline justify-between gap-[var(--space-3)]">
+                <span className="t-label text-ink-1">Git</span>
+                <Freshness observedAt={observation.observedAt} />
+              </div>
+              <GitPanel git={observation.git} labelled={false} />
+            </>
+          ) : null}
+          {observation.error ? (
+            <p className="t-ui m-0 text-signal-warn">
+              Could not be refreshed. {observation.error}
+            </p>
+          ) : null}
+          <ServicesPanel
+            observation={live.data?.services ?? { services: [], error: null, observedAt: null }}
+            services={servicesOf(live.data, project.id)}
+            unplaced={unplacedServices(live.data)}
+          />
         </>
       )}
 
@@ -89,8 +111,8 @@ export function ProjectDetail({
         <Button kind="accent" onClick={() => reveal.mutate()}>
           Open Project
         </Button>
-        <Button onClick={() => void context.refetch()} disabled={context.isFetching}>
-          {context.isFetching ? 'Refreshing…' : 'Refresh'}
+        <Button onClick={() => void live.refetch()} disabled={live.isFetching}>
+          {live.isFetching ? 'Refreshing…' : 'Refresh'}
         </Button>
         {confirming ? (
           <>

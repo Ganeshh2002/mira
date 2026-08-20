@@ -29,8 +29,8 @@ that supersedes the old one, not a quiet exception.
   [capability matrix](docs/architecture/platform-abstraction.md#5-capability-matrix) makes
   specific claims per OS. If one is wrong on your machine, tell us — accuracy there is a
   core promise.
-- **Take a slice task.** Slices 0 and 1 are done; slice 2 is ports and processes.
-  Issues are labelled `slice:N`.
+- **Take a slice task.** Slices 0, 1 and 1.1 are done, and slice 2's scheduler and
+  live context are in. Issues are labelled `slice:N`.
 
 ## Development setup
 
@@ -137,7 +137,7 @@ These are the recurring ones, listed so you do not discover them in review:
 - Opening anything under `~/.ssh` other than `config`
 - Sending a write request to the Docker API
 - Adding a network call that is not explicitly opt-in
-- Starting a timer or poller outside the scheduler
+- Starting a timer or poller outside `mira-scheduler`, or a `setInterval` in the UI
 - Adding telemetry or an analytics dependency
 - Claiming parity for a platform where the feature does not actually work
 - Adding a `users`, `accounts`, or `telemetry` table

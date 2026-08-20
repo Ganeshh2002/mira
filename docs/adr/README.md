@@ -18,6 +18,7 @@ one; the old file stays, marked superseded, because the reasoning is the point.
 | [0008](0008-modular-architecture.md) | Modular crates with a one-way dependency rule | Accepted |
 | [0009](0009-git-via-libgit2.md) | Git through libgit2, behind a provider trait | Accepted |
 | [0010](0010-monorepo-detection.md) | Monorepo detection: separate crate, read-only, computed not stored | Accepted |
+| [0011](0011-one-scheduler.md) | One scheduler, gated, with blocking observers | Accepted |
 
 Decisions **not** recorded here because they are reversible in an afternoon: Tailwind,
 TanStack Query, Zustand, Vite, the icon set. Those live in

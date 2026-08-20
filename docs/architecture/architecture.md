@@ -18,6 +18,7 @@ the map, the ADRs are the reasoning.
 | Extension boundary | Modules over a stable command surface | [0008](../adr/0008-modular-architecture.md) |
 | Git | libgit2 (`git2`) behind a provider trait | [0009](../adr/0009-git-via-libgit2.md) |
 | Monorepo layout | Manifest reading in its own crate, never stored | [0010](../adr/0010-monorepo-detection.md) |
+| Recurring work | One gated scheduler, blocking observers | [0011](../adr/0011-one-scheduler.md) |
 
 Chosen because the constraints in
 [product-definition.md](../product/product-definition.md) — ≤ 30 MB installer, ≤ 150 MB
@@ -74,6 +75,7 @@ crates/
   mira-sessions/
   mira-git/                 # libgit2 behind a trait
   mira-monorepo/            # workspace manifests → package boundaries
+  mira-scheduler/           # the only clock: observations, gate, shutdown
   mira-ports/
   mira-processes/
   mira-fs/                  # path safety, watching, shelf, peek reads
@@ -128,6 +130,7 @@ depend on* — and nothing outside it may reach past its interface.
 | **sessions** | Session start/pause/resume/close from lock+focus events | `SessionService` | core, db, platform |
 | **git** | Status, HEAD, branches, ahead/behind, commit walk, lane layout | `GitProvider` trait | core |
 | **monorepo** | Workspace manifests → tools and package boundaries, read-only | `detect(selected, git_root)` | core |
+| **scheduler** | The only clock: intervals, gate, cancellation, isolation | `Observation`, `Gate`, `Scheduler` | core |
 | **ports** | Listening sockets → (port, pid, process) + attribution | `PortScanner` | core, processes |
 | **processes** | Process facts, safe termination | `ProcessProvider` | core, platform |
 | **filesystem** | Path canonicalisation, **root containment checks**, watching, safe reads | pure functions, then `FsService` | core |
@@ -166,7 +169,9 @@ projects.add()                        → Project | null
 projects.open({ projectId })          → Project
 projects.remove({ projectId })        → void
 projects.reveal({ projectId })        → void
-projects.context({ projectId })        → ProjectContext
+live.snapshot()                       → LiveSnapshot
+live.refresh()                        → LiveSnapshot
+live.open_service({ port })           → void
 git.log({ projectId, limit, cursor }) → CommitPage
 ports.scan({ projectId? })            → PortEntry[]
 processes.terminate({ pid, force })   → TerminateOutcome
@@ -193,6 +198,7 @@ Rules:
 ### Events (backend tells)
 
 ```
+mira://live                   an observation round finished
 mira://status/{projectId}     coalesced project status changed
 mira://ports/{projectId}      port set changed
 mira://system                 system sample tick
@@ -228,6 +234,10 @@ The whole product is polling and watching, so scheduling is a first-class concer
 than an implementation detail.
 
 - One Tokio multi-thread runtime, owned by `src-tauri`.
+- **One scheduler, in `mira-scheduler`** ([ADR-0011](../adr/0011-one-scheduler.md)).
+  It holds `(observation, interval, gate)` and nothing else; the observers in
+  `src-tauri/src/observers.rs` say what is watched. A guard test fails the build if
+  any timer appears outside it.
 - CPU- or syscall-heavy work (`git status`, socket enumeration, process walks) runs on
   `spawn_blocking`; async is used for I/O waits (Docker socket, D-Bus), not for CPU.
 - **One scheduler owns every recurring task.** No module starts its own timer. It holds

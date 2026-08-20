@@ -51,8 +51,8 @@ working core with named gaps, listed in its own section.
 | 4 | Last commit | **0.1** | 1 | Built |
 | 5 | Branch information | **0.1** | 1 | Built |
 | 6 | Basic Git graph | **0.1** | 5a | — |
-| 7 | Running ports | **0.1** | 2 | — |
-| 8 | Process information | **0.1** | 2 | — |
+| 7 | Running ports | **0.1** | 2 | Partial |
+| 8 | Process information | **0.1** | 2 | Partial |
 | 9 | Application launching | **0.1** | 3 | — |
 | 10 | Terminal integration | **0.1** | 3 | — |
 | 11 | Editor integration | **0.1** | 3 | — |
@@ -215,10 +215,15 @@ timeout (2 s) after which Mira shows counts-unknown rather than hanging.
 place: a repository that takes longer reports the timeout with the project named, rather
 than hanging the view. Status is a **count and a clean/dirty state**, not yet the
 per-path list. **Not yet built:** the grouped path list and its per-state counts
-(FR-3.2), so FR-3.5's truncation does not apply yet either; and refresh (FR-3.3) is
-manual — Git is read when a project is selected, and there is no watcher and no poll
-because Slice 1 has no scheduler to gate one. Conflicted state is not yet distinguished
-from dirty (AC-3.4).
+(FR-3.2), so FR-3.5's truncation does not apply yet either. Conflicted state is not yet
+distinguished from dirty (AC-3.4).
+
+**Refreshed (slice 2).** FR-3.3 is now live: Git is re-read every five seconds by the
+one scheduler ([ADR-0011](../adr/0011-one-scheduler.md)), and on project selection and
+explicit refresh. The filesystem-watch trigger is deliberately still absent — bounded
+polling gives a five-second worst case, and a watcher is an optimisation on top of the
+scheduler rather than a prerequisite for it. The project list now carries a dirty
+indicator, and every reading shows its age.
 
 ---
 
@@ -383,6 +388,15 @@ destructive action (kill) always names the process and asks.
 
 ---
 
+**As built (slice 2).** Listening TCP sockets are enumerated every five seconds through
+native platform interfaces — never by running `lsof` and parsing it. Each service shows
+its port, bound address, owning pid and process name, and is placed in a project by the
+**working directory of the owning process** and by nothing else. Where it cannot be
+placed it is shown as unattributed with the reason. **Not yet built:** the machine-wide
+Ports view, expected ports, and the port-conflict warning. Actions are read-only —
+open, copy URL, copy port, copy PID — and terminating a process is a later slice with
+its own confirmation design.
+
 ## 8. Process information
 
 **Purpose.** Enough process context to decide whether to kill something.
@@ -427,6 +441,13 @@ are structural: confirmation naming the target, no bulk kill, no "kill all", no
 keyboard-only path that can fire without reading the dialog.
 
 ---
+
+**As built (slice 2).** Read-only facts for the processes that own listening sockets:
+pid, name, executable, parent, and working directory where the platform exposes one.
+Deliberately **not** the whole process table — there is no method that returns it, so
+Mira cannot become an activity monitor by accident. **Not yet built:** CPU and memory
+per process, uptime, the command line, and the process detail view. Termination is
+absent from the code rather than merely unused, and a guard test keeps it that way.
 
 ## 9. Application launching
 

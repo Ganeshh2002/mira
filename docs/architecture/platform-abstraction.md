@@ -222,6 +222,33 @@ capability is `Unavailable`. Notifications are opt-in per condition and are acce
 but unscheduled ([product-scope.md](../product/product-scope.md) §5); the capability
 exists from 0.1 only to report status.
 
+### 4.8b Ports and processes
+
+Both are read through native interfaces, never by running a command and parsing
+its output. `netstat2` uses `sysctl` on macOS, `GetExtendedTcpTable` on Windows,
+and `/proc/net` plus netlink on Linux; `sysinfo` uses `libproc`, the Windows
+process APIs, and `/proc`. Nothing here shells out, which removes both the
+injection surface and the fragility of screen-scraping `lsof`.
+
+| Concern | macOS | Windows | Linux |
+|---|---|---|---|
+| Listening TCP sockets | Full | Full | Full |
+| Owning pid for a socket | Full (own user) | Full | Full (own user) |
+| Process name and parent | Full | Full | Full |
+| Executable path | Full | Degraded (may be refused) | Full |
+| **Process working directory** | Full (own user) | **Unavailable** | Full (own user) |
+
+The last row is the one that matters, because **project attribution rests on it
+alone**. A service is placed by the directory its process is running in — never by
+process name, which would put every `node` on :3000 in whichever project was
+listed first. Where the working directory is not available, Mira says the service
+is there and that it cannot place it, with the reason. That is why Windows shows
+services as unattributed rather than guessing, and why the capability matrix
+already listed *Process cwd* as Degraded there.
+
+Sockets owned by another user are reported without a pid, and are unattributed for
+the same reason. Mira never elevates to see more.
+
 ### 4.9 Filesystem behaviour
 
 | Concern | macOS | Windows | Linux |

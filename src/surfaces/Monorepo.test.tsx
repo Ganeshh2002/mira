@@ -1,14 +1,16 @@
 import { screen, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import type { LiveSnapshot } from '../bindings/LiveSnapshot';
 import type { Project } from '../bindings/Project';
-import type { ProjectContext } from '../bindings/ProjectContext';
 import type { RepositoryLayout } from '../bindings/RepositoryLayout';
 import { App } from '../App';
 import { renderApp } from '../test/render';
 
 const invoke = vi.hoisted(() => vi.fn());
+const listen = vi.hoisted(() => vi.fn());
 vi.mock('@tauri-apps/api/core', () => ({ invoke }));
+vi.mock('@tauri-apps/api/event', () => ({ listen }));
 
 const aviora: Project = {
   id: 1,
@@ -22,7 +24,7 @@ const aviora: Project = {
   updatedAt: 1_700_000_000,
 };
 
-const clean: ProjectContext['git'] = {
+const clean: LiveSnapshot['projects'][number]['git'] = {
   state: 'ready',
   head: { kind: 'branch', name: 'main' },
   clean: true,
@@ -34,8 +36,20 @@ const clean: ProjectContext['git'] = {
 function show(layout: RepositoryLayout, project: Project = aviora) {
   invoke.mockImplementation((command: string) => {
     if (command === 'projects_list') return Promise.resolve([project]);
-    if (command === 'projects_context') {
-      return Promise.resolve({ project, directoryExists: true, git: clean, layout });
+    if (command === 'live_refresh' || command === 'live_snapshot') {
+      return Promise.resolve({
+        projects: [
+          {
+            projectId: project.id,
+            directoryExists: true,
+            git: clean,
+            layout,
+            error: null,
+            observedAt: 1_800_000_000,
+          },
+        ],
+        services: { services: [], error: null, observedAt: 1_800_000_000 },
+      });
     }
     return Promise.resolve(null);
   });
@@ -44,6 +58,8 @@ function show(layout: RepositoryLayout, project: Project = aviora) {
 
 beforeEach(() => {
   invoke.mockReset();
+  listen.mockReset();
+  listen.mockResolvedValue(() => {});
 });
 
 describe('a standalone repository', () => {
@@ -148,13 +164,18 @@ describe('a package inside a monorepo', () => {
     expect(screen.queryByRole('list', { name: /packages/i })).not.toBeInTheDocument();
   });
 
-  it('reads its context from the same command as any other project', async () => {
+  it('is observed by the same round as every other project', async () => {
     show(layout, web);
 
     await screen.findByText('apps/web');
-    const reads = invoke.mock.calls.filter(([command]) => command === 'projects_context');
-    expect(reads).toHaveLength(1);
-    expect(reads[0]?.[1]).toEqual({ projectId: 2 });
+
+    // One machine-wide observation covers every project, package or not. There
+    // is no per-project command, so a monorepo package costs nothing extra.
+    const perProject = invoke.mock.calls.filter(([command]) => command === 'projects_context');
+    expect(perProject).toHaveLength(0);
+    expect(
+      invoke.mock.calls.filter(([command]) => command === 'live_refresh').length,
+    ).toBeGreaterThan(0);
   });
 });
 
@@ -162,12 +183,19 @@ describe('a project whose folder is gone', () => {
   it('says nothing about layout it could not read', async () => {
     invoke.mockImplementation((command: string) => {
       if (command === 'projects_list') return Promise.resolve([aviora]);
-      if (command === 'projects_context') {
+      if (command === 'live_refresh' || command === 'live_snapshot') {
         return Promise.resolve({
-          project: aviora,
-          directoryExists: false,
-          git: null,
-          layout: null,
+          projects: [
+            {
+              projectId: aviora.id,
+              directoryExists: false,
+              git: null,
+              layout: null,
+              error: null,
+              observedAt: 1_800_000_000,
+            },
+          ],
+          services: { services: [], error: null, observedAt: 1_800_000_000 },
         });
       }
       return Promise.resolve(null);

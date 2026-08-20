@@ -3,13 +3,15 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { GitOverview } from '../bindings/GitOverview';
+import type { LiveSnapshot } from '../bindings/LiveSnapshot';
 import type { Project } from '../bindings/Project';
-import type { ProjectContext } from '../bindings/ProjectContext';
 import { App } from '../App';
 import { renderApp } from '../test/render';
 
 const invoke = vi.hoisted(() => vi.fn());
+const listen = vi.hoisted(() => vi.fn());
 vi.mock('@tauri-apps/api/core', () => ({ invoke }));
+vi.mock('@tauri-apps/api/event', () => ({ listen }));
 
 const aviora: Project = {
   id: 1,
@@ -31,14 +33,22 @@ const commit = {
   committedAt: Math.floor(Date.now() / 1000) - 7200,
 };
 
-function context(git: GitOverview | null): ProjectContext {
+/** A snapshot in which the one project has this Git answer. */
+function context(git: GitOverview | null, projectId = 1): LiveSnapshot {
   return {
-    project: aviora,
-    directoryExists: git !== null,
-    git,
-    // Layout is the monorepo question and these tests are about Git; a
-    // standalone repository is the shape that keeps them about one thing.
-    layout: git === null ? null : { kind: 'standalone' },
+    projects: [
+      {
+        projectId,
+        directoryExists: git !== null,
+        git,
+        // Layout is the monorepo question and these tests are about Git; a
+        // standalone repository is the shape that keeps them about one thing.
+        layout: git === null ? null : { kind: 'standalone' },
+        error: null,
+        observedAt: 1_800_000_000,
+      },
+    ],
+    services: { services: [], error: null, observedAt: 1_800_000_000 },
   };
 }
 
@@ -46,7 +56,8 @@ function context(git: GitOverview | null): ProjectContext {
 function show(git: GitOverview | null) {
   invoke.mockImplementation((command: string) => {
     if (command === 'projects_list') return Promise.resolve([aviora]);
-    if (command === 'projects_context') return Promise.resolve(context(git));
+    if (command === 'live_refresh' || command === 'live_snapshot')
+      return Promise.resolve(context(git));
     return Promise.resolve(null);
   });
   return renderApp(<App surface="main" />);
@@ -54,6 +65,8 @@ function show(git: GitOverview | null) {
 
 beforeEach(() => {
   invoke.mockReset();
+  listen.mockReset();
+  listen.mockResolvedValue(() => {});
 });
 
 describe('the project overview', () => {
@@ -88,7 +101,7 @@ describe('the project overview', () => {
     );
   });
 
-  it('reads Git only for the project on screen', async () => {
+  it('reads every project in one snapshot rather than one command each', async () => {
     invoke.mockImplementation((command: string) => {
       if (command === 'projects_list') {
         return Promise.resolve([aviora, { ...aviora, id: 2, name: 'Second', rootPath: '/b' }]);
@@ -99,9 +112,10 @@ describe('the project overview', () => {
 
     await screen.findByRole('heading', { name: 'Aviora' });
 
-    const reads = invoke.mock.calls.filter(([command]) => command === 'projects_context');
-    expect(reads).toHaveLength(1);
-    expect(reads[0]?.[1]).toEqual({ projectId: 1 });
+    // Observation is machine-wide and per-round, so there is no per-project Git
+    // command left to call however many projects are on the list.
+    const perProject = invoke.mock.calls.filter(([command]) => command === 'projects_context');
+    expect(perProject).toHaveLength(0);
   });
 });
 
@@ -223,7 +237,7 @@ describe('Git states', () => {
     });
     renderApp(<App surface="main" />);
 
-    expect(await screen.findByText(/reading git/i)).toBeInTheDocument();
+    expect(await screen.findByText(/reading/i)).toBeInTheDocument();
   });
 
   it('reports a Git read that ran out of time', async () => {
@@ -243,13 +257,13 @@ describe('Git states', () => {
 
 describe('refreshing', () => {
   it('re-reads Git when asked, so a change made outside Mira shows up', async () => {
-    // FR-3.3 lists an explicit refresh among the triggers. Slice 1 has no watcher
-    // and no poll, so this is the *only* way to see a change without restarting —
-    // which makes it the difference between the feature working and not.
+    // FR-3.3 lists an explicit refresh among the triggers. The scheduler covers
+    // the rest, but a person who has just saved a file should not have to wait
+    // out an interval to confirm what they already know.
     let clean = true;
     invoke.mockImplementation((command: string) => {
       if (command === 'projects_list') return Promise.resolve([aviora]);
-      if (command === 'projects_context') {
+      if (command === 'live_refresh' || command === 'live_snapshot') {
         const git: GitOverview = {
           state: 'ready',
           head: { kind: 'branch', name: 'main' },
@@ -284,7 +298,7 @@ describe('switching projects', () => {
     };
     invoke.mockImplementation((command: string) => {
       if (command === 'projects_list') return Promise.resolve([aviora, second]);
-      if (command === 'projects_context')
+      if (command === 'live_refresh' || command === 'live_snapshot')
         return Promise.resolve(context({ state: 'notARepository' }));
       if (command === 'projects_reveal') {
         return Promise.reject({ kind: 'notFound', what: 'The folder for "Aviora"' });
@@ -312,7 +326,7 @@ describe('switching projects', () => {
     };
     invoke.mockImplementation((command: string) => {
       if (command === 'projects_list') return Promise.resolve([aviora, second]);
-      if (command === 'projects_context')
+      if (command === 'live_refresh' || command === 'live_snapshot')
         return Promise.resolve(context({ state: 'notARepository' }));
       return Promise.resolve(second);
     });
@@ -328,9 +342,9 @@ describe('switching projects', () => {
     expect(screen.queryByText(/from Mira\?/)).not.toBeInTheDocument();
   });
 
-  it('re-reads Git when a project is selected again', async () => {
-    // FR-3.3's first trigger. Coming back to a project is a statement that you
-    // want to know its state now, not what it was when you last looked.
+  it('re-reads when a project is selected again', async () => {
+    // FR-3.3's first trigger. The scheduler would get there within five seconds
+    // anyway; five seconds is long enough to doubt what you are looking at.
     const second: Project = {
       ...aviora,
       id: 2,
@@ -339,26 +353,22 @@ describe('switching projects', () => {
     };
     invoke.mockImplementation((command: string) => {
       if (command === 'projects_list') return Promise.resolve([aviora, second]);
-      if (command === 'projects_context')
+      if (command === 'live_refresh' || command === 'live_snapshot')
         return Promise.resolve(context({ state: 'notARepository' }));
       return Promise.resolve(second);
     });
     renderApp(<App surface="main" />);
 
     await screen.findByRole('heading', { name: 'Aviora' });
-    const before = invoke.mock.calls.filter(
-      ([command]) => command === 'projects_context',
-    ).length;
+    const reads = () =>
+      invoke.mock.calls.filter(
+        ([command]) => command === 'live_refresh' || command === 'live_snapshot',
+      ).length;
+    const before = reads();
 
     await userEvent.click(screen.getByRole('button', { name: /Mobile App/ }));
-    await userEvent.click(screen.getByRole('button', { name: /Aviora/ }));
 
-    await waitFor(() => {
-      const after = invoke.mock.calls.filter(
-        ([command]) => command === 'projects_context',
-      ).length;
-      expect(after).toBeGreaterThan(before + 1);
-    });
+    await waitFor(() => expect(reads()).toBeGreaterThan(before));
   });
 
   it('reads the second project without disturbing the first', async () => {
@@ -368,33 +378,45 @@ describe('switching projects', () => {
       name: 'Mobile App',
       rootPath: '/home/dev/mobile',
     };
-    invoke.mockImplementation((command: string, args?: { projectId?: number }) => {
+    invoke.mockImplementation((command: string) => {
       if (command === 'projects_list') return Promise.resolve([aviora, second]);
       if (command === 'projects_open') return Promise.resolve(second);
-      if (command === 'projects_context') {
-        return Promise.resolve(
-          args?.projectId === 2
-            ? {
-                project: second,
-                directoryExists: true,
-                git: {
-                  state: 'ready',
-                  head: { kind: 'branch', name: 'develop' },
-                  clean: false,
-                  changed: 5,
-                  lastCommit: null,
-                  upstream: null,
-                },
-              }
-            : context({
+      if (command === 'live_refresh' || command === 'live_snapshot') {
+        return Promise.resolve({
+          projects: [
+            {
+              projectId: 1,
+              directoryExists: true,
+              git: {
                 state: 'ready',
                 head: { kind: 'branch', name: 'main' },
                 clean: true,
                 changed: 0,
                 lastCommit: commit,
                 upstream: null,
-              }),
-        );
+              },
+              layout: { kind: 'standalone' },
+              error: null,
+              observedAt: 1_800_000_000,
+            },
+            {
+              projectId: 2,
+              directoryExists: true,
+              git: {
+                state: 'ready',
+                head: { kind: 'branch', name: 'develop' },
+                clean: false,
+                changed: 5,
+                lastCommit: null,
+                upstream: null,
+              },
+              layout: { kind: 'standalone' },
+              error: null,
+              observedAt: 1_800_000_000,
+            },
+          ],
+          services: { services: [], error: null, observedAt: 1_800_000_000 },
+        });
       }
       return Promise.resolve(null);
     });
@@ -417,7 +439,7 @@ describe('switching projects', () => {
     };
     invoke.mockImplementation((command: string) => {
       if (command === 'projects_list') return Promise.resolve([aviora, second]);
-      if (command === 'projects_context')
+      if (command === 'live_refresh' || command === 'live_snapshot')
         return Promise.resolve(context({ state: 'notARepository' }));
       return Promise.resolve(second);
     });

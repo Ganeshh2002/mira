@@ -559,6 +559,63 @@ fn the_frontend_never_names_an_operating_system_to_choose_a_look() {
     );
 }
 
+#[test]
+fn nothing_can_stop_a_process() {
+    // Slice 2 reads processes; stopping one is a later slice with its own
+    // confirmation and refusal design (`security-and-privacy.md` §5). Until then
+    // the capability is absent from the code rather than merely unused, so
+    // "Mira cannot kill your dev server" is a fact about the build.
+    let forbidden = [
+        "libc::kill",
+        ".kill()",
+        "signal::kill",
+        "TerminateProcess",
+        "SIGKILL",
+        "SIGTERM",
+    ];
+
+    let mut violations = Vec::new();
+    for (path, text) in sources(&["rs"]) {
+        let code = code_only(&text);
+        for needle in forbidden {
+            if code.contains(needle) {
+                violations.push(format!("{}: {needle}", relative(&path)));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "process termination arrives with its confirmation flow, not before it: {violations:#?}"
+    );
+}
+
+#[test]
+fn no_command_opens_an_arbitrary_url() {
+    // Opening a service means opening `http://localhost:<port>` built in Rust
+    // from an observed port number. A command taking a URL from the interface
+    // would be a way to make Mira open anything, `file://` and custom schemes
+    // included (`security-and-privacy.md` §5 rule 5).
+    let commands = repo_root().join("src-tauri/src/commands");
+
+    let mut violations = Vec::new();
+    for (path, text) in sources(&["rs"]) {
+        if !path.starts_with(&commands) {
+            continue;
+        }
+        for signature in command_signatures(&code_only(&text)) {
+            if signature.contains("url") || signature.contains("Url") {
+                violations.push(format!("{}: {signature}", relative(&path)));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "the interface names a port; Mira builds the URL: {violations:#?}"
+    );
+}
+
 // ── No telemetry, no phone-home, no background work ──────────────────────────
 
 #[test]
@@ -594,33 +651,58 @@ fn no_analytics_dependency_is_in_the_tree() {
 }
 
 #[test]
-fn nothing_starts_a_recurring_timer() {
-    // architecture.md §6: one scheduler owns every recurring task, and no module
-    // starts its own timer. Slice 0 has no scheduler because it has nothing to
-    // poll — so any timer at all is scope leaking in, and this test says so until
-    // the scheduler arrives with Slice 1's first poller.
-    let mut violations = Vec::new();
+fn only_the_scheduler_owns_a_clock() {
+    // `architecture.md` §6: one scheduler owns every recurring task, and no
+    // module starts its own timer. That is what makes the idle-CPU budget a
+    // property of the design — a poller that ignored the gate would have to have
+    // its own clock, and there is nowhere to put one.
+    //
+    // Slice 2 is where this guard earned its keep: the first draft of the live
+    // feature grew a second loop in `lib.rs` to emit events on a cadence, and
+    // this test refused it. The observers notify after each round instead.
+    let scheduler = repo_root().join("crates/mira-scheduler");
+    let clocks = [
+        "tokio::time::sleep",
+        "tokio::time::interval",
+        "thread::sleep",
+    ];
 
+    let mut violations = Vec::new();
     for (path, text) in sources(&["rs"]) {
-        let text = code_only(&text);
-        for needle in ["tokio::time::interval", "thread::sleep", "time::sleep"] {
-            if text.contains(needle) {
-                violations.push(format!("{}: {needle}", relative(&path)));
-            }
+        if path.starts_with(&scheduler) || relative(&path).contains("/tests/") {
+            continue;
         }
-    }
-    for (path, text) in sources(&["ts", "tsx"]) {
-        let text = code_only(&text);
-        for needle in ["setInterval", "refetchInterval"] {
-            if text.contains(needle) {
-                violations.push(format!("{}: {needle}", relative(&path)));
+        let code = code_only(&text);
+        for clock in clocks {
+            if code.contains(clock) {
+                violations.push(format!("{}: {clock}", relative(&path)));
             }
         }
     }
 
     assert!(
         violations.is_empty(),
-        "a recurring timer appeared outside the scheduler: {violations:#?}"
+        "recurring work belongs to mira-scheduler, behind its gate: {violations:#?}"
+    );
+}
+
+#[test]
+fn the_interface_starts_no_clock_of_its_own() {
+    // The frontend's half of the same rule. A `setInterval` or a TanStack Query
+    // `refetchInterval` would poll regardless of whether Mira's own gate is shut,
+    // which is exactly the hidden-window CPU the budget forbids.
+    let violations: Vec<String> = sources(&["ts", "tsx"])
+        .into_iter()
+        .filter(|(_, text)| {
+            let code = code_only(text);
+            code.contains("setInterval") || code.contains("refetchInterval")
+        })
+        .map(|(path, _)| relative(&path))
+        .collect();
+
+    assert!(
+        violations.is_empty(),
+        "the interface refreshes when the backend says something moved: {violations:#?}"
     );
 }
 
@@ -674,8 +756,6 @@ fn no_crate_exists_for_a_feature_this_slice_does_not_build() {
 
     for absent in [
         "mira-automation",
-        "mira-ports",
-        "mira-processes",
         "mira-ssh",
         "mira-docker",
         "mira-media",

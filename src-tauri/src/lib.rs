@@ -9,6 +9,10 @@
 
 pub mod clock;
 pub mod commands;
+pub mod events;
+pub mod gate;
+pub mod live;
+pub mod observers;
 pub mod shortcut;
 pub mod state;
 pub mod tray;
@@ -19,7 +23,9 @@ use std::sync::Arc;
 use mira_db::Db;
 use mira_fs::PathMatching;
 use mira_platform::{surface_treatment, Platform};
-use tauri::Manager;
+use mira_scheduler::Scheduler;
+use std::sync::Mutex;
+use tauri::{Emitter, Manager};
 
 use state::AppState;
 
@@ -78,7 +84,7 @@ pub fn run() {
                 eprintln!("Mira could not create its tray icon: {error}");
             }
 
-            app.manage(AppState {
+            let state = Arc::new(AppState {
                 db: Arc::new(db),
                 platform: platform.clone(),
                 database_path,
@@ -89,7 +95,64 @@ pub fn run() {
                     platform.facts().paths_are_case_sensitive(),
                 ),
                 surface,
+                live: live::Live::new(),
+                project_count: std::sync::atomic::AtomicUsize::new(0),
             });
+
+            // The gate needs to know whether there is anything to observe before
+            // the interface has asked for anything.
+            if let Ok(count) = mira_db::ProjectRepo::count(state.db.as_ref()) {
+                state.set_project_count(count as usize);
+            }
+
+            // Each round of observation tells the interface to re-read. The
+            // notification carries no payload: it says something moved, and the
+            // interface asks for what it needs (architecture.md §5). Passed as a
+            // closure so the observers stay free of Tauri types.
+            let announce: Arc<dyn Fn() + Send + Sync> = {
+                let handle = handle.clone();
+                Arc::new(move || {
+                    let _ = handle.emit(events::LIVE, ());
+                })
+            };
+
+            // The scheduler is started here and stopped in `shutdown`. Nothing
+            // else in Mira may start a recurring task (architecture.md §6, and a
+            // guard test).
+            //
+            // Set-up runs on the main thread, outside the async runtime, and
+            // spawning from there panics. Entering the runtime for the length of
+            // this call is what the guard is for.
+            let runtime = tauri::async_runtime::handle();
+            let _entered = runtime.inner().enter();
+
+            let scheduler = Scheduler::start(
+                vec![
+                    Arc::new(observers::GitObserver::new(
+                        Arc::clone(&state),
+                        Arc::clone(&announce),
+                    )),
+                    Arc::new(observers::ServiceObserver::new(
+                        Arc::clone(&state),
+                        Arc::clone(&announce),
+                    )),
+                ],
+                Arc::new(gate::WhenVisible::new(handle.clone(), Arc::clone(&state))),
+            );
+
+            // A first reading straight away, off the setup thread, so the window
+            // does not open onto five seconds of nothing.
+            {
+                let state = Arc::clone(&state);
+                let announce = Arc::clone(&announce);
+                tauri::async_runtime::spawn_blocking(move || {
+                    let _ = observers::observe_once(&state);
+                    announce();
+                });
+            }
+
+            app.manage(Live(Mutex::new(Some(scheduler))));
+            app.manage(state);
 
             // `mira --toggle` on the very first launch, before another instance exists.
             if std::env::args().any(|arg| arg == "--toggle") {
@@ -106,7 +169,9 @@ pub fn run() {
             commands::projects::projects_open,
             commands::projects::projects_remove,
             commands::projects::projects_reveal,
-            commands::context::projects_context,
+            commands::live::live_snapshot,
+            commands::live::live_refresh,
+            commands::live::live_open_service,
         ])
         .build(tauri::generate_context!())
         .expect("Mira failed to start")
@@ -117,6 +182,12 @@ pub fn run() {
         });
 }
 
+/// The running scheduler, so shutdown can stop it.
+///
+/// Managed separately from [`AppState`] because it is the one piece of state that
+/// is consumed rather than shared: stopping it takes ownership.
+pub struct Live(Mutex<Option<Scheduler>>);
+
 /// Leave the database as it would be found on a fresh machine.
 ///
 /// Quitting goes through `app.exit`, which ends the process without running
@@ -124,7 +195,15 @@ pub fn run() {
 /// the last connection closes. Doing it here is what makes the sentence Settings
 /// shows — everything Mira knows is in this one file — true at rest.
 fn shutdown<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
-    let Some(state) = app.try_state::<AppState>() else {
+    // Stop observing before the last write. A scheduler still running while the
+    // database is checked in would be a read racing a close.
+    if let Some(live) = app.try_state::<Live>() {
+        if let Some(scheduler) = live.0.lock().ok().and_then(|mut held| held.take()) {
+            tauri::async_runtime::block_on(scheduler.shutdown());
+        }
+    }
+
+    let Some(state) = app.try_state::<Arc<AppState>>() else {
         return;
     };
     if let Err(error) = state.db.checkpoint() {

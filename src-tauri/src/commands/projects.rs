@@ -11,6 +11,8 @@ use mira_projects::ProjectService;
 use tauri::{AppHandle, Runtime, State};
 use tauri_plugin_dialog::DialogExt;
 
+use std::sync::Arc;
+
 use crate::clock::now;
 use crate::state::AppState;
 
@@ -20,8 +22,12 @@ use crate::state::AppState;
 /// run one repository scan per project on every render, which is the shape of
 /// background work Slice 1 has no scheduler to gate.
 #[tauri::command]
-pub fn projects_list(state: State<'_, AppState>) -> Result<Vec<Project>> {
-    state.projects().list()
+pub fn projects_list(state: State<'_, Arc<AppState>>) -> Result<Vec<Project>> {
+    let projects = state.projects().list()?;
+    // The scheduler's gate reads this rather than the database, so it is kept
+    // current wherever the list is known to have changed.
+    state.set_project_count(projects.len());
+    Ok(projects)
 }
 
 /// `projects.add` — register a directory the user picks.
@@ -35,7 +41,7 @@ pub fn projects_list(state: State<'_, AppState>) -> Result<Vec<Project>> {
 #[tauri::command]
 pub async fn projects_add<R: Runtime>(
     app: AppHandle<R>,
-    state: State<'_, AppState>,
+    state: State<'_, Arc<AppState>>,
 ) -> Result<Option<Project>> {
     let (reply, chosen) = tokio::sync::oneshot::channel();
 
@@ -56,12 +62,17 @@ pub async fn projects_add<R: Runtime>(
         MiraError::invalid("path", format!("That folder could not be read: {error}"))
     })?;
 
-    state.projects().add(&path, now()).map(Some)
+    let added = state.projects().add(&path, now())?;
+    // A first project opens the gate: there is now something to observe.
+    if let Ok(count) = mira_db::ProjectRepo::count(state.db.as_ref()) {
+        state.set_project_count(count as usize);
+    }
+    Ok(Some(added))
 }
 
 /// `projects.open` — record that a project was opened and return it.
 #[tauri::command]
-pub fn projects_open(project_id: ProjectId, state: State<'_, AppState>) -> Result<Project> {
+pub fn projects_open(project_id: ProjectId, state: State<'_, Arc<AppState>>) -> Result<Project> {
     state.projects().open(project_id, now())
 }
 
@@ -69,8 +80,14 @@ pub fn projects_open(project_id: ProjectId, state: State<'_, AppState>) -> Resul
 ///
 /// The directory on disk is never touched (`prd.md` AC-1.3).
 #[tauri::command]
-pub fn projects_remove(project_id: ProjectId, state: State<'_, AppState>) -> Result<()> {
-    state.projects().remove(project_id)
+pub fn projects_remove(project_id: ProjectId, state: State<'_, Arc<AppState>>) -> Result<()> {
+    state.projects().remove(project_id)?;
+    // Its observations go with it, rather than lingering in a map nobody empties.
+    state.live.forget(project_id);
+    if let Ok(count) = mira_db::ProjectRepo::count(state.db.as_ref()) {
+        state.set_project_count(count as usize);
+    }
+    Ok(())
 }
 
 /// `projects.reveal` — open a project's folder where the user's file manager
@@ -80,7 +97,7 @@ pub fn projects_remove(project_id: ProjectId, state: State<'_, AppState>) -> Res
 /// why the capability reads Degraded there and the button says "Open Folder"
 /// rather than promising a selection (`platform-abstraction.md` §4.9).
 #[tauri::command]
-pub fn projects_reveal(project_id: ProjectId, state: State<'_, AppState>) -> Result<()> {
+pub fn projects_reveal(project_id: ProjectId, state: State<'_, Arc<AppState>>) -> Result<()> {
     let project = state.projects().get(project_id)?;
     let root = std::path::Path::new(&project.root_path);
 

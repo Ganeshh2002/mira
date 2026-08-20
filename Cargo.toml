@@ -6,7 +6,10 @@ members = [
     "crates/mira-fs",
     "crates/mira-git",
     "crates/mira-monorepo",
+    "crates/mira-ports",
+    "crates/mira-processes",
     "crates/mira-platform",
+    "crates/mira-scheduler",
     "crates/mira-projects",
     "crates/mira-workspaces",
     "src-tauri",
@@ -30,18 +33,26 @@ mira-fs = { path = "crates/mira-fs" }
 mira-git = { path = "crates/mira-git" }
 mira-monorepo = { path = "crates/mira-monorepo" }
 mira-platform = { path = "crates/mira-platform" }
+mira-ports = { path = "crates/mira-ports" }
+mira-processes = { path = "crates/mira-processes" }
+mira-scheduler = { path = "crates/mira-scheduler" }
 mira-projects = { path = "crates/mira-projects" }
 mira-workspaces = { path = "crates/mira-workspaces" }
 
 # Reads only, and Mira never touches the network (ADR-0009), so git2's default
 # features — HTTPS and SSH transports, which drag in OpenSSL — are all off.
 git2 = { version = "0.21", default-features = false }
+netstat2 = "0.11"
 rusqlite = { version = "0.37", features = ["bundled"] }
+# Native process facts on all three platforms; no shelling out, no parsing of
+# human-readable output (security-and-privacy.md §5).
+sysinfo = { version = "0.39", default-features = false, features = ["system"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"
 tempfile = "3"
 toml = "0.9"
+tokio = { version = "1", default-features = false }
 ts-rs = "11"
 
 [profile.release]

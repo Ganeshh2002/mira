@@ -10,8 +10,8 @@ use std::path::Path;
 
 use mira_core::Capability;
 use mira_platform::{
-    reveal_command, surface_treatment, DisplayServer, EnvFacts, LinuxPackaging, Os, Platform,
-    PlatformCapabilities, SurfaceTreatment,
+    is_openable, open_url_command, reveal_command, surface_treatment, DisplayServer, EnvFacts,
+    LinuxPackaging, Os, Platform, PlatformCapabilities, SurfaceTreatment,
 };
 
 fn facts(os: Os, display_server: DisplayServer) -> EnvFacts {
@@ -157,4 +157,52 @@ fn every_treatment_names_itself_for_the_interface() {
         SurfaceTreatment::SystemMaterial.token(),
         SurfaceTreatment::Opaque.token()
     );
+}
+
+// ── Opening a URL ────────────────────────────────────────────────────────────
+
+#[test]
+fn a_localhost_url_opens_with_the_platform_opener() {
+    for (os, program) in [
+        (Os::MacOs, "open"),
+        (Os::Windows, "explorer"),
+        (Os::Linux, "xdg-open"),
+    ] {
+        let (found, args) = open_url_command(os, "http://localhost:3000");
+
+        assert_eq!(found, program);
+        assert_eq!(args, [std::ffi::OsString::from("http://localhost:3000")]);
+    }
+}
+
+#[test]
+fn only_http_and_https_may_be_opened() {
+    // security-and-privacy.md §5 rule 5. `file://` would open a local path,
+    // `javascript:` and custom schemes hand control to whatever registered them.
+    // The allowlist is checked before a process is spawned, not after.
+    for allowed in ["http://localhost:5173", "https://example.com/x"] {
+        assert!(is_openable(allowed), "{allowed} is a web address");
+    }
+
+    for refused in [
+        "file:///etc/passwd",
+        "javascript:alert(1)",
+        "data:text/html,<b>",
+        "vscode://file/etc/passwd",
+        "ftp://example.com",
+        "",
+        "localhost:3000",
+        " http://localhost:3000",
+    ] {
+        assert!(!is_openable(refused), "{refused} must not be opened");
+    }
+}
+
+#[test]
+fn a_url_is_one_argument_however_it_is_spelled() {
+    let hostile = "http://localhost:3000/?a=1&b=2; rm -rf ~";
+    let (program, args) = open_url_command(Os::Linux, hostile);
+
+    assert!(!program.contains(';'));
+    assert_eq!(args, [std::ffi::OsString::from(hostile)]);
 }

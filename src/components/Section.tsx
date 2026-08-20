@@ -7,7 +7,7 @@ import type { ReactNode } from 'react';
 export function Section({ label, children }: { label: string; children: ReactNode }) {
   return (
     <section className="flex flex-col gap-[var(--space-2)]">
-      <h2 className="t-label text-ink-2">{label}</h2>
+      {label ? <h2 className="t-label text-ink-1">{label}</h2> : null}
       <div className="overflow-hidden rounded-md border border-line bg-ground-1">
         {children}
       </div>
