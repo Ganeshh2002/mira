@@ -6,8 +6,9 @@
 
 use std::sync::Arc;
 
+use mira_core::AppKind;
 use mira_core::{MiraError, Result};
-use mira_platform::{Shell, ShellHost};
+use mira_platform::{LaunchHost, LaunchTarget, Launcher};
 use tauri::State;
 
 use crate::live::LiveSnapshot;
@@ -81,7 +82,13 @@ pub fn live_open_service(port: u16, state: State<'_, Arc<AppState>>) -> Result<(
         });
     }
 
-    Shell::new(state.os, state.platform.clone()).open_url(&localhost(port))
+    // Through the launcher, so a service opens the way an editor does — and on
+    // macOS through the window server rather than through a command line
+    // (ADR-0013). A web address goes to the browser the person actually chose,
+    // never to whichever one Mira happened to find first.
+    Launcher::new(state.os, state.platform.clone())
+        .launch(AppKind::Browser, LaunchTarget::WebAddress(localhost(port)))
+        .map(|_| ())
 }
 
 /// The address a locally listening port is reached at.
@@ -101,5 +108,16 @@ mod tests {
     #[test]
     fn the_address_is_one_the_platform_will_open() {
         assert!(mira_platform::is_openable(&localhost(5173)));
+    }
+
+    #[test]
+    fn the_address_is_the_only_thing_a_browser_is_ever_handed() {
+        // The port is a `u16`, so the whole space of addresses this command can
+        // produce is `http://localhost:0` through `http://localhost:65535`.
+        for port in [0, 1, 3000, 65535] {
+            let built = localhost(port);
+            assert!(built.starts_with("http://localhost:"));
+            assert!(mira_platform::is_openable(&built));
+        }
     }
 }

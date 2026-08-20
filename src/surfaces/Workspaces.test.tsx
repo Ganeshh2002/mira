@@ -120,6 +120,8 @@ function backend({
         return Promise.resolve(listed);
       case 'workspaces_applications':
         return Promise.resolve(apps);
+      case 'workspaces_openable':
+        return Promise.resolve(apps.filter((report) => report.kind !== 'browser'));
       case 'workspaces_create': {
         const made =
           onCreate?.(String(args?.['name'])) ??
@@ -362,6 +364,7 @@ describe('application context', () => {
         return Promise.resolve(live);
       if (command === 'workspaces_list') return Promise.resolve([stored]);
       if (command === 'workspaces_applications') return Promise.resolve(everythingInstalled);
+      if (command === 'workspaces_openable') return Promise.resolve([]);
       if (command === 'workspaces_set_applications') {
         stored = { ...stored, applications: args?.['kinds'] as Workspace['applications'] };
         return Promise.resolve(stored);
@@ -384,15 +387,17 @@ describe('application context', () => {
     );
   });
 
-  it('offers no way to launch anything yet', async () => {
+  it('offers no way to restore or start anything', async () => {
     backend({ workspaces: [workspace({ applications: ['editor'] })] });
     renderApp(<App surface="main" />);
 
     await userEvent.click(await screen.findByRole('button', { name: /Web Development/ }));
     await screen.findByRole('list', { name: /context/i });
 
-    // Launching is a later slice. Nothing here starts an application, and there
-    // is no disabled button hinting that it nearly does.
+    // Opening an editor is a real action now, and it is the *only* kind of
+    // starting there is. Nothing restores a workspace, nothing starts a
+    // development server, and there is no disabled button hinting that it
+    // nearly does (`information-architecture.md` §5).
     for (const absent of [/launch/i, /start editor/i, /restore/i]) {
       expect(screen.queryByRole('button', { name: absent })).not.toBeInTheDocument();
     }
@@ -405,6 +410,7 @@ describe('a project whose folder is gone', () => {
       if (command === 'projects_list') return Promise.resolve([aviora]);
       if (command === 'workspaces_list') return Promise.resolve([workspace()]);
       if (command === 'workspaces_applications') return Promise.resolve(everythingInstalled);
+      if (command === 'workspaces_openable') return Promise.resolve([]);
       if (command === 'live_refresh' || command === 'live_snapshot') {
         return Promise.resolve({
           projects: [

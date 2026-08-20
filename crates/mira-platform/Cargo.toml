@@ -13,3 +13,11 @@ publish.workspace = true
 mira-core = { workspace = true }
 serde = { workspace = true }
 ts-rs = { workspace = true }
+
+# Native application launching (ADR-0013). Already in the tree via Tauri, at the
+# same versions, so this adds a boundary rather than a build. Every binding used
+# is a safe function, which is why the crate keeps `forbid(unsafe_code)`.
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = { workspace = true }
+objc2-app-kit = { workspace = true }
+objc2-foundation = { workspace = true }

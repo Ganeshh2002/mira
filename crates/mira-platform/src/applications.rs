@@ -13,8 +13,11 @@
 //! Nothing here runs anything. A candidate is checked by looking for a file — a
 //! bundle on macOS, a program on `PATH`, a `.desktop` entry on Linux — and the
 //! check is a parameter to [`first_present`], so the pure part is testable for all
-//! three platforms from any one of them. Launching is a later slice; this module
-//! only reports what is there (slice brief §8).
+//! three platforms from any one of them.
+//!
+//! Finding an application and *opening something with it* are separate questions,
+//! and this module answers both without conflating them: [`Launch`] records which
+//! candidates can be opened with, and [`crate::launch`] does the opening.
 
 use std::path::{Path, PathBuf};
 
@@ -35,6 +38,26 @@ pub enum Probe {
     Desktop(&'static str),
 }
 
+/// Whether Mira can open something *with* an application, once it is found.
+///
+/// Discovery and launching ask different questions, and a candidate may answer
+/// the first and not the second. Neovim is an editor by any measure, so "do you
+/// have an editor" is yes — but starting it from a windowed application produces
+/// a headless process nobody can see, so "open this here" has no answer. Saying
+/// that in the table is what keeps the two from drifting apart.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Launch {
+    /// Openable. The parts are literal argv elements placed *before* the target
+    /// when the application is started by program name — a terminal's way of
+    /// being told which directory. Nothing here is ever derived from input.
+    With(&'static [&'static str]),
+    /// Found, and not something Mira can open a directory in.
+    NotFromHere,
+}
+
+/// The common case: the target is the only argument.
+const OPENS: Launch = Launch::With(&[]);
+
 /// One application Mira knows how to look for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Candidate {
@@ -42,12 +65,15 @@ pub struct Candidate {
     pub name: &'static str,
     /// Where to look.
     pub probe: Probe,
+    /// Whether something can be opened with it, and how.
+    pub launch: Launch,
 }
 
 const fn bundle(name: &'static str, path: &'static str) -> Candidate {
     Candidate {
         name,
         probe: Probe::Bundle(path),
+        launch: OPENS,
     }
 }
 
@@ -55,13 +81,40 @@ const fn program(name: &'static str, command: &'static str) -> Candidate {
     Candidate {
         name,
         probe: Probe::Program(command),
+        launch: OPENS,
     }
 }
 
+/// A program that takes the directory after a flag of its own.
+const fn opens_at(
+    name: &'static str,
+    command: &'static str,
+    args: &'static [&'static str],
+) -> Candidate {
+    Candidate {
+        name,
+        probe: Probe::Program(command),
+        launch: Launch::With(args),
+    }
+}
+
+/// Present, but not something Mira can open anything with.
+const fn found_only(name: &'static str, command: &'static str) -> Candidate {
+    Candidate {
+        name,
+        probe: Probe::Program(command),
+        launch: Launch::NotFromHere,
+    }
+}
+
+/// A freedesktop entry. Good enough to prove an application is installed —
+/// a Flatpak leaves nothing on `PATH` — and not a program name, so nothing is
+/// ever started from one.
 const fn desktop(name: &'static str, id: &'static str) -> Candidate {
     Candidate {
         name,
         probe: Probe::Desktop(id),
+        launch: Launch::NotFromHere,
     }
 }
 
@@ -75,8 +128,8 @@ const MACOS_EDITORS: &[Candidate] = &[
     bundle("Sublime Text", "/Applications/Sublime Text.app"),
     bundle("Nova", "/Applications/Nova.app"),
     bundle("Xcode", "/Applications/Xcode.app"),
-    program("Neovim", "nvim"),
-    program("Vim", "vim"),
+    found_only("Neovim", "nvim"),
+    found_only("Vim", "vim"),
 ];
 
 const MACOS_TERMINALS: &[Candidate] = &[
@@ -104,14 +157,17 @@ const WINDOWS_EDITORS: &[Candidate] = &[
     program("Cursor", "cursor"),
     program("Zed", "zed"),
     program("Sublime Text", "subl"),
-    program("Neovim", "nvim"),
-    program("Notepad", "notepad"),
+    found_only("Neovim", "nvim"),
+    // Notepad opens a file, not a folder.
+    found_only("Notepad", "notepad"),
 ];
 
 const WINDOWS_TERMINALS: &[Candidate] = &[
-    program("Windows Terminal", "wt"),
-    program("PowerShell", "pwsh"),
-    program("Windows PowerShell", "powershell"),
+    opens_at("Windows Terminal", "wt", &["-d"]),
+    opens_at("PowerShell", "pwsh", &["-WorkingDirectory"]),
+    // Windows PowerShell has no working-directory switch; opening it would land
+    // in the wrong place quietly.
+    found_only("Windows PowerShell", "powershell"),
 ];
 
 const WINDOWS_BROWSERS: &[Candidate] = &[
@@ -124,20 +180,21 @@ const LINUX_EDITORS: &[Candidate] = &[
     program("Visual Studio Code", "code"),
     program("Cursor", "cursor"),
     program("Zed", "zeditor"),
-    program("Neovim", "nvim"),
-    program("Vim", "vim"),
-    program("GNU Emacs", "emacs"),
+    found_only("Neovim", "nvim"),
+    found_only("Vim", "vim"),
+    found_only("GNU Emacs", "emacs"),
     desktop("Visual Studio Code", "code"),
 ];
 
 const LINUX_TERMINALS: &[Candidate] = &[
-    program("GNOME Terminal", "gnome-terminal"),
-    program("Konsole", "konsole"),
-    program("Alacritty", "alacritty"),
-    program("Kitty", "kitty"),
-    program("WezTerm", "wezterm"),
-    program("Xfce Terminal", "xfce4-terminal"),
-    program("xterm", "xterm"),
+    opens_at("GNOME Terminal", "gnome-terminal", &["--working-directory"]),
+    opens_at("Konsole", "konsole", &["--workdir"]),
+    opens_at("Alacritty", "alacritty", &["--working-directory"]),
+    opens_at("Kitty", "kitty", &["--directory"]),
+    opens_at("WezTerm", "wezterm", &["start", "--cwd"]),
+    opens_at("Xfce Terminal", "xfce4-terminal", &["--working-directory"]),
+    // xterm has no working-directory option at all.
+    found_only("xterm", "xterm"),
 ];
 
 const LINUX_BROWSERS: &[Candidate] = &[
@@ -190,6 +247,19 @@ pub struct AppReport {
     pub presence: AppPresence,
 }
 
+/// The first candidate that is present *and* can be opened with.
+///
+/// Existence is only asked about candidates that could be launched at all, so a
+/// machine with nothing but Neovim does not pay for a `PATH` walk to find out it
+/// still has no editor Mira can open.
+pub fn first_openable(
+    list: &[Candidate],
+    mut exists: impl FnMut(&Candidate) -> bool,
+) -> Option<&Candidate> {
+    list.iter()
+        .find(|candidate| candidate.launch != Launch::NotFromHere && exists(candidate))
+}
+
 /// The first candidate `exists` says is present.
 ///
 /// `exists` is a parameter rather than a call, which is what makes every
@@ -227,6 +297,9 @@ impl Applications {
     }
 
     /// One answer per kind, in [`AppKind::ALL`] order.
+    ///
+    /// *Is one here* — the question the Context panel asks. A kind may be
+    /// present here and still absent from [`Self::openable`].
     #[must_use]
     pub fn survey(&self) -> Vec<AppReport> {
         AppKind::ALL
@@ -234,6 +307,28 @@ impl Applications {
             .map(|kind| AppReport {
                 kind,
                 presence: first_present(candidates(self.os, kind), present),
+            })
+            .collect()
+    }
+
+    /// What this machine can open a directory in.
+    ///
+    /// Editors and terminals only. A browser is not here because a browser opens
+    /// a *service*, not a workspace: there is no address to hand it until
+    /// something is listening, and the availability question is answered by the
+    /// service list rather than by what is installed (slice brief §4).
+    #[must_use]
+    pub fn openable(&self) -> Vec<AppReport> {
+        [AppKind::Editor, AppKind::Terminal]
+            .into_iter()
+            .map(|kind| AppReport {
+                kind,
+                presence: first_openable(candidates(self.os, kind), present).map_or(
+                    AppPresence::NotInstalled,
+                    |candidate| AppPresence::Available {
+                        name: candidate.name.to_owned(),
+                    },
+                ),
             })
             .collect()
     }
@@ -245,7 +340,7 @@ impl Applications {
 /// no directory is walked: a bundle is a path that either exists or does not, a
 /// program is a name looked up across `PATH`, and a desktop entry is a file in
 /// one of a fixed set of directories.
-fn present(candidate: &Candidate) -> bool {
+pub(crate) fn present(candidate: &Candidate) -> bool {
     match candidate.probe {
         Probe::Bundle(path) => Path::new(path).exists(),
         Probe::Program(program) => on_path(program),

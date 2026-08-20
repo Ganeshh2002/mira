@@ -75,8 +75,10 @@ plus a fake for tests:
 
 ```rust
 pub trait ShortcutHost   { fn register(&self, chord: &Chord) -> Result<()>; fn unregister_all(&self); }
-pub trait AppLauncher    { fn detect(&self, kind: AppKind) -> Vec<AppCandidate>;
-                           fn launch(&self, spec: &LaunchSpec) -> Result<LaunchOutcome>; }
+// Implemented (Slice 4). `LaunchTarget` is a directory or an address Mira built —
+// there is no variant carrying a program or an argument. See ADR-0013.
+pub trait LaunchHost     { fn openable(&self) -> Vec<AppReport>;
+                           fn launch(&self, kind: AppKind, target: LaunchTarget) -> Result<Launched>; }
 pub trait ProcessHost    { fn info(&self, pid: Pid) -> Result<ProcessInfo>;
                            fn list_for_roots(&self, roots: &[&Path]) -> Vec<ProcessInfo>;
                            fn terminate(&self, pid: Pid, mode: TerminateMode) -> Result<()>; }
@@ -127,16 +129,39 @@ Detection: `XDG_SESSION_TYPE=wayland` or `WAYLAND_DISPLAY` set.
 
 ### 4.2 Application launching
 
+**Implemented in Slice 4.** ADR-0013 has the reasoning; this is the mechanism.
+
 | OS | Mechanism |
 |---|---|
-| macOS | `open -b <bundle-id> --args …`, or a direct executable path. Candidate discovery via `/Applications`, `~/Applications`, and Launch Services. |
-| Windows | `CreateProcess` with per-argument quoting owned by the platform layer; candidates from `HKLM`/`HKCU` App Paths, `%LOCALAPPDATA%\Programs`, and `PATH`. `.cmd`/`.bat` need distinct quoting and are handled explicitly. |
-| Linux | `.desktop` resolution (`gio launch`) preferred, then `PATH`. Flatpak (`flatpak run <id>`) and Snap are separate candidate kinds. |
+| macOS | `NSWorkspace.openURLs:withApplicationAtURL:configuration:` — two typed `NSURL`s handed to the window server. **Not** `open(1)`: no command line, and no child process for Mira to own. Candidates are `.app` bundles at absolute paths. |
+| Windows | The program started with an argv array, quoting owned by the platform layer. Candidates come from `PATH`, including the `.exe`/`.cmd`/`.bat` spellings. |
+| Linux | The program started with an argv array. Candidates come from `PATH`; `.desktop` entries prove an application is *installed* (a Flatpak leaves nothing on `PATH`) but are never launched, because doing so needs a portal that is not present everywhere. |
 
-Universal: **argv arrays only, no shell.** Quoting is a platform-layer responsibility;
-the domain layer never builds a command string. Status is `Full` everywhere, with the
-practical caveat that candidate *detection* is best-effort and the user can always point
-at a binary.
+Web addresses do not go to a named application on any platform. They go to the
+desktop's own handler — `NSWorkspace.openURL:` on macOS, `explorer` on Windows,
+`xdg-open` on Linux — so a service opens in the browser the person chose rather
+than the one Mira found first.
+
+**Universal, and enforced by guard tests rather than asserted here:**
+
+- **Argv arrays only, no shell.** The domain layer never builds a command string,
+  and `Command::new` exists in exactly one function in this crate.
+- **One value in an argv.** Every other element is a `&'static str` from the
+  candidate table. The target is the last argument and there is only one.
+- **The caller names a kind.** `editor`, `terminal`, `browser` — never a program,
+  a path, or an argument. There is no setting that lets someone point Mira at a
+  binary; a machine with nothing openable says so.
+
+**Detection and openability are separate answers.** `Candidate::launch` records
+whether a found application is one Mira can open a folder *in*. Terminal editors
+(Neovim, Vim, Emacs) and terminals with no working-directory option (`xterm`,
+Windows PowerShell) are detected and never offered, because launching them would
+produce an invisible process or the wrong directory. `Applications::survey`
+answers "is one here"; `Applications::openable` answers "can Mira open one".
+
+Status is `Full` on all three platforms. Where a *kind* has no openable
+application the answer is `AppPresence::NotInstalled` — a fact shown in the
+interface, not an error.
 
 ### 4.3 Process management
 

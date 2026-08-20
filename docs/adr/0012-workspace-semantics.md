@@ -62,6 +62,11 @@ The interface says so in words rather than leaving it to be discovered, and ther
 is no disabled Launch button hinting at what is coming
 (`information-architecture.md` §5).
 
+**Slice 4 built the launching** ([ADR-0013](0013-launching-applications.md)), and
+this decision survived it intact: *Open with* is a separate, explicit action, and
+opening a workspace still records only when. Nothing is restored, and nothing
+starts on its own.
+
 ### Application context is a *kind*, and availability is discovered
 
 A workspace stores that it works with an **editor**, a **terminal**, a
@@ -77,6 +82,10 @@ there.
 It also means `applications` and `app_preferences` (data-model §3.4) stay empty
 until the slice that launches things. Those record *which specific application*,
 which is a choice this slice deliberately does not ask anyone to make.
+
+They are still empty after Slice 4, which launches by *kind* and resolves the
+application fresh on each machine. They will fill when someone wants to override
+the choice.
 
 ### A project's workspaces go with the project
 

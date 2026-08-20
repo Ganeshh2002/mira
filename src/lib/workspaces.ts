@@ -7,4 +7,5 @@
 export const workspaceKeys = {
   of: (projectId: number) => ['workspaces', projectId] as const,
   applications: ['workspaces', 'applications'] as const,
+  openable: ['workspaces', 'openable'] as const,
 };

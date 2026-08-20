@@ -20,6 +20,7 @@ one; the old file stays, marked superseded, because the reasoning is the point.
 | [0010](0010-monorepo-detection.md) | Monorepo detection: separate crate, read-only, computed not stored | Accepted |
 | [0011](0011-one-scheduler.md) | One scheduler, gated, with blocking observers | Accepted |
 | [0012](0012-workspace-semantics.md) | Workspace semantics: stated not observed, a view not an action | Accepted |
+| [0013](0013-launching-applications.md) | Launching applications: a kind, not a command; `NSWorkspace` on macOS | Accepted |
 
 Decisions **not** recorded here because they are reversible in an afternoon: Tailwind,
 TanStack Query, Zustand, Vite, the icon set. Those live in

@@ -27,6 +27,9 @@ authors = ["The Aviora Mira contributors"]
 publish = false
 
 [workspace.dependencies]
+objc2 = "0.6"
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSWorkspace", "NSRunningApplication", "block2"] }
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSArray", "NSString", "NSURL"] }
 mira-core = { path = "crates/mira-core" }
 mira-db = { path = "crates/mira-db" }
 mira-fs = { path = "crates/mira-fs" }

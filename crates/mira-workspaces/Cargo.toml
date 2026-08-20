@@ -12,6 +12,7 @@ publish.workspace = true
 [dependencies]
 mira-core = { workspace = true }
 mira-db = { workspace = true }
+mira-fs = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

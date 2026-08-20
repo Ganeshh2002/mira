@@ -166,6 +166,21 @@ containing shell metacharacters demonstrably executes nothing extra.
 in this slice. Terminal and editor CLI variation is contained in data, with a documented
 "add yours" contribution path.
 
+**Delivered (part), after the workspace.** Built as the slice that makes a workspace
+actionable ([ADR-0013](../adr/0013-launching-applications.md)). What is in: platform
+launching for editor and terminal, per-platform candidate tables carrying their own
+working-directory flags, the browser action on an observed service, `Open with` on the
+workspace surface, and the boundary that makes it safe — a launch is asked for by
+**kind**, and four guard tests keep it that way. macOS launches through `NSWorkspace`
+rather than `open(1)`, so Mira never becomes the parent of what it starts.
+
+**Still to come in this slice.** The applications registry in `mira-db` and per-project
+or per-workspace *preferences* — which specific application, rather than which kind —
+along with argv templates, open-file-at-line, and the keyboard bindings. The `commands`
+table stays empty until then, deliberately: a stored command string is the thing worth
+not having yet. There is also no "add yours" path, so an unrecognised editor is a table
+row in the next release rather than a setting.
+
 ---
 
 ## Slice 4 — Multiple projects and workspaces *(M, 0.2)*

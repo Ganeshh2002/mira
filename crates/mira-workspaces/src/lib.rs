@@ -17,6 +17,8 @@
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
 
+use std::path::PathBuf;
+
 use mira_core::{AppKind, MiraError, ProjectId, Result, Workspace, WorkspaceId};
 use mira_db::{NewWorkspace, ProjectRepo, WorkspaceRepo};
 
@@ -57,6 +59,21 @@ pub trait WorkspaceService {
 
     /// Replace the kinds of application this workspace works with.
     fn set_applications(&self, id: WorkspaceId, kinds: &[AppKind], now: i64) -> Result<Workspace>;
+
+    /// The directory this workspace's applications open at.
+    ///
+    /// A workspace has no directory of its own, so this is its project's
+    /// canonical root — resolved here, in Rust, from a row the user registered
+    /// through the native picker. It is the *only* way a path reaches the
+    /// launcher, which is what makes "the interface cannot name a directory"
+    /// hold all the way down (`security-and-privacy.md` §5).
+    ///
+    /// # Errors
+    ///
+    /// [`MiraError::NotFound`] if the workspace is gone, its project is gone, or
+    /// the folder has been moved or deleted — the last of which leaves the
+    /// workspace entirely intact (`prd.md` FR-1.5).
+    fn working_directory(&self, id: WorkspaceId) -> Result<PathBuf>;
 }
 
 /// The repository-backed implementation.
@@ -139,6 +156,26 @@ impl<R: WorkspaceRepo + ProjectRepo> WorkspaceService for Workspaces<R> {
         self.repo.get_workspace(id)?;
         self.repo.set_workspace_applications(id, kinds, now)?;
         self.repo.get_workspace(id)
+    }
+
+    fn working_directory(&self, id: WorkspaceId) -> Result<PathBuf> {
+        let workspace = self.repo.get_workspace(id)?;
+        let project = self.repo.get(workspace.project_id)?;
+
+        // `canonical_dir` is the same resolution a project went through when it
+        // was added, so a moved folder fails here exactly as it fails there.
+        // Its `NotFound` names the path; this names the project, because that is
+        // the thing the person recognises.
+        mira_fs::canonical_dir(std::path::Path::new(&project.root_path)).map_err(
+            |error| match error {
+                MiraError::NotFound { .. } | MiraError::PermissionDenied { .. } => {
+                    MiraError::NotFound {
+                        what: format!("The folder for \"{}\"", project.name),
+                    }
+                }
+                other => other,
+            },
+        )
     }
 }
 

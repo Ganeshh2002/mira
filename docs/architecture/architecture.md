@@ -84,7 +84,7 @@ crates/
   mira-docker/              # read-only API client
   mira-media/
   mira-system/
-  mira-platform/            # capability traits + per-OS impls
+  mira-platform/            # capability traits + per-OS impls; the only launcher
   mira-automation/          # 0.6+ — not created before then
 src/                        # React app
   app/ features/ components/ lib/ styles/
@@ -178,10 +178,11 @@ workspaces.create({ projectId, name, description }) → Workspace
 workspaces.open({ workspaceId })      → Workspace
 workspaces.set_applications({ workspaceId, kinds }) → Workspace
 workspaces.applications()             → AppReport[]
+workspaces.openable()                 → AppReport[]
+workspaces.launch({ workspaceId, kind }) → Launched
 git.log({ projectId, limit, cursor }) → CommitPage
 ports.scan({ projectId? })            → PortEntry[]
 processes.terminate({ pid, force })   → TerminateOutcome
-apps.launch({ target, projectId })    → LaunchOutcome
 peek.read({ path, maxBytes })         → PeekPayload
 shelf.add({ path, scope })            → ShelfItem
 ```
@@ -200,6 +201,18 @@ Rules:
    granted read access to a tree, so that moment belongs to a native picker opened in
    Rust on a user gesture — which is why `projects.add` has no arguments. Enforced by a
    guard test that scans every command signature.
+6. **No command names something to run, or somewhere to go.** `workspaces.launch` takes
+   a workspace and a *kind*; `live.open_service` takes a *port*. The program, the argv
+   and the URL are all resolved beneath the boundary
+   ([ADR-0013](../adr/0013-launching-applications.md)). The trusted launch path, in full:
+
+   ```text
+   Frontend → typed IPC → service → platform launcher → known application
+   ```
+
+   Two values cross the boundary — a row id and an enum variant — and neither is a
+   string that means anything on disk. Four guard tests keep it that way, each proven
+   able to fail by injection.
 
 ### Events (backend tells)
 

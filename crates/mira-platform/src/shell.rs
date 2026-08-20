@@ -137,10 +137,14 @@ impl<P: PlatformCapabilities> ShellHost for Shell<P> {
 
 /// Start a program and leave it alone.
 ///
-/// Not waited on: the browser or file manager outlives this call, and `explorer`
-/// reports a non-zero exit code even when it succeeds, so checking the status
-/// would invent failures that did not happen.
-fn spawn(program: &str, args: &[OsString], what: &str, subject: &str) -> Result<()> {
+/// Not waited on: the browser, file manager or editor outlives this call, and
+/// `explorer` reports a non-zero exit code even when it succeeds, so checking the
+/// status would invent failures that did not happen.
+///
+/// `args` is an argv array, always. There is one of these in the whole codebase,
+/// a guard test keeps `Command::new` inside this crate, and nothing above ever
+/// composes a command line (`security-and-privacy.md` §5 rule 1).
+pub(crate) fn spawn(program: &str, args: &[OsString], what: &str, subject: &str) -> Result<()> {
     Command::new(program)
         .args(args)
         .spawn()

@@ -10,6 +10,7 @@ import { ContextPanel } from '../components/ContextPanel';
 import { Freshness } from '../components/Freshness';
 import { GitPanel } from '../components/GitPanel';
 import { MissingFolder } from '../components/MissingFolder';
+import { OpenWith } from '../components/OpenWith';
 import { Row } from '../components/Row';
 import { Section } from '../components/Section';
 import { ServicesPanel } from '../components/ServicesPanel';
@@ -19,6 +20,10 @@ import { workspaceKeys } from '../lib/workspaces';
 /**
  * One workspace: the project underneath it, and everything Mira already knows
  * about that project.
+ *
+ * The actions follow the same rule as the readings: everything they act on
+ * belongs to the project, so "Open with" opens the project's root, and a folder
+ * that has gone missing removes the actions rather than failing them.
  *
  * Nothing here is a workspace's *own* runtime state, because a workspace has
  * none. Git, packages and services belong to the project, are observed once by
@@ -46,6 +51,11 @@ export function WorkspaceDetail({
   const available = useQuery({
     queryKey: workspaceKeys.applications,
     queryFn: commands.workspacesApplications,
+  });
+
+  const openable = useQuery({
+    queryKey: workspaceKeys.openable,
+    queryFn: commands.workspacesOpenable,
   });
 
   const setApplications = useMutation({
@@ -116,6 +126,10 @@ export function WorkspaceDetail({
             services={services}
             unplaced={unplaced}
           />
+
+          {openable.data ? (
+            <OpenWith workspaceId={workspace.id} openable={openable.data} />
+          ) : null}
         </>
       )}
 
@@ -140,8 +154,8 @@ export function WorkspaceDetail({
       ) : null}
 
       <p className="t-ui m-0 text-ink-1">
-        Opening a workspace shows you where things stand. It does not start anything — that
-        arrives with restoration, and will ask first.
+        Opening a workspace shows you where things stand. Starting an editor or a terminal is
+        the row above, and always something you asked for — Mira restores nothing on its own.
       </p>
     </div>
   );

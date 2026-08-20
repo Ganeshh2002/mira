@@ -135,9 +135,14 @@ Launching applications is Mira's most dangerous capability, so the rules are abs
    containing `; rm -rf ~` is passed as one argument and does nothing.
 4. **Programs are resolved, not searched loosely.** A program is an absolute path, a
    detected bundle/desktop id, or a `PATH` lookup performed by Mira — never a string
-   handed to an interpreter.
-5. **URLs are allowlisted** to `http`, `https`, `file`. `javascript:`, `data:`, and
-   custom schemes are refused.
+   handed to an interpreter. **As built (Slice 4), it is narrower than that:** a
+   program is a row in a table compiled into the binary, and nothing outside that
+   table can be started. There is no setting that points Mira at a binary.
+5. **URLs are allowlisted** to `http` and `https`. `file:`, `javascript:`, `data:`, and
+   custom schemes are refused. (`file` was in the original list and was dropped when
+   the rule was implemented: it would open a local path, which is the thing rule 8
+   exists to prevent.) No command accepts a URL at all — the interface names a
+   **port**, and Mira builds `http://localhost:<port>` in Rust.
 6. **No auto-run.** Mira never executes anything at startup, on project add, on
    detection, or on any event. Every launch is a user action. This is why automation is
    Future work with a trust model attached rather than a quick win.
@@ -146,6 +151,33 @@ Launching applications is Mira's most dangerous capability, so the rules are abs
    Mira's database, entered by the user, not in the repository. This deliberately forgoes
    a convenient feature (per-repo committed config) because it would make cloning a
    hostile repo dangerous.
+
+### Starting an application
+
+Slice 4 makes a workspace actionable, which is the moment §5's "primary risk"
+stops being hypothetical. ADR-0013 is the full argument; these are the rules.
+
+10. **A launch is asked for by *kind*.** `workspaces.launch(workspace_id, kind)`
+    is the entire privilege the frontend has to start anything. The caller cannot
+    name a program, a path, an argument, a bundle, a working directory or a URL —
+    there is no parameter for any of them, and a guard test fails the build if one
+    appears.
+11. **The directory comes from Mira's own database.** It is the project's
+    canonical root, resolved by the same `mira-fs` call that gave the project its
+    identity, from a row that could only have been created by a native picker
+    (rule 8). `LaunchTarget::Directory` is constructed in exactly one place in the
+    application shell, and a guard counts the construction sites.
+12. **An argv is literals plus one value.** Every element except the last is a
+    `&'static str` from the candidate table; the last is the resolved target.
+    Enforced by the type and asserted by a test.
+13. **macOS launches through the window server, not through a process.**
+    `NSWorkspace`, never `open(1)`. Mira does not become the parent of what it
+    starts, so it never holds a handle it could use to stop your editor — which is
+    what makes rule 6's companion guard ("nothing in this codebase can terminate a
+    process") hold even for applications Mira itself started.
+14. **Launching writes nothing.** No row, no process id, no "currently open in"
+    state. Starting an editor is something that happened, not something a
+    workspace becomes.
 
 ### Registering a project root
 

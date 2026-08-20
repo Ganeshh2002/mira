@@ -2315,6 +2315,9 @@ name = "mira-platform"
 version = "0.1.0"
 dependencies = [
  "mira-core",
+ "objc2",
+ "objc2-app-kit",
+ "objc2-foundation",
  "serde",
  "ts-rs",
 ]
@@ -2368,6 +2371,7 @@ version = "0.1.0"
 dependencies = [
  "mira-core",
  "mira-db",
+ "mira-fs",
  "tempfile",
 ]
 

@@ -1,7 +1,11 @@
 //! `workspaces.*` — a named way of working on one project.
 //!
 //! Thin by rule (`architecture.md` §5): read the clock, call the service, map
-//! the result. Nothing observed passes through here — a workspace's Git state
+//! the result. `workspaces.launch` is the one that does something outside Mira,
+//! and it is thin in the way that matters: it accepts a **row id and a kind**,
+//! and everything else — which directory, which application, which argv — is
+//! resolved underneath it from Mira's own database and a table compiled into the
+//! binary (`security-and-privacy.md` §5). Nothing observed passes through here — a workspace's Git state
 //! and services are the *project's*, read live and served by `live.snapshot`, so
 //! two workspaces on one project share one set of observations rather than each
 //! holding a copy (slice brief §12).
@@ -9,7 +13,7 @@
 use std::sync::Arc;
 
 use mira_core::{AppKind, ProjectId, Result, Workspace, WorkspaceId};
-use mira_platform::{AppReport, Applications};
+use mira_platform::{AppReport, Applications, LaunchHost, LaunchTarget, Launched, Launcher};
 use mira_workspaces::{WorkspaceService, Workspaces};
 use tauri::State;
 
@@ -99,4 +103,38 @@ pub fn workspaces_set_applications(
 #[tauri::command]
 pub fn workspaces_applications(state: State<'_, Arc<AppState>>) -> Vec<AppReport> {
     Applications::for_os(state.os).survey()
+}
+
+/// `workspaces.launch` — open this workspace's project in an application.
+///
+/// The whole privilege surface of launching, in two arguments: **which
+/// workspace**, and **which kind**. There is no path here and no command; the
+/// directory is the project's canonical root, resolved in Rust from a folder the
+/// user picked natively, and the application is the first entry in a fixed table
+/// that this machine actually has. A page cannot name a program, cannot add an
+/// argument, and cannot open a directory Mira was not already given.
+///
+/// A missing folder is a refusal rather than a launch, and the workspace is left
+/// exactly as it was (`prd.md` FR-1.5).
+#[tauri::command]
+pub fn workspaces_launch(
+    workspace_id: WorkspaceId,
+    kind: AppKind,
+    state: State<'_, Arc<AppState>>,
+) -> Result<Launched> {
+    let root = workspaces(&state).working_directory(workspace_id)?;
+
+    Launcher::new(state.os, state.platform.clone()).launch(kind, LaunchTarget::Directory(root))
+}
+
+/// `workspaces.openable` — which kinds this machine can open a folder in.
+///
+/// Not the same question as `workspaces.applications`, and the difference is
+/// visible: a machine whose only editor is Neovim *has* an editor and has
+/// nothing Mira can open a folder in, so the Context row says "Neovim" and no
+/// button appears. Reporting one answer for both would have to lie about one of
+/// them.
+#[tauri::command]
+pub fn workspaces_openable(state: State<'_, Arc<AppState>>) -> Vec<AppReport> {
+    Launcher::new(state.os, state.platform.clone()).openable()
 }

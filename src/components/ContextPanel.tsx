@@ -1,5 +1,6 @@
 import type { AppKind } from '../bindings/AppKind';
 import type { AppReport } from '../bindings/AppReport';
+import { appKindLabel } from '../lib/applications';
 
 /**
  * The applications a workspace works with.
@@ -10,9 +11,10 @@ import type { AppReport } from '../bindings/AppReport';
  * is what lets a row say "Editor · Not installed" — the association survives a
  * move to a machine without VS Code, rather than being quietly dropped.
  *
- * There is nothing to click. Launching an application is a later slice with its
- * own design, and a disabled button hinting at it would be worse than its
- * absence (`information-architecture.md` §5).
+ * There is nothing to click *here*. This panel is the association — which kinds
+ * belong to this workspace — and opening one is the "Open with" row above it.
+ * Keeping them apart is what lets a workspace say it works with an editor on a
+ * machine that has none.
  */
 export function ContextPanel({
   kinds,
@@ -46,7 +48,7 @@ export function ContextPanel({
                 {included ? '●' : '○'}
               </span>
 
-              <span className="t-ui shrink-0 text-ink-1">{label(report.kind)}</span>
+              <span className="t-ui shrink-0 text-ink-1">{appKindLabel(report.kind)}</span>
 
               <span className="t-value ml-auto min-w-0 truncate text-ink-0">
                 {report.presence.state === 'available' ? (
@@ -70,21 +72,4 @@ export function ContextPanel({
       </ul>
     </section>
   );
-}
-
-/**
- * The word for a kind.
- *
- * Interface copy lives here rather than coming over the wire: the backend sends
- * the variant, and nothing in this file names a specific application.
- */
-function label(kind: AppKind): string {
-  switch (kind) {
-    case 'editor':
-      return 'Editor';
-    case 'terminal':
-      return 'Terminal';
-    case 'browser':
-      return 'Browser';
-  }
 }

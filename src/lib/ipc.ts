@@ -4,6 +4,7 @@ import type { FoundationStatus } from '../bindings/FoundationStatus';
 import type { MiraError } from '../bindings/MiraError';
 import type { AppKind } from '../bindings/AppKind';
 import type { AppReport } from '../bindings/AppReport';
+import type { Launched } from '../bindings/Launched';
 import type { LiveSnapshot } from '../bindings/LiveSnapshot';
 import type { Project } from '../bindings/Project';
 import type { Workspace } from '../bindings/Workspace';
@@ -162,4 +163,24 @@ export const commands = {
 
   /** `workspaces.applications` — what this machine actually has. */
   workspacesApplications: (): Promise<AppReport[]> => call('workspaces_applications'),
+
+  /**
+   * `workspaces.openable` — the kinds this machine can open a folder in.
+   *
+   * Narrower than `workspacesApplications`, and deliberately a second question:
+   * a machine can *have* an editor Mira has no way to open a directory in.
+   */
+  workspacesOpenable: (): Promise<AppReport[]> => call('workspaces_openable'),
+
+  /**
+   * `workspaces.launch` — open this workspace's project in an application.
+   *
+   * A workspace and a kind. Not a path, not a program, not a command line, and
+   * not an address: the directory is resolved in Rust from the project row, and
+   * the application from a table compiled into the binary. This signature is the
+   * entire privilege the interface has to start anything
+   * (`security-and-privacy.md` §5 rule 1).
+   */
+  workspacesLaunch: (workspaceId: number, kind: AppKind): Promise<Launched> =>
+    call('workspaces_launch', { workspaceId, kind }),
 };

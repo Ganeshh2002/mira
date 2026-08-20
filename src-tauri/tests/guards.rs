@@ -21,9 +21,20 @@ fn repo_root() -> PathBuf {
         .to_path_buf()
 }
 
+/// The two files that must quote what everything else may not contain.
+///
+/// A guard names the pattern it forbids, and `wire.rs` names the strings an
+/// attacker would send — `/bin/sh`, a `file://` URL, a launch target built from
+/// nothing. Scanning them would make every guard fail on its own evidence.
+///
+/// This is the one exclusion, and it is narrow on purpose: both are test
+/// binaries with no path into the product, and both exist to *assert* the
+/// absence of what they mention. Adding a third name here would need the same
+/// argument to be true of it.
+const ADVERSARIAL: [&str; 2] = ["guards.rs", "wire.rs"];
+
 /// Every tracked source file with one of `extensions`, excluding build output,
-/// dependencies, generated bindings, and this file (which necessarily names the
-/// patterns it forbids).
+/// dependencies, generated bindings, and [`ADVERSARIAL`].
 fn sources(extensions: &[&str]) -> Vec<(PathBuf, String)> {
     fn walk(dir: &Path, extensions: &[&str], out: &mut Vec<(PathBuf, String)>) {
         const SKIP: [&str; 7] = [
@@ -51,7 +62,7 @@ fn sources(extensions: &[&str]) -> Vec<(PathBuf, String)> {
             } else if extensions
                 .iter()
                 .any(|ext| name.ends_with(&format!(".{ext}")))
-                && name != "guards.rs"
+                && !ADVERSARIAL.contains(&name.as_ref())
             {
                 if let Ok(text) = fs::read_to_string(&path) {
                     out.push((path, text));
@@ -512,11 +523,14 @@ fn every_command_parameter_is_one_that_has_been_reviewed() {
     // - `port`      — a `u16`, and only one Mira is already observing.
     // - `name`, `description` — text the user typed, stored and shown back. Never
     //   resolved against the filesystem.
-    // - `kinds`     — a fixed enum; anything else fails to deserialise.
+    // - `kind`, `kinds` — a fixed enum; anything else fails to deserialise.
+    //   `kind` is what a launch is asked for by: editor, terminal or browser, and
+    //   never a program, a path or an argument (see the guards below).
     // - `app`, `state` — injected by Tauri, not sent by the page.
     let reviewed = [
         "app",
         "description",
+        "kind",
         "kinds",
         "name",
         "port",
@@ -745,6 +759,186 @@ fn no_command_opens_an_arbitrary_url() {
     assert!(
         violations.is_empty(),
         "the interface names a port; Mira builds the URL: {violations:#?}"
+    );
+}
+
+// ── Launching applications ───────────────────────────────────────────────────
+
+#[test]
+fn no_command_names_something_to_run() {
+    // The companion to the path rule, for the slice that starts applications.
+    // A workspace is opened by *kind* — editor, terminal, browser — and the
+    // program, the bundle and every argument are resolved beneath the IPC
+    // boundary from a table compiled into the binary. A command that accepted a
+    // program name, or an argument to append, would be a way to make Mira run
+    // something of the caller's choosing, which is the one thing this slice must
+    // not become (`security-and-privacy.md` §5 rule 1).
+    let banned = [
+        "command",
+        "program",
+        "executable",
+        "exe",
+        "binary",
+        "argv",
+        "args",
+        "arguments",
+        "application",
+        "bundle",
+        "launch",
+        "shell",
+    ];
+
+    let mut violations = Vec::new();
+    for (path, signature) in command_parameters() {
+        for parameter in parameters_of(&signature) {
+            let name = parameter_name(&parameter).to_lowercase();
+            if banned.contains(&name.as_str()) {
+                violations.push(format!("{path}: {parameter}"));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "a command lets the caller name what to run; the kind is the only thing it \
+         may choose: {violations:#?}"
+    );
+}
+
+#[test]
+fn the_only_directory_a_launch_can_reach_is_a_project_root() {
+    // `LaunchTarget::Directory` is the one type that carries a path into the
+    // launcher, and there is exactly one place in the application shell that
+    // builds one — from `working_directory`, which reads a project row and
+    // canonicalises it. A second construction site is where a path from
+    // somewhere else would enter, so the count is the guard.
+    let built: Vec<String> = sources(&["rs"])
+        .into_iter()
+        .filter(|(path, _)| path.starts_with(repo_root().join("src-tauri")))
+        .flat_map(|(path, text)| {
+            code_only(&text)
+                .lines()
+                .filter(|line| line.contains("LaunchTarget::Directory("))
+                .map(|line| format!("{}: {}", relative(&path), line.trim()))
+                .collect::<Vec<_>>()
+        })
+        .collect();
+
+    assert_eq!(
+        built.len(),
+        1,
+        "a launch directory is built somewhere new; it must come from a project \
+         root and nowhere else: {built:#?}"
+    );
+    assert!(
+        built[0].contains("root"),
+        "the one directory handed to an application is the resolved project root: {built:#?}"
+    );
+}
+
+#[test]
+fn every_address_a_browser_receives_is_one_mira_built() {
+    // The same rule as `no_command_opens_an_arbitrary_url`, one layer down:
+    // that one says no command *accepts* a URL, this says every URL that reaches
+    // the launcher was constructed here from an observed port
+    // (`security-and-privacy.md` §5 rule 5).
+    let mut violations = Vec::new();
+    for (path, text) in sources(&["rs"]) {
+        if !path.starts_with(repo_root().join("src-tauri")) {
+            continue;
+        }
+        for line in code_only(&text).lines() {
+            if line.contains("LaunchTarget::WebAddress(") && !line.contains("localhost(") {
+                violations.push(format!("{}: {}", relative(&path), line.trim()));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "an address reaches the browser without being built from a port: {violations:#?}"
+    );
+}
+
+#[test]
+fn starting_an_application_on_macos_starts_no_process() {
+    // ADR-0013. `open -a "Some App" <path>` would be a command line, with
+    // quoting to get wrong and a child process Mira would own; `NSWorkspace`
+    // hands two typed URLs to the window server and owns nothing. The native
+    // module must contain no trace of the other approach.
+    let native = fs::read_to_string(repo_root().join("crates/mira-platform/src/macos.rs"))
+        .expect("macos.rs");
+    let code = code_only(&native);
+
+    for absent in ["Command", "process::", "\"open\"", "spawn", "osascript"] {
+        assert!(
+            !code.contains(absent),
+            "{absent} appeared in the native launch path, which exists precisely to \
+             avoid it"
+        );
+    }
+}
+
+#[test]
+fn the_interface_never_names_an_application() {
+    // §6: never silently substitute an unrelated application. The interface
+    // cannot substitute anything, because it does not know any application's
+    // name — every name on screen came from discovery over the IPC boundary. A
+    // hardcoded "Visual Studio Code" in a button would be a claim the machine
+    // had not been asked to confirm.
+    let table = fs::read_to_string(repo_root().join("crates/mira-platform/src/applications.rs"))
+        .expect("applications.rs");
+
+    // Only the rows of the table: every candidate is declared by one of four
+    // constructors, so the names are exactly what follows the first quote on
+    // those lines.
+    let names: BTreeSet<String> = table
+        .lines()
+        .map(str::trim)
+        .filter(|line| {
+            [
+                "bundle(",
+                "program(",
+                "opens_at(",
+                "found_only(",
+                "desktop(",
+            ]
+            .iter()
+            .any(|constructor| line.starts_with(constructor))
+        })
+        .filter_map(|line| {
+            let quoted = line.split_once('"')?.1;
+            Some(quoted.split_once('"')?.0.to_owned())
+        })
+        // "Terminal" is both an application on macOS and the name of a *kind*.
+        // The interface says the kind, and no scanner can tell the two apart, so
+        // the kind vocabulary keeps its own words.
+        .filter(|name| !["Editor", "Terminal", "Browser"].contains(&name.as_str()))
+        .collect();
+
+    assert!(
+        names.len() > 20,
+        "the application table was not read: {names:#?}"
+    );
+
+    let mut violations = Vec::new();
+    for (path, text) in sources(&["ts", "tsx"]) {
+        // A test names applications on purpose: its fixture stands in for
+        // discovery, which is the only thing that may produce a name.
+        if relative(&path).contains(".test.") {
+            continue;
+        }
+        for name in &names {
+            if text.contains(name.as_str()) {
+                violations.push(format!("{}: {name}", relative(&path)));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "the interface names an application instead of showing what was found: \
+         {violations:#?}"
     );
 }
 

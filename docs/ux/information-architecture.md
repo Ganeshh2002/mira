@@ -242,6 +242,26 @@ Settings holds only global defaults.
 Name, root subdirectory, expected ports, commands (label + program + args + cwd),
 preferred apps, and a session list. Editing here changes configuration only.
 
+**As built (Slices 3–4).** Name and description; the project underneath, with its
+packages, Git and services; **Open with**; and the application context as a set of
+kinds. Expected ports, commands and sessions are not built.
+
+Open with sits under Services, because that is the order the questions come in: where
+does this stand, then get me into it. It offers **Editor** and **Terminal** — each
+naming the application that will actually open, so the button never claims something
+the machine was not asked to confirm. A browser is not there: a browser opens a
+*service*, so its action lives on the service row and disappears with the service.
+
+A kind with nothing behind it is a sentence, not a disabled button — "Editor · nothing
+here Mira can open". §5's rule is that a greyed control promises a later release, and a
+machine with no editor is not waiting for anything. The same rule still holds for what
+has not been built: nothing restores a workspace, nothing starts a development server,
+and there is no control hinting that either nearly happens.
+
+When the project's folder is missing, the actions are **absent** rather than failing.
+There is nowhere to open, and finding that out by pressing a button and reading an error
+is worse than not being offered one.
+
 ### Git view
 Header: branch, upstream, ahead/behind (labelled "as of last fetch"), last commit.
 Tabs: **Changes** (grouped path list) and **History** (commit list + commit detail in

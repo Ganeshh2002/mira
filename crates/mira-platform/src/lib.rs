@@ -9,15 +9,21 @@
 
 pub mod applications;
 pub mod env;
+pub mod launch;
+mod macos;
 pub mod platform;
 pub mod resolve;
 pub mod shell;
 pub mod surface;
 
 pub use applications::{
-    candidates, first_present, AppPresence, AppReport, Applications, Candidate, Probe,
+    candidates, first_openable, first_present, AppPresence, AppReport, Applications, Candidate,
+    Launch, Probe,
 };
 pub use env::{DisplayServer, EnvFacts, LinuxPackaging, Os};
+pub use launch::{
+    plan, Desktop, LaunchHost, LaunchMethod, LaunchPlan, LaunchTarget, Launched, Launcher, Perform,
+};
 pub use platform::{Platform, PlatformCapabilities};
 pub use resolve::{resolve, resolve_all};
 pub use shell::{is_openable, open_url_command, reveal_command, Shell, ShellHost};
