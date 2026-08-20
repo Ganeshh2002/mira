@@ -2,6 +2,10 @@
 
 Status: **pre-implementation.** Nothing below is built.
 
+Phase membership is locked in [product-scope.md](../product/product-scope.md) and is
+not renegotiated here. This document says how the work is cut and sequenced; that one
+says which release it lands in. **0.1 is the MVP; everything from 0.2 on is post-MVP.**
+
 Mira is built in **vertical slices**. Every slice crosses the whole stack — schema, Rust
 service, platform layer, IPC, UI — and ends with something a person can actually use.
 There is no "backend phase". A slice that leaves the app less usable than it was is not
@@ -25,6 +29,9 @@ done.
 6. **Docs move with the code.** A slice that changes documented behaviour updates the doc
    in the same PR.
 7. **No speculative structure.** Build the crate when the slice needs it.
+8. **No post-MVP feature is partially built during 0.1.** No table, no trait, no
+   interface added because it will make a later phase easier
+   ([product-scope.md](../product/product-scope.md) §1).
 
 Sizes are relative effort for one developer, not calendar promises: **S** ≈ a few days,
 **M** ≈ a week or two, **L** ≈ several weeks.
@@ -32,6 +39,10 @@ Sizes are relative effort for one developer, not calendar promises: **S** ≈ a 
 ---
 
 ## Slice 0 — Skeleton *(prerequisite, S)*
+
+**Gate: Slice 0 does not start until [product-scope.md](../product/product-scope.md) is
+committed.** The scope document is the first artifact, before the skeleton, because
+every slice after it is an argument about scope that the document has already settled.
 
 Not in the original list, but Slice 1 cannot ship without it, so it is named rather than
 smuggled in.
@@ -118,9 +129,11 @@ in this slice. Terminal and editor CLI variation is contained in data, with a do
 
 ---
 
-## Slice 4 — Multiple projects and workspaces *(M)*
+## Slice 4 — Multiple projects and workspaces *(M, 0.2)*
 
-**Delivers.** Workspaces as a first-class concept: create, rename, duplicate, delete; the
+**Delivers.** Workspaces as a first-class concept: create, rename, duplicate, delete;
+app groups (a named set of apps, terminals, and URLs opened as one action — the unit
+Slice 11 later saves); the
 switcher that stays hidden until a second workspace exists; per-workspace subpath, expected
 ports, commands, and app overrides; per-project state (selection, collapse, scroll) that
 survives switching; project reordering; `⌘1…⌘9`; the command palette in the compact window
@@ -134,21 +147,35 @@ ranking is where the palette either feels instant or does not; it is worth the t
 
 ---
 
-## Slice 5 — Git history and graph *(M)*
+## Slice 5a — Git history *(S, 0.1)*
 
-**Delivers.** Commit walking with pagination; the lane-assignment algorithm in Rust, pure
-and unit-tested; the History view with badged refs; commit detail (subject, body, author,
-SHA copy); cancellation on navigation.
+**Delivers.** Commit walking with pagination; the History view as a linear list with
+badged refs; commit detail (subject, body, author, SHA copy); cancellation on
+navigation. No lanes, no branch lines — a merge is a labelled row.
 
-**Done when:** 200 commits render in under 500 ms on a 50 000-commit repo, merges draw
-correctly, and leaving the view stops the work.
+**Done when:** 200 commits render in under 500 ms on a 50 000-commit repo and leaving
+the view stops the work.
 
-**Risks.** Graph layout is the fiddliest UI in the MVP. Keeping lanes in Rust behind a
-pure function — testable against fixture repos — is the mitigation, and it is non-negotiable.
+**Risks.** Low, by construction. The risk lives in 5b.
 
 ---
 
-## Slice 6 — Shelf *(S)*
+## Slice 5b — Git graph and diff *(M, 0.2)*
+
+**Delivers.** The lane-assignment algorithm in Rust, pure and unit-tested; lane
+rendering with collapse beyond 8; read-only diff view for a commit; file history;
+filtering by branch, author, or path.
+
+**Done when:** merges draw correctly and lane computation stays inside 5a's render
+budget on the same fixture repo.
+
+**Risks.** Graph layout is the fiddliest UI in the product. Keeping lanes in Rust behind
+a pure function — testable against fixture repos — is the mitigation, and it is
+non-negotiable. This is exactly why it is not in the first release.
+
+---
+
+## Slice 6 — Shelf *(S, 0.3)*
 
 **Delivers.** Project and global shelves; drag-and-drop from the OS; add from the file
 picker; open in editor, reveal in file manager, copy path; reorder; Missing detection and
@@ -162,7 +189,7 @@ with wording and the explicit Missing state.
 
 ---
 
-## Slice 7 — Quick Peek *(M)*
+## Slice 7 — Quick Peek *(M, 0.3)*
 
 **Delivers.** The read-only overlay: text with syntax highlighting up to 2 MB, images,
 sandboxed SVG, a metadata card for everything else; binary sniffing; fuzzy path search
@@ -177,7 +204,7 @@ image-not-DOM rule for SVG are all enforced and tested in this slice.
 
 ---
 
-## Slice 8 — SSH and Docker awareness *(M)*
+## Slice 8 — SSH and Docker awareness *(M, 0.6+)*
 
 **Delivers.** Opt-in `~/.ssh/config` parsing (names only, keys never opened); manual
 hosts; per-host opt-in reachability; detection of local `ssh` processes and their
@@ -190,14 +217,17 @@ renders nothing at all rather than an error; the guard tests prove no key file i
 no `GET`-only violation occurs, and no network connection happens with probing disabled.
 
 **Risks.** The two most sensitive integrations in the product. Both are read-only, both
-opt-in, both fenced by guard tests written in this slice.
+opt-in, both fenced by guard tests written in this slice. They sit in 0.6+ rather than
+earlier for that reason — they are the read-only half of the surface an automation rule
+would act on, and they inherit that phase's gate.
 
 ---
 
-## Slice 9 — System, media, and session awareness *(M)*
+## Slice 9 — System, media, and session awareness *(M, 0.4)*
 
 **Delivers.** The system strip (CPU, memory, disk, battery, network) with visibility-gated
-sampling; lock/sleep/wake detection per platform; polling suspension while locked; session
+sampling; display awareness (count and arrangement, read-only, for predictable compact-
+window placement on multi-monitor setups); lock/sleep/wake detection per platform; polling suspension while locked; session
 recording with pauses and "welcome back"; media detection on Windows and Linux, with
 macOS reporting Unavailable and the `otool -L` guard test in CI.
 
@@ -210,10 +240,13 @@ private framework. The answer is settled: no. The test enforces it.
 
 ---
 
-## Slice 10 — Themes and personalization *(S–M)*
+## Slice 10 — Themes and personalization *(S–M, 0.5)*
 
 **Delivers.** Light/Dark/System; accent selection with a contrast gate; density modes;
-the five atmospheres plus Custom; the pulse; motion and battery rules; per-project accent.
+the five atmospheres plus Custom; the pulse; motion and battery rules; per-project
+accent; per-workspace visual identities; music-reactive ambience where the platform
+exposes playback state (Full on Windows and Linux, degrading to a non-reactive
+atmosphere on macOS — see Slice 9).
 
 **Done when:** every atmosphere passes AA contrast in CI, the heaviest stays under 2% idle
 CPU, `prefers-reduced-motion` stops everything, and ambient layers pause when unfocused.
@@ -224,7 +257,7 @@ keeps this a week rather than a month.
 
 ---
 
-## Slice 11 — Workspace restoration *(M, V1.x)*
+## Slice 11 — Workspace restoration *(M, 0.2)*
 
 **Delivers.** Saving a workspace's open apps, terminals, URLs, and expected containers;
 restoring them on demand; a preview of what will open before it opens.
@@ -237,15 +270,16 @@ never automatic on launch, and never force-closes anything.
 
 ---
 
-## Slice 12 — Automation *(L, Future)*
+## Slice 12 — Automation *(L, 0.6+)*
 
 **Delivers.** Nothing yet. Automation needs a trust model before a schema — it is a rules
 engine that launches processes, which is the exact shape an attacker wants to write to
 ([security-and-privacy.md](../architecture/security-and-privacy.md) §5).
 
-**Prerequisites before any design work:** MVP shipped and in real use; a written trust
-model covering where rules come from, how they are reviewed, and what they may do; and
-demand evidenced by actual requests rather than assumption.
+**Prerequisites before any design work:** the MVP (0.1) shipped and in real use; a
+written trust model covering where rules come from, how they are reviewed, and what they
+may do; and demand evidenced by actual requests rather than assumption. Plugins and
+Astra integration share this phase and this gate.
 
 Listed here for completeness, deliberately unspecified.
 
@@ -254,41 +288,53 @@ Listed here for completeness, deliberately unspecified.
 ## Sequence and dependencies
 
 ```
-0 Skeleton
-└─ 1 Project + Git ──┬─ 2 Ports/Processes ──┬─ 8 SSH/Docker
-                     │                      └─ 9 System/Media/Session
-                     ├─ 3 App launching ────── 6 Shelf ── 7 Peek
-                     ├─ 4 Workspaces
-                     └─ 5 Git graph
-                                              10 Themes  (any time after 1)
-                                              11 Restoration (needs 3, 4, 9)
-                                              12 Automation (needs everything + a trust model)
+0 Skeleton  (gated on product-scope.md)
+└─ 1 Project + Git ──┬─ 2 Ports/Processes ──┬─ 8 SSH/Docker      (0.6+)
+                     │                      └─ 9 System/Media    (0.4)
+                     ├─ 3 App launching ────── 6 Shelf ── 7 Peek (0.3)
+                     ├─ 4 Workspaces          (0.2)
+                     └─ 5a Git history  (0.1) ── 5b Git graph    (0.2)
+                                              10 Themes  (0.5, any time after 1)
+                                              11 Restoration (0.2, needs 3, 4)
+                                              12 Automation (0.6+, needs everything
+                                                 + a trust model)
 ```
 
-Slices 2 and 3 can proceed in parallel after 1. Slice 10 can be pulled forward if the app
-needs to look finished for a demo; it depends only on the token layer.
+Slices 2, 3, and 5a can proceed in parallel after 1. Slice 10 can be pulled forward if
+the app needs to look finished for a demo; it depends only on the token layer, and
+pulling it forward does not move it into 0.1.
+
+Slice 11 needs 3 and 4. It no longer waits on 9 — restoration reopens apps, terminals,
+and URLs, none of which need system awareness.
 
 ## Release mapping
 
+Phases are locked in [product-scope.md](../product/product-scope.md). This table maps
+them onto slices.
+
 | Release | Contains | Meaning |
 |---|---|---|
-| **0.1.0** | Slices 0–3 | First public release. Projects, Git status, ports, launching. Genuinely useful. |
-| **0.2.0** | Slices 4–5 | Workspaces and history. |
-| **0.3.0** | Slices 6–7 | Shelf and Peek. |
-| **0.4.0** | Slices 8–9 | Awareness features. |
-| **0.5.0** | Slice 10 | Personalization. MVP feature-complete. |
-| **1.0.0** | after real use | Command surface and schema settled. |
+| **0.1.0** | Slices 0–3, 5a | **The MVP.** Projects, Git status and history, ports, processes, launching, tray, shortcut. |
+| **0.2.0** | Slices 4, 5b, 11 | Workspace. App groups, restoration, the lane graph and diff. |
+| **0.3.0** | Slices 6–7 | Shelf. Drag-drop, temporary storage, Quick Peek. |
+| **0.4.0** | Slice 9 | System. CPU/RAM/battery, network, lock/session, media, displays. |
+| **0.5.0** | Slice 10 | Personality. Atmospheres, ambient effects, workspace identities. |
+| **0.6+** | Slices 8, 12 | Automation. SSH, Docker, contextual rules, plugins, Astra. Gated. |
+| **1.0.0** | after the 0.x line ships and is used | Command surface and schema settled. Not a feature milestone. |
 
-**0.1.0 is a real release, not a preview.** Three slices in, Mira answers "what branch,
-what's dirty, what's on :3000, open it" — which is already worth installing. That is the
-test of whether the slicing is vertical.
+**0.1.0 is the MVP, and a real release rather than a preview.** Four slices and a small
+fifth in, Mira answers "what branch, what's dirty, what happened lately, what's on
+:3000, open it" — which is already worth installing and keeping. That is the test of
+whether the slicing is vertical.
 
-## What is explicitly not built during MVP
+## What is explicitly not built during 0.1
 
-A plugin host · any Astra code · cloud or sync · notifications beyond capability
-reporting · Git write operations of any kind · Docker lifecycle actions · an
-`automations` table · a general app launcher · file editing or deletion · telemetry.
+Workspaces · app groups · restoration · the lane graph and diff view · the Shelf ·
+Quick Peek · system, media, and session awareness · atmospheres beyond the default ·
+SSH · Docker · a plugin host · any Astra code · cloud or sync · notifications beyond
+capability reporting · Git write operations of any kind · an `automations` table · a
+general app launcher · file editing or deletion · telemetry.
 
-Each is either Future scope or permanently out of scope. Building "just the schema" or
-"just the interface" for any of them ahead of time is the failure this roadmap is shaped
-to avoid.
+The first ten have a phase and will be built. The rest are Future scope or permanently
+out of scope. Either way, building "just the schema" or "just the interface" for any of
+them during 0.1 is the failure this roadmap is shaped to avoid — see rule 8.

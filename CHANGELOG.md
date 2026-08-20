@@ -8,11 +8,14 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
-- Product definition, PRD, information architecture, and design system
+- Product definition, product scope, PRD, information architecture, and design system
 - Architecture, platform abstraction, data model, and security/privacy documents
 - ADRs 0001–0008 covering the foundational technical decisions
-- Twelve-slice implementation roadmap
+- Locked phase plan (0.1 through 0.6+) and the fourteen-slice implementation roadmap
 - Open-source project files (licence, contributing, code of conduct, security policy)
 
-Nothing is implemented yet. The first release will be `0.1.0`, covering roadmap
-slices 0–3 (projects, Git status, ports and processes, application launching).
+Nothing is implemented yet. The first release will be `0.1.0` — **the MVP** — covering
+roadmap slices 0–3 and 5a: projects, Git status and history, ports and processes,
+application launching, tray, and the global shortcut. Everything from 0.2 on is
+post-MVP and does not block it. See
+[product scope](docs/product/product-scope.md).

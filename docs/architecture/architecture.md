@@ -78,14 +78,14 @@ crates/
   mira-media/
   mira-system/
   mira-platform/            # capability traits + per-OS impls
-  mira-automation/          # Future — not created in MVP
+  mira-automation/          # 0.6+ — not created before then
 src/                        # React app
   app/ features/ components/ lib/ styles/
 ```
 
-**`mira-automation` is deliberately absent from MVP.** Creating an empty crate for a
-Future feature is speculative architecture; the extension boundary (§8) is what makes
-adding it later cheap.
+**`mira-automation` is deliberately absent until 0.6+.** Creating an empty crate for an
+undesigned feature is speculative architecture; the extension boundary (§8) is what
+makes adding it later cheap.
 
 ### Dependency rule
 
@@ -273,12 +273,12 @@ Rules that hold from day one, before any host exists:
 
 1. Nothing named `astra` exists in core, services, domain, or the schema.
 2. An integration may only consume public interfaces — the same ones a plugin would.
-3. No MVP or V1.x feature may become reachable *only* through an integration.
+3. No feature in the 0.x line may become reachable *only* through an integration.
 4. Deleting the integration crate must leave a compiling, fully functional Mira. That
    deletability is the acceptance test for the boundary.
 
-We build **no plugin host in MVP**. The boundary is maintained by the dependency rules in
-§3, which cost nothing now and make the host tractable later.
+We build **no plugin host before 0.6+**. The boundary is maintained by the dependency
+rules in §3, which cost nothing now and make the host tractable later.
 
 ---
 
@@ -292,7 +292,7 @@ repository boundary, since queries would spread through React. Mira instead uses
 See [ADR-0004](../adr/0004-sqlite-local-first.md).
 
 **Git through libgit2 (`git2`), behind a trait.** `git2` is mature and covers everything
-MVP needs. `gitoxide` is the more attractive long-term choice — pure Rust, faster, no C
+the 0.x line needs. `gitoxide` is the more attractive long-term choice — pure Rust, faster, no C
 build — and is genuinely production-ready for reads, which is all Mira does. The trait
 means the swap is a crate-internal change once its status/graph APIs settle. Shelling
 out to `git` was rejected: it depends on the user's PATH, costs a process per query, and
@@ -317,7 +317,7 @@ fallback for the global shortcut and prevents two processes fighting over the da
 | Integration (Rust) | Services against fixtures: temp Git repos, temp SQLite, fake platform | `cargo test`, `tempfile` |
 | Contract | Generated TS types match Rust; command names exist | `ts-rs` + a codegen diff check in CI |
 | Component (UI) | Views against a mocked IPC client | Vitest + Testing Library |
-| E2E | The MVP happy paths per OS | Tauri driver / WebDriver, best-effort in CI |
+| E2E | The 0.1 happy paths per OS | Tauri driver / WebDriver, best-effort in CI |
 | Guard tests | The promises that must not rot | see below |
 
 **Guard tests** are the ones that encode this document's non-negotiables, and they run on

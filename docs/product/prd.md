@@ -1,58 +1,89 @@
 # Aviora Mira — Product Requirements
 
-Status: **pre-implementation.** No feature below is built. Scope decisions here are
-binding on [roadmap.md](../implementation/roadmap.md).
+Status: **pre-implementation.** No feature below is built.
 
 Read [product-definition.md](product-definition.md) first — it defines the boundary
-that every requirement here respects.
+that every requirement here respects — then [product-scope.md](product-scope.md), which
+locks the phases and defines what "MVP" means. Phase membership is decided there and
+binding here; this document specifies the features themselves, and is in turn binding on
+[roadmap.md](../implementation/roadmap.md).
 
 ---
 
 ## 0. How to read this
 
-- **MVP** = required for the first public release (0.1.0). If it is not here, it does
-  not block release.
-- **V1.x** = planned, designed for, **not** built during MVP.
-- **Future** = directionally accepted, deliberately undesigned.
+Scope decisions live in [product-scope.md](product-scope.md) and are binding on this
+document. This section restates only the vocabulary needed to read the requirements.
 
-Every MVP feature is specified with: Purpose · User experience · Functional
-requirements · Platform considerations · Acceptance criteria · Dependencies · Risks.
+- **MVP** = the **0.1** release. Nothing else. If a feature is not in the 0.1 section
+  below, its absence does not block the first public release.
+- **Post-MVP** = 0.2 through 0.6+. Planned and scheduled, specified here at the depth
+  that phase has earned.
+- **The 0.x line** = 0.1 through 0.6+, every milestone before 1.0.
+- **Future** = directionally accepted, deliberately undesigned, not assigned to a phase.
+
+**Feature numbers are stable identifiers, not reading order.** They do not renumber when
+a feature moves between phases, so within a phase section they run out of sequence. Use
+the index below to find one.
+
+**Specification depth follows the phase.** Every 0.1 feature is specified in full:
+Purpose · User experience · Functional requirements · Platform considerations ·
+Acceptance criteria · Dependencies · Risks. Post-MVP features carry the depth they had
+when written — several are specified in full because they were drafted before the phases
+were locked, and that detail is kept rather than thrown away. Features marked *shape
+only* are a paragraph describing intent; they are specified properly in their own phase's
+design pass, not now.
 
 Capability language used throughout: a feature is **Full** (works as specified),
 **Degraded** (works with a documented, user-visible reduction), or **Unavailable**
 (reports itself off with a reason). Mira never silently no-ops. See
 [platform-abstraction.md](../architecture/platform-abstraction.md).
 
-### MVP feature index
+### Feature index
 
-| # | Feature | Slice |
-|---|---|---|
-| 1 | Multiple projects | 1, 4 |
-| 2 | Project/workspace management | 4 |
-| 3 | Git status | 1 |
-| 4 | Last commit | 1 |
-| 5 | Branch information | 1 |
-| 6 | Basic Git graph | 5 |
-| 7 | Running ports | 2 |
-| 8 | Process information | 2 |
-| 9 | Application launching | 3 |
-| 10 | Terminal integration | 3 |
-| 11 | Editor integration | 3 |
-| 12 | Browser integration | 3 |
-| 13 | SSH awareness | 8 |
-| 14 | Docker awareness | 8 |
-| 15 | File Shelf | 6 |
-| 16 | Quick Peek | 7 |
-| 17 | System status | 9 |
-| 18 | Media detection | 9 |
-| 19 | Lock/session awareness | 9 |
-| 20 | Global shortcut | 1 |
-| 21 | Menu bar / tray | 1 |
-| 22 | Themes and personalization | 10 |
+| # | Feature | Phase | Slice |
+|---|---|---|---|
+| 1 | Multiple projects | **0.1** | 1 |
+| 3 | Git status | **0.1** | 1 |
+| 4 | Last commit | **0.1** | 1 |
+| 5 | Branch information | **0.1** | 1 |
+| 6 | Basic Git graph | **0.1** | 5a |
+| 7 | Running ports | **0.1** | 2 |
+| 8 | Process information | **0.1** | 2 |
+| 9 | Application launching | **0.1** | 3 |
+| 10 | Terminal integration | **0.1** | 3 |
+| 11 | Editor integration | **0.1** | 3 |
+| 12 | Browser integration | **0.1** | 3 |
+| 20 | Global shortcut | **0.1** | 1 |
+| 21 | Menu bar / tray | **0.1** | 1 |
+| 2 | Project/workspace management | 0.2 | 4 |
+| 23 | App groups *(shape only)* | 0.2 | 4 |
+| 24 | Workspace restoration *(shape only)* | 0.2 | 11 |
+| 15 | File Shelf | 0.3 | 6 |
+| 16 | Quick Peek | 0.3 | 7 |
+| 17 | System status | 0.4 | 9 |
+| 18 | Media detection | 0.4 | 9 |
+| 19 | Lock/session awareness | 0.4 | 9 |
+| 25 | Displays *(shape only)* | 0.4 | 9 |
+| 22 | Themes and personalization | 0.5 | 10 |
+| 26 | Workspace identities *(shape only)* | 0.5 | 10 |
+| 27 | Music-reactive ambience *(shape only)* | 0.5 | 10 |
+| 13 | SSH awareness | 0.6+ | 8 |
+| 14 | Docker awareness | 0.6+ | 8 |
 
 ---
 
-# MVP
+# 0.1 — Core Companion
+
+**This phase is the MVP.** It is the first public release and it stands on its own: a
+developer installs it, keeps it, and gets an answer to "what branch, what's dirty,
+what's on :3000, open it" across several projects from a single keystroke.
+
+Nothing in a later phase blocks this one, and nothing in a later phase is partially
+built during it — no table, no trait, no interface added because it will make 0.2
+easier. See [product-scope.md](product-scope.md) §1.
+
+---
 
 ## 1. Multiple projects
 
@@ -101,47 +132,6 @@ known marker files at depth 1, never a recursive walk.
 
 ---
 
-## 2. Project/workspace management
-
-**Purpose.** A project is *where the code is*; a **workspace** is *a way of working on
-it* (e.g. "backend + db", "frontend only", "debugging prod issue"). Workspaces let one
-project carry different tool/port/command sets without duplication.
-
-**User experience.** Each project has at least a `Default` workspace, created
-implicitly and never shown as a choice until a second one exists — a single-workspace
-user never learns the concept. Adding a second reveals a workspace switcher in the
-project header. Switching changes which commands, ports of interest, and app targets
-are surfaced. Switching never kills anything.
-
-**Functional requirements.**
-- FR-2.1 Every project has ≥ 1 workspace; the implicit `Default` cannot be deleted
-  while it is the only one.
-- FR-2.2 A workspace stores: name, optional subdirectory root (relative to project
-  root), expected ports, configured commands, preferred apps overriding project
-  defaults, and layout/session references.
-- FR-2.3 Create, rename, duplicate, delete workspaces. Deleting warns if it holds
-  commands or a saved session.
-- FR-2.4 Switching workspace is a pure view/config change — no processes started or
-  stopped, ever.
-- FR-2.5 The active workspace per project is remembered across restarts.
-- FR-2.6 Multiple projects are "active" simultaneously; there is **no** global
-  single-workspace mode.
-
-**Platform considerations.** None beyond path handling (FR-1 platform notes).
-
-**Acceptance criteria.**
-- AC-2.1 A new project shows no workspace UI at all until a second workspace exists.
-- AC-2.2 Switching workspaces changes the displayed command/port set in < 100 ms and
-  starts/stops nothing (verified: process list unchanged).
-- AC-2.3 Deleting a workspace leaves the project and its other workspaces intact.
-
-**Dependencies.** Feature 1; `workspaces` module.
-
-**Risks.** Concept overload — two nouns where users expect one. Mitigated by hiding
-workspaces until a second exists, which is a hard requirement, not a nicety.
-
----
-
 ## 3. Git status
 
 **Purpose.** Answer "is this project clean?" without opening a terminal.
@@ -158,12 +148,12 @@ scrollable path list grouped by state. Rows are read-only; clicking copies the p
   conflicted, deleted, renamed.
 - FR-3.3 Refresh on: project selection, window focus, an explicit refresh action, and
   a filesystem-watch debounce (500 ms) on the worktree.
-- FR-3.4 Status is **read-only** in MVP. No stage, unstage, discard, commit.
+- FR-3.4 Status is **read-only** pre-1.0. No stage, unstage, discard, commit.
 - FR-3.5 Repos with > 5 000 changed paths report counts and truncate the path list to
   the first 500 with an explicit "…and N more" marker.
 - FR-3.6 Non-repo projects show a neutral "not a Git repository" state, not an error.
 - FR-3.7 Detached HEAD, bare repos, submodules, and worktrees do not crash; submodule
-  contents are not recursed in MVP.
+  contents are not recursed in 0.1.
 
 **Platform considerations.** Filesystem watching differs per OS (FSEvents / ReadDirectoryChangesW /
 inotify); inotify watch limits on Linux mean the watcher may fail on huge trees —
@@ -217,15 +207,15 @@ relative time ("2 h ago", absolute on hover), and short SHA. Click copies the SH
 
 **User experience.** Branch name in the project row and detail header, with
 ahead/behind chips (`↑2 ↓1`) against the tracked upstream. A dropdown lists local
-branches for **copying names** — not for checkout in MVP.
+branches for **copying names** — not for checkout, pre-1.0.
 
 **Functional requirements.**
 - FR-5.1 Current branch, or detached-HEAD SHA.
 - FR-5.2 Upstream tracking branch and ahead/behind counts, computed **locally** — Mira
-  does not fetch in MVP, so counts reflect the last fetch the user performed.
+  does not fetch pre-1.0, so counts reflect the last fetch the user performed.
 - FR-5.3 Explicitly label staleness: hovering ahead/behind shows "as of last fetch".
 - FR-5.4 List local branches with last-commit time; copy name on click.
-- FR-5.5 No checkout, create, delete, or push in MVP.
+- FR-5.5 No checkout, create, delete, or push pre-1.0.
 
 **Platform considerations.** None.
 
@@ -245,31 +235,53 @@ labelling — a real risk we choose to solve with honesty rather than background
 
 **Purpose.** Recent history, readable at a glance — "what happened here lately".
 
-**User experience.** A vertical list of the last N commits with a lane-drawn graph on
-the left, refs badged on their commits. Click a commit for subject/body, author,
-SHA-copy. Not a diff viewer.
+**Basic means basic.** In 0.1 this is a linear commit list, not a drawn graph. Lane
+assignment, branch lines, and merge rendering are the 0.2 extension below. The split is
+deliberate: lane layout is the fiddliest UI in the product, and the first release is not
+worth holding for it.
 
-**Functional requirements.**
+**User experience.** A vertical list of the last N commits, newest first, with refs
+badged on their commits. Click a commit for subject/body, author, SHA-copy. Not a diff
+viewer.
+
+**Functional requirements (0.1).**
 - FR-6.1 Walk commits from HEAD (and, optionally, all local refs) newest-first,
   default limit 200, "load more" in pages of 200.
-- FR-6.2 Compute lane assignment for parents/merges; render ≤ 8 lanes, collapsing
-  beyond that with an indicator.
-- FR-6.3 Badge local branches, remote-tracking branches, and tags on their commits.
-- FR-6.4 Show commit subject, author, relative time; full body in the detail pane.
-- FR-6.5 **No** diff, blame, checkout, revert, cherry-pick, or rebase in MVP.
-- FR-6.6 Graph computation happens off the UI thread and is cancellable on navigation.
+- FR-6.2 Badge local branches, remote-tracking branches, and tags on their commits.
+- FR-6.3 Show commit subject, author, relative time; full body in the detail pane.
+- FR-6.4 **No** blame, checkout, revert, cherry-pick, or rebase — those are anti-scope,
+  not deferrals.
+- FR-6.5 No lane rendering. A commit with two parents is listed as one row and labelled
+  a merge; it does not draw branch lines.
+- FR-6.6 Commit walking happens off the UI thread and is cancellable on navigation.
 
 **Platform considerations.** None.
 
-**Acceptance criteria.**
+**Acceptance criteria (0.1).**
 - AC-6.1 200 commits render in < 500 ms on a repo with 50 000 commits.
-- AC-6.2 A merge commit shows two parent lanes correctly.
-- AC-6.3 Navigating away mid-computation cancels it (no CPU after leaving the view).
+- AC-6.2 A merge commit is visibly labelled as one.
+- AC-6.3 Navigating away mid-walk cancels it (no CPU after leaving the view).
 
 **Dependencies.** Features 3–5.
 
-**Risks.** Graph layout is the fiddliest UI in MVP. Mitigation: lane algorithm lives in
-Rust, is pure, and is unit-tested against fixture repos — it never becomes React logic.
+**Risks.** Low, by construction — the risk was moved to 0.2 along with the lanes.
+
+### 0.2 extension — better Git visualization
+
+**Phase 0.2 · Slice 5b.** Adds to this feature rather than replacing it.
+
+- FR-6.7 Compute lane assignment for parents/merges; render ≤ 8 lanes, collapsing
+  beyond that with an indicator.
+- FR-6.8 Diff view for a single commit, read-only.
+- FR-6.9 File history for a path.
+- FR-6.10 Graph filtering by branch, author, or path.
+- AC-6.4 A merge commit shows two parent lanes correctly.
+- AC-6.5 Lane computation stays within the 0.1 render budget on the same fixture repo.
+
+**Risks.** Graph layout is the fiddliest UI in the product. Mitigation: the lane
+algorithm lives in Rust, is pure, and is unit-tested against fixture repos — it never
+becomes React logic. Still read-only: no rebase or merge UI, in this phase or any
+other.
 
 ---
 
@@ -285,7 +297,7 @@ attributable.
 
 **Functional requirements.**
 - FR-7.1 Enumerate **listening** TCP sockets (IPv4 + IPv6) with owning PID and process
-  name. UDP is out of scope for MVP.
+  name. UDP is out of scope pre-1.0.
 - FR-7.2 Attribute a port to a project when the owning process's working directory (or
   executable path) is inside the project root; otherwise leave unattributed.
 - FR-7.3 A workspace may declare expected ports; those render even when *not* listening,
@@ -364,7 +376,7 @@ naming the process and PID.
 
 **Dependencies.** `processes` module; platform layer.
 
-**Risks.** Killing the wrong thing is the highest-severity user harm in MVP. Mitigations
+**Risks.** Killing the wrong thing is the highest-severity user harm in the product. Mitigations
 are structural: confirmation naming the target, no bulk kill, no "kill all", no
 keyboard-only path that can fire without reading the dialog.
 
@@ -528,88 +540,174 @@ Mitigated by the FR-12.4 allowlist.
 
 ---
 
-## 13. SSH awareness
+## 20. Global shortcut
 
-**Purpose.** Remote work is part of many projects; Mira should show whether the box is
-reachable and whether a tunnel is up — **without becoming an SSH client**.
+**Purpose.** Mira must be one keystroke away or it will not be used.
 
-**User experience.** A project may list SSH hosts (imported from `~/.ssh/config` or
-added manually). Each shows: alias, user@host:port, reachability, and whether an active
-local `ssh` process references it. Actions: copy the `ssh` command, open a terminal
-running it. Nothing else.
+**User experience.** A default chord toggles the compact window: focused and typing-ready
+if hidden, dismissed if visible. Rebindable in Settings with live conflict detection.
 
 **Functional requirements.**
-- FR-13.1 Parse `~/.ssh/config` read-only for `Host`/`HostName`/`User`/`Port`/
-  `IdentityFile` **names**; associate hosts with projects manually.
-- FR-13.2 **Never** read private key material, never read passphrases, never store
-  credentials. `IdentityFile` is stored as a path string only, and the file is not
-  opened.
-- FR-13.3 Reachability = optional, opt-in, per-host TCP connect to the SSH port with a
-  3 s timeout. Off by default; no probing happens until the user enables it.
-- FR-13.4 Detect local `ssh` processes whose command line references a known host, to
-  show "tunnel/session active"; parse the `-L`/`-R` forwards for display only.
-- FR-13.5 Mira does not open, hold, or authenticate SSH connections itself.
+- FR-20.1 Default binding: `⌥Space` (macOS), `Ctrl+Alt+Space` (Windows/Linux) —
+  chosen to avoid Spotlight (`⌘Space`) and common IME toggles.
+- FR-20.2 Rebindable; the new binding is validated before being saved, and registration
+  failure is reported immediately with the conflicting-owner reason where the OS gives one.
+- FR-20.3 Toggle semantics: show+focus when hidden, hide when visible and focused.
+- FR-20.4 The window appears on the display containing the cursor.
+- FR-20.5 If the shortcut cannot be registered at all, Mira still runs; the tray icon
+  and (feature 21) a documented fallback remain.
 
-**Platform considerations.** `~/.ssh/config` location differs on Windows
-(`%USERPROFILE%\.ssh\config`); OpenSSH-for-Windows is standard but PuTTY users have no
-such file — that case shows an empty state, not an error. Reading command lines of
-`ssh` processes is subject to the same permission limits as feature 8.
+**Platform considerations.**
+- **macOS: Full.** Registration may require Accessibility/Input Monitoring permission
+  for some chords; Mira prompts and explains once, and never silently retries.
+- **Windows: Full.** `RegisterHotKey` fails if another app owns the chord; the error is
+  surfaced with the chord named.
+- **Linux/X11: Full.**
+- **Linux/Wayland: Unavailable.** Wayland has no cross-compositor global-shortcut
+  protocol; Tauri's global-shortcut implementation is X11-specific and is disabled on
+  Wayland to avoid a libX11 crash. **Mira's fallback:** the app is single-instance, and
+  running `mira --toggle` raises/hides the window. Settings shows the exact command and
+  a per-desktop recipe (GNOME/KDE custom shortcut) so the user binds it in their own
+  compositor. This is documented as Unavailable-with-fallback, never presented as working.
 
 **Acceptance criteria.**
-- AC-13.1 Hosts parse from a realistic `~/.ssh/config` including `Include` directives
-  and wildcard `Host *` blocks (wildcards are listed but not probed).
-- AC-13.2 With reachability disabled (default), Mira makes zero network connections —
-  verified by test.
-- AC-13.3 No key file is ever read; asserted by a test that fails if the code opens a
-  path from `IdentityFile`.
+- AC-20.1 Warm toggle to interactive window ≤ 250 ms on all platforms.
+- AC-20.2 A chord already owned by another app produces a specific, visible error.
+- AC-20.3 On Wayland, Settings shows the fallback recipe and `mira --toggle` works,
+  raising the existing instance rather than starting a second one.
+- AC-20.4 Mira starts and is usable with no shortcut registered at all.
 
-**Dependencies.** Features 8, 10.
+**Dependencies.** `tauri-plugin-global-shortcut`, `tauri-plugin-single-instance`, CLI arg
+handling.
 
-**Risks.** Privacy: reading SSH config is sensitive. Mitigations: read-only, names only,
-no key access, no probing by default, and an explicit first-run consent before the
-config is parsed at all.
+**Risks.** Wayland is a growing share of Linux desktops and this gap will not close on
+Mira's schedule. Accepted and documented.
 
 ---
 
-## 14. Docker awareness
+## 21. Menu bar / system tray
 
-**Purpose.** "Is my stack up?" without opening Docker Desktop.
+**Purpose.** Mira's resting state. It lives here, not in the dock/taskbar.
 
-**User experience.** If a project contains a `docker-compose.y*ml` or `Dockerfile`, a
-Containers section lists related containers: name, image, state, uptime, published
-ports (linked to feature 7). Actions in MVP: copy container name, open a published
-port, open a terminal at the compose file. **No** start/stop/restart/exec/logs in MVP.
+**User experience.** A monochrome icon; click (or menu, on Linux) reveals a compact
+menu: active projects with status dots, toggle window, recent projects, quit. Optional
+badge/marker when something wants attention (e.g. a port died) — off by default.
 
 **Functional requirements.**
-- FR-14.1 Detect Docker availability by probing the local daemon socket
-  (`/var/run/docker.sock`, `npipe:////./pipe/docker_engine`, and the Docker Desktop
-  per-user socket path); absence is a normal state, not an error.
-- FR-14.2 List containers with name, image, status, created time, published ports,
-  compose project label (`com.docker.compose.project`).
-- FR-14.3 Associate containers with a Mira project by compose project name or by the
-  compose file's working-directory label matching the project root.
-- FR-14.4 Read-only in MVP. No lifecycle actions.
-- FR-14.5 Poll only while a Docker-bearing view is open (5 s), never in the background.
-- FR-14.6 Podman's Docker-compatible socket is used when present; other runtimes are
-  out of scope for MVP.
+- FR-21.1 Tray/menu-bar icon present whenever Mira runs.
+- FR-21.2 Menu: toggle main window, up to 5 recent projects (each opening its detail
+  view), Settings, Quit.
+- FR-21.3 Closing the last window does not quit Mira; Quit is explicit.
+- FR-21.4 Optional "start on login" setting, off by default.
+- FR-21.5 The icon adapts to light/dark system appearance (template rendering).
 
-**Platform considerations.** Socket paths differ per OS and per Docker Desktop version;
-rootless Docker and Colima/OrbStack use non-default socket paths — Mira reads
-`DOCKER_HOST` first, then a candidate list, and lets the user set the path in Settings.
-On Windows, named-pipe access needs the user to be in `docker-users`; permission denied
-renders as "Docker present but not accessible", with the reason.
+**Platform considerations.**
+- **macOS: Full.** Menu-bar item with template image; the app runs as an accessory
+  (no dock icon) by default, configurable.
+- **Windows: Full.** Notification-area icon; users may hide icons via OS settings —
+  first run tells them where it went.
+- **Linux: Degraded.** Tray relies on libayatana-appindicator/StatusNotifierItem.
+  Click events do not fire on Linux (a libappindicator limitation), so **the menu is
+  the only interaction** — Mira's Linux tray is designed menu-first rather than
+  click-to-toggle. Some desktops (notably stock GNOME) need an extension for tray
+  icons at all; if the icon cannot be created Mira says so and continues, with the
+  window and `mira --toggle` as the entry points.
 
 **Acceptance criteria.**
-- AC-14.1 With a compose stack up, the project shows its containers with correct state.
-- AC-14.2 With Docker not installed, the section is absent — no error, no spinner.
-- AC-14.3 Mira never sends a write request to the Docker API in MVP (asserted by test:
-  only `GET` requests are issued).
+- AC-21.1 Every 0.1 entry point is reachable from the tray menu on all three platforms.
+- AC-21.2 On Linux, no feature is reachable *only* by clicking the tray icon.
+- AC-21.3 Closing the window leaves Mira running with idle CPU < 1%.
+- AC-21.4 Tray creation failure is reported once and does not abort startup.
 
-**Dependencies.** Feature 7; `docker` module.
+**Dependencies.** Tauri tray APIs; feature 20.
 
-**Risks.** Access to the Docker socket is effectively root-equivalent; even read-only
-use deserves care. Mitigation: read-only client, `GET`-only assertion test, explicit
-documentation in the security doc.
+**Risks.** Linux tray support is genuinely uneven. Mitigation: the menu-first design
+plus the CLI toggle means the tray is never the sole path to anything.
+
+---
+
+# 0.2 — Workspace
+
+Post-MVP. Several projects stop being a list and become a place you work.
+
+---
+
+## 2. Project/workspace management
+
+**Purpose.** A project is *where the code is*; a **workspace** is *a way of working on
+it* (e.g. "backend + db", "frontend only", "debugging prod issue"). Workspaces let one
+project carry different tool/port/command sets without duplication.
+
+**User experience.** Each project has at least a `Default` workspace, created
+implicitly and never shown as a choice until a second one exists — a single-workspace
+user never learns the concept. Adding a second reveals a workspace switcher in the
+project header. Switching changes which commands, ports of interest, and app targets
+are surfaced. Switching never kills anything.
+
+**Functional requirements.**
+- FR-2.1 Every project has ≥ 1 workspace; the implicit `Default` cannot be deleted
+  while it is the only one.
+- FR-2.2 A workspace stores: name, optional subdirectory root (relative to project
+  root), expected ports, configured commands, preferred apps overriding project
+  defaults, and layout/session references.
+- FR-2.3 Create, rename, duplicate, delete workspaces. Deleting warns if it holds
+  commands or a saved session.
+- FR-2.4 Switching workspace is a pure view/config change — no processes started or
+  stopped, ever.
+- FR-2.5 The active workspace per project is remembered across restarts.
+- FR-2.6 Multiple projects are "active" simultaneously; there is **no** global
+  single-workspace mode.
+
+**Platform considerations.** None beyond path handling (FR-1 platform notes).
+
+**Acceptance criteria.**
+- AC-2.1 A new project shows no workspace UI at all until a second workspace exists.
+- AC-2.2 Switching workspaces changes the displayed command/port set in < 100 ms and
+  starts/stops nothing (verified: process list unchanged).
+- AC-2.3 Deleting a workspace leaves the project and its other workspaces intact.
+
+**Dependencies.** Feature 1; `workspaces` module.
+
+**Risks.** Concept overload — two nouns where users expect one. Mitigated by hiding
+workspaces until a second exists, which is a hard requirement, not a nicety.
+
+---
+
+## 23. App groups *(shape only)*
+
+**Phase 0.2 · Slice 4 · specified in full during the 0.2 design pass.**
+
+**Shape.** A named set of applications, terminals, and URLs that belong together and can
+be opened as one action. Groups are defined per workspace and are the unit that
+[workspace restoration](#24-workspace-restoration-shape-only) saves and reopens; without
+them, restoration has nothing to name. Launching a group uses the same argv-template
+machinery as [feature 9](#9-application-launching) and inherits its no-shell rule
+unchanged.
+
+**Boundaries already settled.** A group launches applications; it never closes them. It
+has no conditions and no triggers — a group that fires on an event is an automation rule
+and belongs to 0.6+, behind the trust model.
+
+---
+
+## 24. Workspace restoration *(shape only)*
+
+**Phase 0.2 · Slice 11 · specified in full during the 0.2 design pass.**
+
+**Shape.** Save the set of open applications, terminals, URLs, and expected containers
+for a workspace, and reopen them on demand.
+
+**Boundaries already settled.** Restoration is always an explicit user action, never
+automatic on launch. It never force-closes anything that is already running, and it
+never kills a process to make room for the one it is starting. The user sees a preview
+of exactly what is about to open, before it opens. Restoration that surprises people is
+worse than no restoration at all.
+
+---
+
+# 0.3 — Shelf
+
+Post-MVP. A place to put a file that is not yet a decision.
 
 ---
 
@@ -694,6 +792,12 @@ escaped text, strict CSP.
 
 ---
 
+# 0.4 — System
+
+Post-MVP. Mira notices the state of the machine it lives on.
+
+---
+
 ## 17. System status
 
 **Purpose.** Ambient machine context — enough to explain "why is everything slow".
@@ -732,7 +836,8 @@ sampling is a hard requirement with a test.
 **Purpose.** Label a session with what was playing — a memory hook, not a player.
 
 **User experience.** When available, a one-line "now playing" in the compact window and
-optionally attached to a saved session. Playback controls are **not** part of MVP.
+optionally attached to a saved session. Playback controls are **not** part of any 0.x
+milestone — see [product-scope.md](product-scope.md) §5.
 
 **Functional requirements.**
 - FR-18.1 Read current track title, artist, and source application where the OS exposes
@@ -807,89 +912,28 @@ still covers the main battery-saving case.
 
 ---
 
-## 20. Global shortcut
+## 25. Displays *(shape only)*
 
-**Purpose.** Mira must be one keystroke away or it will not be used.
+**Phase 0.4 · Slice 9 · specified in full during the 0.4 design pass.**
 
-**User experience.** A default chord toggles the compact window: focused and typing-ready
-if hidden, dismissed if visible. Rebindable in Settings with live conflict detection.
+**Shape.** Awareness of the attached displays — how many, their arrangement, and which
+one Mira's compact window is currently summoned onto. The immediate use is placing that
+window predictably on a multi-monitor setup, which is a real irritation on all three
+platforms today.
 
-**Functional requirements.**
-- FR-20.1 Default binding: `⌥Space` (macOS), `Ctrl+Alt+Space` (Windows/Linux) —
-  chosen to avoid Spotlight (`⌘Space`) and common IME toggles.
-- FR-20.2 Rebindable; the new binding is validated before being saved, and registration
-  failure is reported immediately with the conflicting-owner reason where the OS gives one.
-- FR-20.3 Toggle semantics: show+focus when hidden, hide when visible and focused.
-- FR-20.4 The window appears on the display containing the cursor.
-- FR-20.5 If the shortcut cannot be registered at all, Mira still runs; the tray icon
-  and (feature 21) a documented fallback remain.
-
-**Platform considerations.**
-- **macOS: Full.** Registration may require Accessibility/Input Monitoring permission
-  for some chords; Mira prompts and explains once, and never silently retries.
-- **Windows: Full.** `RegisterHotKey` fails if another app owns the chord; the error is
-  surfaced with the chord named.
-- **Linux/X11: Full.**
-- **Linux/Wayland: Unavailable.** Wayland has no cross-compositor global-shortcut
-  protocol; Tauri's global-shortcut implementation is X11-specific and is disabled on
-  Wayland to avoid a libX11 crash. **Mira's fallback:** the app is single-instance, and
-  running `mira --toggle` raises/hides the window. Settings shows the exact command and
-  a per-desktop recipe (GNOME/KDE custom shortcut) so the user binds it in their own
-  compositor. This is documented as Unavailable-with-fallback, never presented as working.
-
-**Acceptance criteria.**
-- AC-20.1 Warm toggle to interactive window ≤ 250 ms on all platforms.
-- AC-20.2 A chord already owned by another app produces a specific, visible error.
-- AC-20.3 On Wayland, Settings shows the fallback recipe and `mira --toggle` works,
-  raising the existing instance rather than starting a second one.
-- AC-20.4 Mira starts and is usable with no shortcut registered at all.
-
-**Dependencies.** `tauri-plugin-global-shortcut`, `tauri-plugin-single-instance`, CLI arg
-handling.
-
-**Risks.** Wayland is a growing share of Linux desktops and this gap will not close on
-Mira's schedule. Accepted and documented.
+**Boundaries already settled.** Read-only. Mira reports the display configuration; it
+never changes resolution, arrangement, or scaling. Display arrangement is per-platform
+and will be `Degraded` where the OS does not expose it — Wayland in particular.
 
 ---
 
-## 21. Menu bar / system tray
+# 0.5 — Personality
 
-**Purpose.** Mira's resting state. It lives here, not in the dock/taskbar.
+Post-MVP. Mira stops looking like a dashboard.
 
-**User experience.** A monochrome icon; click (or menu, on Linux) reveals a compact
-menu: active projects with status dots, toggle window, recent projects, quit. Optional
-badge/marker when something wants attention (e.g. a port died) — off by default.
-
-**Functional requirements.**
-- FR-21.1 Tray/menu-bar icon present whenever Mira runs.
-- FR-21.2 Menu: toggle main window, up to 5 recent projects (each opening its detail
-  view), Settings, Quit.
-- FR-21.3 Closing the last window does not quit Mira; Quit is explicit.
-- FR-21.4 Optional "start on login" setting, off by default.
-- FR-21.5 The icon adapts to light/dark system appearance (template rendering).
-
-**Platform considerations.**
-- **macOS: Full.** Menu-bar item with template image; the app runs as an accessory
-  (no dock icon) by default, configurable.
-- **Windows: Full.** Notification-area icon; users may hide icons via OS settings —
-  first run tells them where it went.
-- **Linux: Degraded.** Tray relies on libayatana-appindicator/StatusNotifierItem.
-  Click events do not fire on Linux (a libappindicator limitation), so **the menu is
-  the only interaction** — Mira's Linux tray is designed menu-first rather than
-  click-to-toggle. Some desktops (notably stock GNOME) need an extension for tray
-  icons at all; if the icon cannot be created Mira says so and continues, with the
-  window and `mira --toggle` as the entry points.
-
-**Acceptance criteria.**
-- AC-21.1 Every MVP entry point is reachable from the tray menu on all three platforms.
-- AC-21.2 On Linux, no feature is reachable *only* by clicking the tray icon.
-- AC-21.3 Closing the window leaves Mira running with idle CPU < 1%.
-- AC-21.4 Tray creation failure is reported once and does not abort startup.
-
-**Dependencies.** Tauri tray APIs; feature 20.
-
-**Risks.** Linux tray support is genuinely uneven. Mitigation: the menu-first design
-plus the CLI toggle means the tray is never the sole path to anything.
+An atmosphere may change design tokens and add one canvas layer. It may not change
+layout, spacing, or the status language. That constraint is what keeps this phase a
+short one.
 
 ---
 
@@ -906,7 +950,7 @@ professional and are capped by a performance budget.
 - FR-22.1 Light/Dark/System theme, following the OS immediately on change.
 - FR-22.2 Accent colour from a curated set plus a custom picker; all combinations must
   keep WCAG AA contrast for text — the picker rejects failing choices.
-- FR-22.3 Atmospheres in MVP: **Minimal** (default), Cosmic, Sakura, Cyberpunk, Rain,
+- FR-22.3 Atmospheres in 0.5: **Minimal** (default), Cosmic, Sakura, Cyberpunk, Rain,
   Custom. Custom = user-supplied background image/colour + accent, no scripting.
 - FR-22.4 Ambient motion is off unless the atmosphere defines it, respects
   `prefers-reduced-motion`, pauses entirely when the window is not focused, and is
@@ -931,31 +975,148 @@ hard CPU budget, contrast gate, abstract-only art.
 
 ---
 
-# V1.x
+## 26. Workspace identities *(shape only)*
 
-Planned next; designed-for but not built during MVP.
+**Phase 0.5 · Slice 10 · specified in full during the 0.5 design pass.**
 
-| Feature | Shape | Notes |
-|---|---|---|
-| **Workspace restoration** | Save the set of apps/terminals/URLs/containers for a workspace and reopen them on demand | Explicit user action, never automatic; restoring never force-kills anything |
-| **Advanced Git visualization** | Diff view for a commit, file history, richer graph filtering | Still read-only; no rebase/merge UI |
-| **Project health overview** | One card per project rolling up Git, ports, containers, disk, and last activity | Aggregation of existing signals only |
-| **More system integrations** | Notifications on watched conditions, richer disk/network detail | Opt-in per condition |
-| **Ambient environments** | Time-of-day and focus-mode atmospheres, per-workspace | Same CPU budget applies |
-| **Improved media integration** | Playback controls where the OS permits (Linux MPRIS, Windows GSMTC) | macOS remains Unavailable |
-| **Platform-specific integrations** | e.g. macOS Shortcuts, Windows jump lists, Linux desktop actions | Additive; no feature may exist *only* on one OS if it is a core flow |
+**Shape.** A workspace carries its own visual identity — accent, atmosphere, and
+optionally an icon or short label — so that switching workspaces is recognisable
+peripherally, before you have read anything. This is the personalization layer applied
+to the concept 0.2 introduces.
 
-## V1.x candidates explicitly deferred
+**Boundaries already settled.** An identity is tokens and one canvas layer, like every
+other atmosphere. It may not change layout, spacing, or the status language, and it is
+subject to the same AA contrast gate and idle-CPU ceiling. A workspace with no identity
+set looks exactly like the default — this never becomes required configuration.
 
-Git `fetch` (behind a setting), Docker start/stop, and shelf-item notes with markdown
-are all plausible V1.x items that are **not** promised.
+---
+
+## 27. Music-reactive ambience *(shape only)*
+
+**Phase 0.5 · Slice 10 · specified in full during the 0.5 design pass.**
+
+**Shape.** The ambient canvas layer responds to whatever is currently playing —
+amplitude or tempo driving motion in the atmosphere, not a visualiser and not a
+playback UI.
+
+**Platform capability limitation, not a defect.** This depends on
+[feature 18](#18-media-detection), which is `Unavailable` on macOS: there is no public
+API for now-playing media, and the private framework that would provide one is not an
+option — see [ADR-0006](../adr/0006-no-account-no-cloud.md) and the `otool -L` guard
+test in CI. The feature is therefore designed to **degrade to a non-reactive
+atmosphere** rather than to disappear or to render an error. It is Full on Windows
+(GSMTC) and Linux (MPRIS). If Apple ships a public API, the capability is revisited
+then; the constraint is Apple's, and it is allowed to change.
+
+**Boundaries already settled.** Reactive motion obeys the same 2% idle-CPU ceiling as
+every other atmosphere, stops entirely under `prefers-reduced-motion`, and pauses when
+the window is unfocused. Mira reads playback state; it never controls playback.
+
+---
+
+# 0.6+ — Automation
+
+Post-MVP, and gated. Nothing here starts before the MVP has shipped and been in real
+use, a written trust model exists, and demand is evidenced by actual requests.
+
+SSH and Docker awareness were previously scheduled earlier and keep their full
+specifications below. They belong here because they are the read-only half of the
+surface an automation rule would act on, and because they are the two most sensitive
+integrations in the product. Contextual rules, plugins, and Astra integration are
+deliberately unspecified — a rules engine that launches processes needs a trust model
+before it needs a schema ([security-and-privacy.md](../architecture/security-and-privacy.md) §5).
+
+---
+
+## 13. SSH awareness
+
+**Purpose.** Remote work is part of many projects; Mira should show whether the box is
+reachable and whether a tunnel is up — **without becoming an SSH client**.
+
+**User experience.** A project may list SSH hosts (imported from `~/.ssh/config` or
+added manually). Each shows: alias, user@host:port, reachability, and whether an active
+local `ssh` process references it. Actions: copy the `ssh` command, open a terminal
+running it. Nothing else.
+
+**Functional requirements.**
+- FR-13.1 Parse `~/.ssh/config` read-only for `Host`/`HostName`/`User`/`Port`/
+  `IdentityFile` **names**; associate hosts with projects manually.
+- FR-13.2 **Never** read private key material, never read passphrases, never store
+  credentials. `IdentityFile` is stored as a path string only, and the file is not
+  opened.
+- FR-13.3 Reachability = optional, opt-in, per-host TCP connect to the SSH port with a
+  3 s timeout. Off by default; no probing happens until the user enables it.
+- FR-13.4 Detect local `ssh` processes whose command line references a known host, to
+  show "tunnel/session active"; parse the `-L`/`-R` forwards for display only.
+- FR-13.5 Mira does not open, hold, or authenticate SSH connections itself.
+
+**Platform considerations.** `~/.ssh/config` location differs on Windows
+(`%USERPROFILE%\.ssh\config`); OpenSSH-for-Windows is standard but PuTTY users have no
+such file — that case shows an empty state, not an error. Reading command lines of
+`ssh` processes is subject to the same permission limits as feature 8.
+
+**Acceptance criteria.**
+- AC-13.1 Hosts parse from a realistic `~/.ssh/config` including `Include` directives
+  and wildcard `Host *` blocks (wildcards are listed but not probed).
+- AC-13.2 With reachability disabled (default), Mira makes zero network connections —
+  verified by test.
+- AC-13.3 No key file is ever read; asserted by a test that fails if the code opens a
+  path from `IdentityFile`.
+
+**Dependencies.** Features 8, 10.
+
+**Risks.** Privacy: reading SSH config is sensitive. Mitigations: read-only, names only,
+no key access, no probing by default, and an explicit first-run consent before the
+config is parsed at all.
+
+---
+
+## 14. Docker awareness
+
+**Purpose.** "Is my stack up?" without opening Docker Desktop.
+
+**User experience.** If a project contains a `docker-compose.y*ml` or `Dockerfile`, a
+Containers section lists related containers: name, image, state, uptime, published
+ports (linked to feature 7). Actions: copy container name, open a published
+port, open a terminal at the compose file. **No** start/stop/restart/exec/logs.
+
+**Functional requirements.**
+- FR-14.1 Detect Docker availability by probing the local daemon socket
+  (`/var/run/docker.sock`, `npipe:////./pipe/docker_engine`, and the Docker Desktop
+  per-user socket path); absence is a normal state, not an error.
+- FR-14.2 List containers with name, image, status, created time, published ports,
+  compose project label (`com.docker.compose.project`).
+- FR-14.3 Associate containers with a Mira project by compose project name or by the
+  compose file's working-directory label matching the project root.
+- FR-14.4 Read-only. No lifecycle actions.
+- FR-14.5 Poll only while a Docker-bearing view is open (5 s), never in the background.
+- FR-14.6 Podman's Docker-compatible socket is used when present; other runtimes are
+  out of scope pre-1.0.
+
+**Platform considerations.** Socket paths differ per OS and per Docker Desktop version;
+rootless Docker and Colima/OrbStack use non-default socket paths — Mira reads
+`DOCKER_HOST` first, then a candidate list, and lets the user set the path in Settings.
+On Windows, named-pipe access needs the user to be in `docker-users`; permission denied
+renders as "Docker present but not accessible", with the reason.
+
+**Acceptance criteria.**
+- AC-14.1 With a compose stack up, the project shows its containers with correct state.
+- AC-14.2 With Docker not installed, the section is absent — no error, no spinner.
+- AC-14.3 Mira never sends a write request to the Docker API (asserted by test:
+  only `GET` requests are issued).
+
+**Dependencies.** Feature 7; `docker` module.
+
+**Risks.** Access to the Docker socket is effectively root-equivalent; even read-only
+use deserves care. Mitigation: read-only client, `GET`-only assertion test, explicit
+documentation in the security doc.
 
 ---
 
 # Future
 
 Directionally accepted, deliberately undesigned. No commitments, no schema, no
-abstractions built in MVP to accommodate them.
+abstractions built during the 0.x line to accommodate them.
 
 - **Contextual automation** — rules like "when I open project X, start the compose
   stack and open the editor". Requires a trust model before design.
@@ -965,6 +1126,8 @@ abstractions built in MVP to accommodate them.
 - **Deeper Astra integration** — optional, off by default, deletable.
 - **Optional cloud functionality** — only with a strong, specific reason; would remain
   opt-in and never required. There is currently no such reason.
+
+---
 
 ## Anti-scope (things that will not be built)
 

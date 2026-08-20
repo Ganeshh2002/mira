@@ -102,9 +102,11 @@ must add a superseding ADR.
 
 [Semantic Versioning](https://semver.org/), with the pre-1.0 rules stated plainly:
 
-- **`0.x.y` until the product is feature-complete for V1.** In `0.x`, a **minor** bump
-  may change behaviour, and a **patch** is a fix. Nothing is promised as stable yet.
-- **`1.0.0`** when the MVP has shipped, been used, and the command surface has settled.
+- **`0.x.y` for the whole 0.x line (0.1 through 0.6+).** In `0.x`, a **minor** bump is
+  a phase and may change behaviour, and a **patch** is a fix. Nothing is promised as
+  stable yet.
+- **`1.0.0`** when the 0.x line (0.1 through 0.6+) has shipped, been used, and the
+  command surface has settled. Not a feature milestone.
 - After 1.0: MAJOR = a breaking change to the database schema, the command surface, or a
   documented behaviour; MINOR = a feature; PATCH = a fix.
 

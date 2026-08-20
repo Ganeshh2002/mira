@@ -62,6 +62,6 @@ configure well. Over-splitting is a real hazard — a crate per *file* would be 
 one crate.
 
 **Rule of thumb.** A crate exists when it has a distinct interface and could plausibly be
-faked or replaced. `mira-automation` is therefore **not** created in MVP: building an
-empty crate for an undesigned feature is speculative architecture, and the dependency
-rules already make adding it cheap.
+faked or replaced. `mira-automation` is therefore **not** created before 0.6+:
+building an empty crate for an undesigned feature is speculative architecture, and the
+dependency rules already make adding it cheap.

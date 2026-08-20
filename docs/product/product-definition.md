@@ -4,6 +4,9 @@
 
 Status: **pre-implementation.** Nothing in this document is built yet.
 
+This document defines *what* Mira is. [product-scope.md](product-scope.md) defines *when*
+each part of it is built and what "MVP" means; [prd.md](prd.md) specifies the features.
+
 ---
 
 ## 1. The one-sentence version
@@ -43,7 +46,7 @@ These are binding constraints on every future feature, not aspirations.
 | **Privacy-first** | No telemetry by default; see [security-and-privacy.md](../architecture/security-and-privacy.md). |
 | **Lightweight** | Idle RSS budget ≤ 150 MB; idle CPU ≈ 0% when no window is open. |
 | **Fast startup** | Global shortcut → visible, interactive window in ≤ 250 ms warm. |
-| **Keyboard-friendly** | Every MVP action reachable without a mouse. |
+| **Keyboard-friendly** | Every action reachable without a mouse, from 0.1 onward. |
 | **Cross-platform** | macOS, Windows, Linux are peers. None is a port of another. |
 | **Developer-focused but not an IDE** | Mira never edits code. |
 
@@ -78,7 +81,7 @@ reports itself unavailable with a reason. See
    where *this project* is already known, so you do not retype paths.
 4. **A small set of safe actions.** Kill the process on a port, copy a branch name,
    stash a file on the Shelf, open `localhost:5173`.
-5. **A session restorer** (V1.x). Reopen what you had open for a project.
+5. **A session restorer** (0.2). Reopen what you had open for a project.
 6. **A companion.** It expects you to have an editor, a terminal, a browser, and Git,
    and it makes them easier to point at the right thing.
 
@@ -97,7 +100,7 @@ overturning one requires an ADR.
 | **A full Git client** | Merge/rebase UIs are their own product. | Status, branch, last commit, a readable graph — read-mostly. |
 | **A Docker Desktop replacement** | Image/volume management is a product. | Awareness: which containers relate to this project, are they up. |
 | **A Raycast clone** | General-purpose launching is taken and done well. | Project-scoped commands only. No app-wide fuzzy launcher. |
-| **A Keyboard Maestro clone** | General automation is unbounded. | Narrow, project-triggered automation, and only in Future scope. |
+| **A Keyboard Maestro clone** | General automation is unbounded. | Narrow, project-triggered automation, and not before 0.6+. |
 
 ### The boundary test
 
@@ -107,10 +110,10 @@ is out of scope, however small the first version looks.
 
 ### The Git boundary, stated precisely
 
-Mira reads Git and performs exactly these writes, and no others in MVP: **none**.
+Mira reads Git and performs exactly these writes, and no others pre-1.0: **none**.
 Fetch, pull, commit, push, merge, rebase, and conflict resolution stay in your existing
-tools. V1.x may add `fetch` (safe, read-oriented) behind an explicit setting. Anything
-that rewrites history is permanently out of scope.
+tools. `fetch` (safe, read-oriented, behind an explicit setting) is accepted in
+principle but unscheduled. Anything that rewrites history is permanently out of scope.
 
 ## 7. Who it is for
 
@@ -142,7 +145,7 @@ Concretely, this is enforced by architecture, not goodwill:
 2. Any future Astra integration arrives as an **optional module behind a capability
    flag**, disabled by default, that consumes only public Mira interfaces —
    the same surface a third-party plugin would use.
-3. Astra integration may never become the only way to reach an MVP or V1.x feature.
+3. Astra integration may never become the only way to reach any feature in the 0.x line.
 4. If Astra is cancelled, deleting the integration module must leave a working Mira.
    That deletability is the test.
 

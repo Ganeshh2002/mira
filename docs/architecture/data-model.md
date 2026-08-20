@@ -278,14 +278,15 @@ Known preference keys (validated in `mira-core`, defaults in parentheses):
 `ssh.parse_config` (`false`), `docker.socket_path` (unset = autodetect),
 `polling.interval_seconds` (`5`).
 
-### 3.10 Automation *(Future — not created in MVP)*
+### 3.10 Automation *(0.6+ — not created before then)*
 
 Sketched only, so a later migration does not have to fight the existing shape. **No
-`automations` table is created in MVP**; building empty tables for undesigned features is
-how schemas rot.
+`automations` table is created before 0.6+**; building empty tables for undesigned
+features is how schemas rot. This is the schema-level statement of
+[product-scope.md](../product/product-scope.md) §1 rule 2.
 
 ```sql
--- FUTURE, NOT IN MVP:
+-- 0.6+, NOT CREATED BEFORE THEN:
 -- automations(id, project_id, workspace_id, name, trigger_kind, trigger_config JSON,
 --             is_enabled, created_at)
 -- automation_actions(id, automation_id, sort_order, action_kind, action_config JSON)

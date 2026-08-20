@@ -88,7 +88,7 @@ developer's machine.
 
 ### 4.3 Environment variables
 
-Mira does not read, display, or store the environment of other processes in MVP. Command
+Mira does not read, display, or store the environment of other processes, pre-1.0. Command
 lines are shown (they are already visible to any process the user owns) and may contain
 secrets — so command lines are **truncated in the compact window** and shown fully only
 on explicit expansion, and are never persisted.
@@ -110,7 +110,7 @@ on explicit expansion, and are never persisted.
 
 Access to the Docker socket is effectively root-equivalent on most systems. Therefore:
 
-- Mira is **read-only** in MVP: only `GET` requests are issued, asserted by test.
+- Mira is **read-only**: only `GET` requests are issued, asserted by test.
 - The socket is opened lazily, only when a project has a Docker reference and a
   Docker-bearing view is on screen.
 - Mira never runs `docker` CLI commands and never execs into a container.
@@ -180,7 +180,7 @@ The webview renders content that may come from untrusted files, so:
 
 ## 7. Plugins *(Future)*
 
-No plugin host exists in MVP. When one is designed, it starts from these constraints:
+No plugin host exists before 0.6+. When one is designed, it starts from these constraints:
 
 - Plugins declare capabilities up front; there is no ambient authority.
 - No plugin gets filesystem, process-spawn, or network access by default.

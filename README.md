@@ -100,7 +100,7 @@ surface is a list of named commands with validated arguments. Details in
 
 | | |
 |---|---|
-| **Product** | [Definition](docs/product/product-definition.md) · [PRD](docs/product/prd.md) |
+| **Product** | [Definition](docs/product/product-definition.md) · [Scope & phases](docs/product/product-scope.md) · [PRD](docs/product/prd.md) |
 | **UX** | [Information architecture](docs/ux/information-architecture.md) · [Design system](docs/ux/design-system.md) |
 | **Architecture** | [Overview](docs/architecture/architecture.md) · [Platform abstraction](docs/architecture/platform-abstraction.md) · [Data model](docs/architecture/data-model.md) · [Security & privacy](docs/architecture/security-and-privacy.md) · [Review](docs/architecture/architecture-review.md) |
 | **Decisions** | [ADRs 0001–0008](docs/adr/) |
@@ -108,17 +108,22 @@ surface is a list of named commands with validated arguments. Details in
 
 ## Project status
 
-| Slice | Scope | State |
-|---|---|---|
-| Documentation | Product, architecture, roadmap | ✅ Complete |
-| 0 — Skeleton | Tauri app, workspace, migrations, CI | ⬜ Not started |
-| 1 — Project + Git | Add project, detect repo, show status | ⬜ Not started |
-| 2 — Ports + processes | Detect, attribute, open, terminate | ⬜ Not started |
-| 3 — Launching | Editor, terminal, browser | ⬜ Not started |
-| 4–12 | Workspaces, graph, shelf, peek, awareness, themes | ⬜ Not started |
+Phases are locked. **0.1 is the MVP**; everything from 0.2 on is post-MVP and does not
+block the first release.
 
-First release (`0.1.0`) will cover slices 0–3. See the
-[roadmap](docs/implementation/roadmap.md).
+| Phase | Scope | Slices | State |
+|---|---|---|---|
+| Documentation | Product, scope, architecture, roadmap | — | ✅ Complete |
+| **0.1 — Core Companion** | Projects, Git status and history, ports, processes, editor/terminal/browser, tray, global shortcut | 0–3, 5a | ⬜ Not started |
+| 0.2 — Workspace | Workspace model, app groups, restoration, Git graph and diff | 4, 5b, 11 | ⬜ Not started |
+| 0.3 — Shelf | Drag-drop, temporary storage, Quick Peek | 6–7 | ⬜ Not started |
+| 0.4 — System | CPU/RAM/battery, network, lock/session, media, displays | 9 | ⬜ Not started |
+| 0.5 — Personality | Atmospheres, ambient effects, workspace identities | 10 | ⬜ Not started |
+| 0.6+ — Automation | Contextual rules, SSH, Docker, plugins, Astra | 8, 12 | ⬜ Gated |
+
+Slice numbers are stable identifiers and do not renumber when a phase changes. See
+[product scope](docs/product/product-scope.md) for the lock, and the
+[roadmap](docs/implementation/roadmap.md) for how the work is cut.
 
 ## Development setup
 

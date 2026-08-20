@@ -6,6 +6,14 @@ design pass, adversarial reading of our own work.
 This is a critical review, not a summary. Its job is to find the places where the plan is
 wrong, over-scoped, or quietly dishonest, before any code makes them expensive.
 
+> **Superseded release plan — this document is a dated record and is left as written.**
+> The release mapping and the meaning of "MVP" discussed below were changed after this
+> review, by [product-scope.md](../product/product-scope.md): MVP now means the **0.1**
+> release alone, and the phases are locked at 0.1 through 0.6+. The findings here still
+> stand as findings — §4's scope-realism criticism is in fact what the phase lock
+> answers — but do not read the version numbers or the "V1.x" tier in this document as
+> current. Nothing below has been rewritten, deliberately.
+
 ---
 
 ## 1. What was checked

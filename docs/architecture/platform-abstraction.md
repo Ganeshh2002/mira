@@ -218,8 +218,9 @@ Native on all three (`UNUserNotificationCenter`, Windows toast, `org.freedesktop
 Practical differences: macOS requires user permission and silently drops notifications
 when denied — Mira checks the permission state and shows it in Settings rather than
 firing into the void. Linux requires a running notification daemon; absent one, the
-capability is `Unavailable`. Notifications are opt-in per condition and are a V1.x
-feature; the capability exists in MVP only to report status.
+capability is `Unavailable`. Notifications are opt-in per condition and are accepted
+but unscheduled ([product-scope.md](../product/product-scope.md) §5); the capability
+exists from 0.1 only to report status.
 
 ### 4.9 Filesystem behaviour
 

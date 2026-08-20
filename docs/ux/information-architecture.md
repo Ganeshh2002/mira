@@ -37,7 +37,7 @@ safe to explore.
 
 A time-bounded record created by Mira, not by the user: opened at `T`, project P,
 workspace W, paused while the screen was locked, closed at `T+n`. Sessions are what
-make "welcome back" and (V1.x) workspace restoration possible.
+make "welcome back" and (0.2) workspace restoration possible.
 
 **Sessions are observed, not configured.** The user never creates one. They may delete
 them, and may turn session recording off entirely.
@@ -65,7 +65,7 @@ Three nouns, each with one job, is the smallest honest model.
 | **Peek** | Transient overlay | Anywhere a file is named | No |
 | **System** | Machine | Compact window strip, Settings | No |
 | **Media** | Machine | Compact window line, session label | Only if attached to a session |
-| **Automations** *(Future)* | Project or Workspace | Not in MVP | Would be |
+| **Automations** *(0.6+)* | Project or Workspace | Not before 0.6+ | Would be |
 | **Settings** | App | Settings window | Yes |
 
 Two rules fall out of this table and are binding:
@@ -215,9 +215,10 @@ preferred apps, and a session list. Editing here changes configuration only.
 
 ### Git view
 Header: branch, upstream, ahead/behind (labelled "as of last fetch"), last commit.
-Tabs: **Changes** (grouped path list) and **History** (graph + commit detail). Read-only
-throughout MVP; the absence of write actions is deliberate and visible — there are no
-disabled commit buttons hinting at a future.
+Tabs: **Changes** (grouped path list) and **History** (commit list + commit detail in
+0.1; the lane graph and diff view arrive in 0.2). Read-only throughout the 0.x line; the
+absence of write actions is deliberate and visible — there are no disabled commit
+buttons hinting at a future.
 
 ### Ports view (machine-scoped)
 All listening ports, grouped: *this project*, *other projects*, *unattributed*. Same row
@@ -238,7 +239,7 @@ Media is a single line, only when enabled and available.
 
 ### Automations *(Future)*
 Reserved location: a per-project section below Apps & Commands. Nothing is built, and
-no schema is created for it in MVP.
+no schema is created for it before 0.6+.
 
 ---
 
