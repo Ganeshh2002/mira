@@ -1,0 +1,263 @@
+# Aviora Mira — Security & Privacy
+
+Status: **pre-implementation.** These rules are binding on every future change. A pull
+request that weakens one needs an ADR, not a review comment.
+
+---
+
+## 1. Position
+
+Mira is a **local, single-user, accountless desktop application**. It stores what you
+tell it about your own machine, in one SQLite file you own, and it talks to no server.
+
+That premise removes most of the usual attack surface — there is no auth to break, no
+session to steal, no server to breach, no multi-tenant data to leak. What remains is
+concentrated and specific, and this document is about that:
+
+1. Mira **launches processes** the user configured.
+2. Mira **terminates processes**.
+3. Mira **reads files** and renders their content in a webview.
+4. Mira **reads sensitive local configuration** (SSH config, Docker socket).
+5. Mira **ships updates**.
+
+Threat model: a **local, non-privileged attacker or malicious content** — a hostile
+repository, a crafted filename, a poisoned project config, a malicious `.desktop` file.
+Mira is not designed to defend against an attacker who already has your user account or
+root; at that point everything is lost regardless.
+
+---
+
+## 2. Default policy
+
+> **No telemetry. No account. No network connection unless the user explicitly asks for
+> one.**
+
+A freshly installed Mira, left alone, makes **zero outbound network connections**. Not
+for updates (until answered), not for analytics, not for a "check what's new" banner, not
+for crash reports, not for fonts or CDNs.
+
+The only things that can ever cause network traffic, each off or unanswered by default:
+
+| Traffic | Default | Control |
+|---|---|---|
+| Update check | **Unanswered at first run** — user picks | Settings → Advanced |
+| SSH reachability probe | **Off**, per host | Per-host toggle |
+| Opening a URL in the browser | User action | — |
+| Docker daemon | Local socket only, never TCP | — |
+
+Everything else — fonts, icons, styles, scripts — is bundled. The webview loads no
+remote origin, and CSP enforces it.
+
+---
+
+## 3. Local-first behaviour
+
+- All state is one SQLite file in the OS app-data directory ([data-model.md](data-model.md) §2).
+- Mira is fully functional with networking disabled, permanently.
+- Uninstalling and deleting that file removes everything Mira knows. There is no second
+  hidden store, no registry sprawl beyond the optional autostart entry, no cloud copy.
+- Settings → Privacy offers: delete all sessions, disable session recording, open the
+  database's folder, and **erase all Mira data**.
+
+---
+
+## 4. Sensitive information
+
+### 4.1 What Mira never stores
+
+Credentials, tokens, API keys, passwords, SSH private keys or passphrases, environment
+variable *values*, file contents, and command output. This is enforced by the schema
+having nowhere to put them, and by review.
+
+### 4.2 SSH
+
+The strictest area in the product, because `~/.ssh` is the most valuable directory on a
+developer's machine.
+
+- Parsing `~/.ssh/config` is **opt-in** (`ssh.parse_config`, default off) with a first-run
+  explanation of exactly what is read.
+- Mira reads **names only**: `Host`, `HostName`, `User`, `Port`, `IdentityFile`.
+- `IdentityFile` is stored **as a path string**. The file is never opened, read, hashed,
+  or transmitted. A guard test fails the build if any code path opens a path that came
+  from that column.
+- `known_hosts`, `authorized_keys`, agent sockets, and key files are never touched.
+- Reachability probing is a bare TCP connect, opt-in per host, 3 s timeout, no
+  handshake, no authentication, no banner storage.
+- Mira never runs `ssh` itself. "Open a terminal running ssh" hands the command to the
+  user's terminal, where their agent and their prompts apply.
+
+### 4.3 Environment variables
+
+Mira does not read, display, or store the environment of other processes in MVP. Command
+lines are shown (they are already visible to any process the user owns) and may contain
+secrets — so command lines are **truncated in the compact window** and shown fully only
+on explicit expansion, and are never persisted.
+
+### 4.4 Filesystem access
+
+- Reads are confined: `peek.read` and shelf operations resolve the canonical path and
+  verify it is inside a registered project root or an existing shelf entry. Path
+  traversal (`..`), symlink escape, and Windows 8.3-name tricks are defeated by
+  canonicalising **and then** checking containment.
+- Mira **never writes** to a project directory. It creates no dotfiles, no caches, no
+  lockfiles inside your repos.
+- Mira **never deletes files**. There is no delete-file action in the product; removing a
+  shelf item removes a reference.
+- Symlinks are resolved before containment checks; a symlink pointing outside a project
+  root is refused with a visible reason.
+
+### 4.5 Docker
+
+Access to the Docker socket is effectively root-equivalent on most systems. Therefore:
+
+- Mira is **read-only** in MVP: only `GET` requests are issued, asserted by test.
+- The socket is opened lazily, only when a project has a Docker reference and a
+  Docker-bearing view is on screen.
+- Mira never runs `docker` CLI commands and never execs into a container.
+- Absence of Docker is a normal state, not an error, and is never "fixed" by installing
+  anything.
+
+---
+
+## 5. Command execution — the primary risk
+
+Launching applications is Mira's most dangerous capability, so the rules are absolute.
+
+1. **No shell. Ever.** Every child process is spawned with an argv array
+   (`Command::new(program).args([...])`). There is no `sh -c`, no `cmd /c` (except the
+   explicit, quoted `.cmd`/`.bat` handling in the platform layer), no string
+   concatenation into a command line, and no `shell` plugin enabled for the frontend.
+2. **The schema forbids the unsafe shape.** `commands.args` is a JSON array
+   ([data-model.md](data-model.md) §3.4). There is no column where a full command line
+   can live.
+3. **Placeholders are values, not syntax.** `{path}`, `{file}`, `{line}`, `{url}`,
+   `{port}` are substituted into individual argv elements after validation. A path
+   containing `; rm -rf ~` is passed as one argument and does nothing.
+4. **Programs are resolved, not searched loosely.** A program is an absolute path, a
+   detected bundle/desktop id, or a `PATH` lookup performed by Mira — never a string
+   handed to an interpreter.
+5. **URLs are allowlisted** to `http`, `https`, `file`. `javascript:`, `data:`, and
+   custom schemes are refused.
+6. **No auto-run.** Mira never executes anything at startup, on project add, on
+   detection, or on any event. Every launch is a user action. This is why automation is
+   Future work with a trust model attached rather than a quick win.
+7. **Project directories are untrusted input.** Mira reads no executable configuration
+   from a project — no `.mirarc` that can specify a program to run. Configuration lives in
+   Mira's database, entered by the user, not in the repository. This deliberately forgoes
+   a convenient feature (per-repo committed config) because it would make cloning a
+   hostile repo dangerous.
+
+### Process termination
+
+- Always confirmed, naming process and PID; never bulk; no keyboard-only fast path.
+- Graceful first, force only as a second explicit action.
+- Refuses PID 0/1, Mira's own process, and anything the user cannot signal.
+- Never escalates privileges. Mira does not ship a helper daemon, does not use
+  `sudo`/UAC, and does not request Full Disk Access.
+
+---
+
+## 6. Webview and rendering
+
+The webview renders content that may come from untrusted files, so:
+
+- **Strict CSP:** `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline';
+  img-src 'self' asset: data: blob:; connect-src 'self' ipc:; frame-src 'none';
+  object-src 'none'; base-uri 'none'`. No remote origin is permitted.
+- **No `innerHTML`/`dangerouslySetInnerHTML` for any file-derived content.** Peek
+  highlights escaped text.
+- **SVG is rendered as an image** (`<img>`/blob URL), never inlined as DOM, so embedded
+  scripts cannot execute.
+- Filenames, branch names, commit messages, container names, and process command lines
+  are all treated as untrusted strings and rendered as text.
+- **Minimal Tauri capabilities:** the frontend gets no `fs`, `shell`, `http`, or `process`
+  plugin access. Its entire privilege surface is the explicit command list, each with
+  validated arguments. `capabilities/*.json` is reviewed like security code, because it
+  is.
+- Devtools are disabled in release builds.
+
+---
+
+## 7. Plugins *(Future)*
+
+No plugin host exists in MVP. When one is designed, it starts from these constraints:
+
+- Plugins declare capabilities up front; there is no ambient authority.
+- No plugin gets filesystem, process-spawn, or network access by default.
+- Anything a plugin requests is shown to the user at install time in plain language.
+- Plugins run out-of-process or in a restricted context — never as arbitrary code inside
+  Mira's process with full privileges.
+- Distribution and update integrity (signing) are part of the design, not an afterthought.
+
+If those cannot be met, Mira ships no plugin system. A convenient extension mechanism is
+not worth turning a local tool into an arbitrary-code-execution vector.
+
+---
+
+## 8. Updates
+
+- Update checks are **opt-in**; the user answers once at first run, and can change it.
+- Updates are signature-verified by `tauri-plugin-updater` before installation. An update
+  that fails verification is discarded, with a visible error.
+- The manifest is static and served over HTTPS. The update check sends the current
+  version and platform, and **nothing else** — no identifier, no timestamp beyond the
+  request itself, no usage data.
+- Linux: only AppImage supports in-app update; `.deb`/`.rpm` users update through their
+  package manager, stated in the UI rather than silently doing nothing.
+- Signing keys are held by maintainers and never committed. Release signing happens in
+  CI with secrets that are not exposed to PR builds from forks.
+
+---
+
+## 9. Telemetry policy
+
+**There is no telemetry.** Not anonymised, not aggregated, not "just crash reports".
+No analytics SDK is a dependency; CI fails if a known analytics crate or npm package
+enters the dependency tree.
+
+If telemetry is ever proposed, it must be: opt-**in** (never opt-out), off by default,
+fully documented as to every field sent, viewable by the user before sending, disableable
+permanently in one click, and never required for any feature. There is no current plan to
+add it, and none is needed for the product to succeed.
+
+Crash reports are handled the same way: Mira writes a local log the user can attach to an
+issue themselves. Nothing is uploaded automatically.
+
+---
+
+## 10. Supply chain
+
+- Lockfiles committed; dependency review on every addition.
+- `cargo audit` and `npm audit` in CI; advisories block release.
+- `cargo deny` enforces licence and duplicate policy.
+- Dependency additions are justified in the PR: what it does, why not std, how maintained.
+- The npm surface is kept small; every transitive dependency in a desktop app that reads
+  your filesystem is a liability.
+
+---
+
+## 11. Reporting a vulnerability
+
+See [SECURITY.md](../../SECURITY.md). Summary: report privately via GitHub's security
+advisories or the address listed there, not in a public issue. Expect acknowledgement
+within 72 hours. Fixes for confirmed high-severity issues are prioritised over features.
+
+---
+
+## 12. Guard tests
+
+These run in CI on every commit. They are the mechanism that keeps this document true
+after the people who wrote it move on.
+
+| Guarantee | Test |
+|---|---|
+| No shell execution | Source scan + spawn-path assertion |
+| Argv injection is inert | Launch with metacharacter-laden args; assert one literal argument |
+| File reads confined to project roots | Attempt traversal, symlink escape, absolute outside path — all refused |
+| SSH key files never opened | Fails if any code opens a path sourced from `identity_path` |
+| No network when probes disabled | Socket-level assertion during a full app run |
+| Docker read-only | Only `GET` requests issued |
+| No private frameworks on macOS | `otool -L` check |
+| CSP present and strict | Built-artifact inspection |
+| No analytics dependencies | Dependency-tree scan |
+| Frontend has no fs/shell capability | `capabilities/*.json` snapshot test |
