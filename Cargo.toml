@@ -1,0 +1,41 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/mira-core",
+    "crates/mira-db",
+    "crates/mira-platform",
+    "crates/mira-projects",
+    "crates/mira-workspaces",
+    "src-tauri",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.97"
+license = "MIT"
+repository = "https://github.com/aviora/mira"
+authors = ["The Aviora Mira contributors"]
+# Mira ships as an application, not as libraries on crates.io. The crates exist
+# to enforce the dependency direction in architecture.md §4, and are internal.
+publish = false
+
+[workspace.dependencies]
+mira-core = { path = "crates/mira-core" }
+mira-db = { path = "crates/mira-db" }
+mira-platform = { path = "crates/mira-platform" }
+mira-projects = { path = "crates/mira-projects" }
+mira-workspaces = { path = "crates/mira-workspaces" }
+
+rusqlite = { version = "0.37", features = ["bundled"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+ts-rs = "11"
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+panic = "abort"
+strip = true

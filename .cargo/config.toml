@@ -1,0 +1,7 @@
+# ts-rs writes every #[ts(export)] type here. Set once, workspace-wide, so
+# `cargo test` regenerates the TypeScript contract without a wrapper script and
+# without a platform-specific environment variable dance.
+#
+# `relative = true` resolves against this file's parent directory (the repo root).
+[env]
+TS_RS_EXPORT_DIR = { value = "src/bindings", relative = true }

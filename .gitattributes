@@ -1,0 +1,6 @@
+# Generated TypeScript is committed (ADR-0002) and diffed in CI on every platform.
+# Normalising line endings keeps that diff meaningful on Windows.
+* text=auto eol=lf
+*.png binary
+*.ico binary
+*.icns binary

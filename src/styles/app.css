@@ -1,0 +1,118 @@
+@import 'tailwindcss';
+@import './tokens.css';
+
+/*
+ * Tailwind consumes the tokens; it does not define its own palette
+ * (design-system §11). Utilities resolve to the custom properties above, so a
+ * theme change is a token change and nothing else.
+ */
+@theme inline {
+  --color-ground-0: var(--ground-0);
+  --color-ground-1: var(--ground-1);
+  --color-ground-2: var(--ground-2);
+  --color-ground-3: var(--ground-3);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-ink-0: var(--ink-0);
+  --color-ink-1: var(--ink-1);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-ember-bright: var(--ember-bright);
+  --color-ember: var(--ember);
+  --color-ember-dim: var(--ember-dim);
+  --color-ember-wash: var(--ember-wash);
+  --color-signal-ok: var(--signal-ok);
+  --color-signal-warn: var(--signal-warn);
+  --color-signal-danger: var(--signal-danger);
+
+  --font-sans: var(--font-interface);
+  --font-mono: var(--font-data);
+
+  --radius-sm: var(--r-sm);
+  --radius-md: var(--r-md);
+  --radius-lg: var(--r-lg);
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--ground-0);
+  color: var(--ink-0);
+  font-family: var(--font-interface);
+  font-size: var(--text-body);
+  line-height: var(--text-body-lh);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Tabular figures everywhere numbers can change, so rows do not jitter. */
+.mira-value {
+  font-family: var(--font-data);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Focus is always visible and never removed (design-system §4, §10). */
+:focus-visible {
+  outline: 2px solid var(--ember);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/*
+ * The type scale, as classes, because Tailwind's font-size namespace is also
+ * `--text-*` and tokens.css already owns those names. Components use these; they
+ * never write a size.
+ *
+ * The signature move (design-system §3): the data *is* the display type. Labels
+ * shrink and recede, values carry the page.
+ */
+@layer components {
+  .t-value-lg {
+    font-family: var(--font-data);
+    font-size: var(--text-value-lg);
+    line-height: var(--text-value-lg-lh);
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+  }
+  .t-value {
+    font-family: var(--font-data);
+    font-size: var(--text-value);
+    line-height: var(--text-value-lh);
+    font-variant-numeric: tabular-nums;
+  }
+  .t-body {
+    font-size: var(--text-body);
+    line-height: var(--text-body-lh);
+  }
+  .t-ui {
+    font-size: var(--text-ui);
+    line-height: var(--text-ui-lh);
+  }
+  .t-label {
+    font-size: var(--text-label);
+    line-height: var(--text-label-lh);
+    font-weight: 500;
+    letter-spacing: var(--tracking-label);
+    text-transform: uppercase;
+  }
+  .t-micro {
+    font-family: var(--font-data);
+    font-size: var(--text-micro);
+    line-height: var(--text-micro-lh);
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+  }
+}

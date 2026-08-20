@@ -9,12 +9,14 @@ answers the small questions that break flow — *what branch am I on, what's run
 It is not an IDE, a terminal, a file manager, or a Git client. It is the thin layer that
 points the tools you already use at the right context.
 
-> ### Status: pre-implementation
+> ### Status: foundation only
 >
-> **No code has been written yet.** This repository currently contains the product
-> definition, architecture, and implementation roadmap. Nothing described below is
-> installable today. Everything here is a plan, and it is labelled as one on purpose —
-> see [what's actually built](#project-status).
+> **No feature has been written yet.** The repository contains the product definition,
+> architecture, and roadmap, and the technical foundation the features will sit on — the
+> crate layout, the runtime capability model, the database and its migrations, the typed
+> command boundary, and the application shell. Nothing described below is installable
+> today. Everything else here is a plan, and it is labelled as one on purpose — see
+> [what's actually built](#project-status).
 
 ---
 
@@ -114,7 +116,8 @@ block the first release.
 | Phase | Scope | Slices | State |
 |---|---|---|---|
 | Documentation | Product, scope, architecture, roadmap | — | ✅ Complete |
-| **0.1 — Core Companion** | Projects, Git status and history, ports, processes, editor/terminal/browser, tray, global shortcut | 0–3, 5a | ⬜ Not started |
+| Foundation | Crates, capability model, database, IPC boundary, app shell, CI | 0 | ✅ Complete |
+| **0.1 — Core Companion** | Projects, Git status and history, ports, processes, editor/terminal/browser, tray, global shortcut | 1–3, 5a | ⬜ Not started |
 | 0.2 — Workspace | Workspace model, app groups, restoration, Git graph and diff | 4, 5b, 11 | ⬜ Not started |
 | 0.3 — Shelf | Drag-drop, temporary storage, Quick Peek | 6–7 | ⬜ Not started |
 | 0.4 — System | CPU/RAM/battery, network, lock/session, media, displays | 9 | ⬜ Not started |
@@ -133,8 +136,9 @@ Requires [Rust](https://rustup.rs) (stable), Node.js 20+, and your platform's
 ```bash
 git clone https://github.com/aviora/mira.git
 cd mira
-npm install
-npm run tauri dev
+npm ci
+npm run dev     # Vite + the Tauri shell
+npm run check   # format, lint, types, both test suites
 ```
 
 Full setup, checks, and standards: [CONTRIBUTING.md](CONTRIBUTING.md).

@@ -1,0 +1,13 @@
+[package]
+name = "mira-platform"
+description = "Every OS-specific call in Mira, behind capability traits. The only crate permitted to use cfg(target_os)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[dependencies]
+mira-core = { workspace = true }

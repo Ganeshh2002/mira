@@ -56,6 +56,13 @@ system, and CI building and testing on all three platforms.
 generated TypeScript type appears in the frontend; the database file is created on first
 run and its location is correct per platform.
 
+**Delivered.** The slice shipped wider than the line above: `mira-platform` with runtime
+capability resolution, the `mira-projects` and `mira-workspaces` boundary crates, the
+typed command boundary with structured errors, the tray and the global shortcut with its
+Wayland fallback, a settings surface, and the guard tests that hold the architectural
+rules. The tray and the shortcut therefore already exist as a shell when slice 1 starts;
+slice 1 gives them project content.
+
 ---
 
 ## Slice 1 — A project, and its Git status *(M)*
@@ -64,9 +71,9 @@ run and its location is correct per platform.
 
 **Delivers.** Add a project by picking a directory. Detection: is it a repo, what type
 markers exist. The project list with a status dot. A detail view showing branch, last
-commit, ahead/behind, and changed-file counts with a grouped path list. The tray icon and
-menu. The global shortcut and the compact window in its simplest form (project status +
-dismiss). Wayland detection with the `mira --toggle` fallback wired and documented.
+commit, ahead/behind, and changed-file counts with a grouped path list. Project entries in
+the tray menu, on top of the shell slice 0 built. The compact window in its simplest form
+(project status + dismiss), opened by the global shortcut slice 0 registered.
 
 **Crates.** `mira-projects`, `mira-git`, `mira-fs` (canonicalisation + containment),
 `mira-platform` (shortcut, tray).

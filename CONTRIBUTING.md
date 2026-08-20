@@ -1,8 +1,10 @@
 # Contributing to Aviora Mira
 
-Thanks for looking. Mira is early — **nothing is implemented yet**, the repository
-currently holds the product definition, architecture, and roadmap. That is a good moment
-to arrive: the decisions are written down and open to challenge.
+Thanks for looking. Mira is early. The repository holds the product definition,
+architecture, and roadmap, plus the **technical foundation** — the crate layout, the
+capability model, the database and its migrations, the typed command boundary, and the
+application shell. No user-facing feature is built yet. That is a good moment to arrive:
+the decisions are written down and open to challenge.
 
 ---
 
@@ -27,7 +29,8 @@ that supersedes the old one, not a quiet exception.
   [capability matrix](docs/architecture/platform-abstraction.md#5-capability-matrix) makes
   specific claims per OS. If one is wrong on your machine, tell us — accuracy there is a
   core promise.
-- **Take a slice task** once implementation starts. Issues are labelled `slice:N`.
+- **Take a slice task.** The foundation is in place and feature work starts at slice 1.
+  Issues are labelled `slice:N`.
 
 ## Development setup
 
@@ -36,7 +39,7 @@ that supersedes the old one, not a quiet exception.
 | Tool | Version | Notes |
 |---|---|---|
 | Rust | stable, via [rustup](https://rustup.rs) | pinned in `rust-toolchain.toml` |
-| Node.js | 20+ | 24 is what maintainers run |
+| Node.js | 20+ | 22 is what CI runs |
 | Tauri prerequisites | per platform | see below |
 
 Tauri's own [prerequisites guide](https://v2.tauri.app/start/prerequisites/) is the
@@ -52,20 +55,40 @@ authority; in short:
 ```bash
 git clone https://github.com/aviora/mira.git
 cd mira
-npm install
-npm run tauri dev
+npm ci
+npm run dev
 ```
+
+`npm run dev` starts Vite and the Tauri shell together. `npm run web:dev` runs only the
+frontend in a browser, which is useful for layout work but cannot call any command — the
+IPC bridge exists only inside the Tauri window.
 
 **Checks — run these before pushing**
 
 ```bash
-cargo fmt --all
-cargo clippy --all-targets -- -D warnings
-cargo test --workspace
-npm run typecheck
-npm run lint
-npm test
+npm run check
 ```
+
+That is formatting, lint, types, and both test suites in one command. Individually:
+
+| Command | What it covers |
+|---|---|
+| `npm run format` | `prettier --write` and `cargo fmt --all` |
+| `npm run format:check` | the same, as a check |
+| `npm run lint` / `npm run lint:rust` | eslint / clippy at `-D warnings` |
+| `npm run typecheck` | `tsc --noEmit` |
+| `npm test` | vitest |
+| `npm run test:rust` | the Rust suite, including the guard tests |
+| `npm run db:check` | the migration suite alone |
+| `npm run generate-types` | regenerates `src/bindings` from Rust |
+
+Two things CI checks that the local commands do not imply:
+
+- **Generated types must be committed.** `src/bindings` is produced by ts-rs from the Rust
+  types. Run `npm run generate-types` after changing anything crossing the IPC boundary and
+  commit the result; CI fails on a drift rather than letting it reach runtime.
+- **Supply chain.** `cargo deny check` and `npm audit --omit=dev --audit-level=high` run on
+  every push. Policy lives in `deny.toml`.
 
 CI runs all of the above on macOS, Windows, and Linux. All three must be green.
 

@@ -1,0 +1,36 @@
+[package]
+name = "mira"
+description = "Mira — a lightweight desktop companion that understands what you're working on."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish.workspace = true
+default-run = "mira"
+
+[lib]
+name = "mira_lib"
+crate-type = ["lib", "cdylib", "staticlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = ["config-json"] }
+
+[dependencies]
+mira-core = { workspace = true }
+mira-db = { workspace = true }
+mira-platform = { workspace = true }
+mira-projects = { workspace = true }
+mira-workspaces = { workspace = true }
+
+serde = { workspace = true }
+serde_json = { workspace = true }
+tauri = { version = "2", features = ["tray-icon"] }
+tauri-plugin-global-shortcut = "2"
+tauri-plugin-single-instance = "2"
+ts-rs = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }
+toml = "0.9"

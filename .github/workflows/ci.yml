@@ -1,0 +1,143 @@
+name: CI
+
+# Every slice ends green on all three platforms. CI on macOS, Windows, and Linux is
+# the definition of done, not a later cleanup (roadmap.md rule 2).
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  check:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest, name: Linux }
+          - { os: macos-latest, name: macOS }
+          - { os: windows-latest, name: Windows }
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Tauri's Linux prerequisites. WebKitGTK is the weakest and most variable
+      # webview of the three, which is exactly why Linux is in the matrix from
+      # the first slice rather than added later (ADR-0001).
+      - name: Install Linux system dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libwebkit2gtk-4.1-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            libxdo-dev \
+            libssl-dev \
+            patchelf \
+            build-essential \
+            file \
+            wget
+
+      # rust-toolchain.toml pins the version and components; rustup honours it on
+      # first invocation, so the runner compiles with exactly what a contributor
+      # compiles with (architecture.md §11).
+      - name: Show toolchain
+        run: |
+          rustup show active-toolchain
+          rustc --version
+          cargo --version
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: '. -> target'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      # ── Formatting and lint ────────────────────────────────────────────────
+      - name: cargo fmt
+        run: cargo fmt --all --check
+
+      - name: prettier
+        run: npx prettier --check .
+
+      - name: cargo clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: eslint
+        run: npm run lint
+
+      - name: tsc
+        run: npm run typecheck
+
+      # ── Tests ──────────────────────────────────────────────────────────────
+      # Includes the migration suite and the guard tests: no shell, no
+      # cfg(target_os) outside mira-platform, no crate but src-tauri depending on
+      # tauri, the frontend capability snapshot, the CSP, no analytics, no timers.
+      - name: cargo test
+        run: cargo test --workspace
+
+      - name: vitest
+        run: npm test
+
+      # ── The generated contract ─────────────────────────────────────────────
+      # Types are defined once in Rust and exported by ts-rs. A drift between the
+      # two fails the build rather than reaching runtime (architecture.md §5).
+      - name: Regenerate TypeScript bindings
+        run: npm run generate-types
+
+      - name: Fail if the generated bindings drifted
+        shell: bash
+        run: |
+          if ! git diff --exit-code --stat -- src/bindings; then
+            echo "::error::Generated bindings are out of date. Run 'npm run generate-types' and commit the result."
+            git diff -- src/bindings
+            exit 1
+          fi
+
+      # ── Build verification ─────────────────────────────────────────────────
+      - name: Build frontend
+        run: npm run web:build
+
+      - name: Build workspace
+        run: cargo build --workspace --all-targets
+
+  supply-chain:
+    name: Supply chain
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      # security-and-privacy.md §10: advisories block release, licences are
+      # enforced, and no analytics dependency may enter the tree.
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check advisories licenses bans sources
+
+      - name: npm audit
+        run: npm audit --omit=dev --audit-level=high

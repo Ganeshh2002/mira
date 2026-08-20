@@ -1,0 +1,135 @@
+/*
+ * Mira design tokens — the single source of truth for every value in
+ * docs/ux/design-system.md.
+ *
+ * Components reference tokens exclusively. A raw hex or a magic pixel value in a
+ * component is a review failure (design-system §11). Themes and atmospheres
+ * override token values and nothing else.
+ *
+ * Night is the default ground. Day is not an inversion: the grounds get cooler and
+ * lighter, the ink stays blue-black, and the ember accent darkens so it stays
+ * legible on white.
+ */
+
+:root {
+  /* Ground: Night --------------------------------------------------------- */
+  --ground-0: #0c1116;
+  --ground-1: #121a21;
+  --ground-2: #18232c;
+  --ground-3: #213039;
+  --line: #2a3b46;
+  --line-strong: #3a4e5a;
+  --ink-0: #e8eff3;
+  --ink-1: #a8bac4;
+  --ink-2: #6f8492;
+  --ink-3: #4a5d69;
+
+  /* Accent: Ember — the one warm family, for what is live, selected, or yours */
+  --ember-bright: #ffb454;
+  --ember: #e8963c;
+  --ember-dim: #8a5e2c;
+  --ember-wash: #2a1f14;
+
+  /* Signals — sparse by design, each with a mandatory non-colour partner */
+  --signal-ok: #5fc9a0;
+  --signal-warn: #e8b84b;
+  --signal-danger: #f2735f;
+
+  /* Typography ------------------------------------------------------------ */
+  --font-interface:
+    'IBM Plex Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-data: 'IBM Plex Mono', ui-monospace, 'SF Mono', 'Cascadia Mono', monospace;
+
+  --text-value-lg: 17px;
+  --text-value-lg-lh: 22px;
+  --text-value: 15px;
+  --text-value-lh: 20px;
+  --text-body: 14px;
+  --text-body-lh: 20px;
+  --text-ui: 13px;
+  --text-ui-lh: 18px;
+  --text-label: 11px;
+  --text-label-lh: 14px;
+  --text-micro: 10px;
+  --text-micro-lh: 13px;
+  --tracking-label: 0.08em;
+
+  /* Space — 4px base grid, comfortable density */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --row-height: 32px;
+  --section-gap: 20px;
+
+  /* Shape — nothing is fully rounded; no pill buttons */
+  --r-sm: 4px;
+  --r-md: 6px;
+  --r-lg: 10px;
+
+  /* Motion — explains change, never entertains */
+  --motion-instant: 80ms;
+  --motion-quick: 140ms;
+  --motion-surface: 180ms;
+  --motion-pulse: 6000ms;
+  --ease-out: ease-out;
+  --ease-emphasis: cubic-bezier(0.2, 0, 0, 1);
+}
+
+/* Compact density: a real mode, tested, not a squeeze. */
+:root[data-density='compact'] {
+  --row-height: 26px;
+  --section-gap: 14px;
+}
+
+/* Ground: Day ------------------------------------------------------------- */
+:root[data-theme='day'] {
+  --ground-0: #f7f9fa;
+  --ground-1: #ffffff;
+  --ground-2: #f0f4f6;
+  --ground-3: #e4ebef;
+  --line: #d5dfe4;
+  --line-strong: #b4c3cb;
+  --ink-0: #0e171d;
+  --ink-1: #3d5563;
+  --ink-2: #5f7784;
+  --ink-3: #93a6b0;
+
+  --ember-bright: #b25e00;
+  --ember: #9a5000;
+  --ember-dim: #d9a05c;
+  --ember-wash: #fdf2e3;
+
+  --signal-ok: #0f7a57;
+  --signal-warn: #8a6400;
+  --signal-danger: #b02b15;
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme='night']) {
+    --ground-0: #f7f9fa;
+    --ground-1: #ffffff;
+    --ground-2: #f0f4f6;
+    --ground-3: #e4ebef;
+    --line: #d5dfe4;
+    --line-strong: #b4c3cb;
+    --ink-0: #0e171d;
+    --ink-1: #3d5563;
+    --ink-2: #5f7784;
+    --ink-3: #93a6b0;
+
+    --ember-bright: #b25e00;
+    --ember: #9a5000;
+    --ember-dim: #d9a05c;
+    --ember-wash: #fdf2e3;
+
+    --signal-ok: #0f7a57;
+    --signal-warn: #8a6400;
+    --signal-danger: #b02b15;
+  }
+}

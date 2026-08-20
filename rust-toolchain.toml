@@ -1,0 +1,6 @@
+# Pinned so every contributor and every CI runner compiles with the same rustc.
+# Architecture §11: reproducibility. Bumping this is a deliberate, reviewed change.
+[toolchain]
+channel = "1.97.1"
+components = ["rustfmt", "clippy"]
+profile = "minimal"

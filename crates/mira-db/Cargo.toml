@@ -1,0 +1,17 @@
+[package]
+name = "mira-db"
+description = "Mira's SQLite store: the connection, the migration runner, and the repository traits. The only crate that speaks SQL."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[dependencies]
+mira-core = { workspace = true }
+rusqlite = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3"

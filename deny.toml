@@ -1,0 +1,71 @@
+# cargo-deny — supply chain policy.
+#
+# security-and-privacy.md §10: lockfiles committed, advisories block release,
+# licence policy enforced. ADR-0007: MIT, and every dependency must be
+# compatible with it.
+
+[graph]
+all-features = true
+
+[advisories]
+version = 2
+yanked = "deny"
+# Security vulnerabilities always fail the build (cargo-deny's default).
+#
+# `unmaintained` is scoped to crates Mira itself depends on. Every unmaintained
+# advisory in the tree today comes from Tauri's own platform stack — the GTK3
+# bindings it needs on Linux, and `unic-*`/`proc-macro-error` reached through
+# `tauri-utils` — and RUSTSEC lists no safe upgrade for any of them. Failing CI
+# on those would mean failing on Tauri's roadmap rather than on a decision Mira
+# can make, so the check watches the crates Mira chooses directly.
+unmaintained = "workspace"
+
+[licenses]
+version = 2
+# Permissive licences, plus MPL-2.0. MPL-2.0 is file-level copyleft: it obliges
+# anyone modifying those files to publish the changes, and places no condition on
+# software that merely links them, so it does not affect shipping Mira's own code
+# under MIT (ADR-0007). It is reached through Tauri's webview stack (`cssparser`,
+# `selectors`) and `dirs` (`option-ext`). Anything stronger — GPL, AGPL, LGPL —
+# would contradict ADR-0007 and needs an ADR, not an exception here.
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Unicode-3.0",
+    "Zlib",
+    "MPL-2.0",
+    "CC0-1.0",
+    "Unlicense",
+    "BSL-1.0",
+]
+confidence-threshold = 0.9
+# The allow-list states a policy, not an inventory of today's tree; a permissive
+# licence listed but not currently present is not a finding.
+unused-allowed-license = "allow"
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+# Mira's own crates are path dependencies inside this workspace, so Cargo records
+# them as `*`. That is the intended shape for a workspace, not an unpinned
+# registry crate; wildcards from crates.io still fail.
+allow-wildcard-paths = true
+
+# ADR-0006 and security-and-privacy.md §9: there is no telemetry, and CI fails if
+# a known analytics crate enters the tree. The guard test asserts the same thing
+# against Cargo.lock; this stops the dependency resolving at all.
+deny = [
+    { name = "sentry" },
+    { name = "sentry-core" },
+    { name = "opentelemetry" },
+    { name = "analytics" },
+]
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]

@@ -1,0 +1,16 @@
+dist
+target
+src-tauri/target
+src-tauri/gen
+src-tauri/icons
+node_modules
+package-lock.json
+
+# Generated from Rust by ts-rs — never hand-formatted, never hand-edited.
+src/bindings
+
+# Documentation is hand-wrapped prose. Prettier's reflow would rewrite every
+# paragraph in the repository and bury real changes in whitespace, so the docs
+# are formatted by their authors and reviewed as writing.
+*.md
+docs/

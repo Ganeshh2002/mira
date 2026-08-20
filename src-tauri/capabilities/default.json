@@ -1,0 +1,15 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Mira's entire frontend privilege surface. Reviewed like security code, because it is (security-and-privacy.md \u00a76). No fs, shell, http, or process permission appears here or ever will: the webview's only authority is the explicit list of Mira commands, each with validated arguments.",
+  "windows": ["main", "settings"],
+  "permissions": [
+    "core:app:allow-version",
+    "core:app:allow-name",
+    "core:event:allow-listen",
+    "core:event:allow-unlisten",
+    "core:window:allow-close",
+    "core:window:allow-hide",
+    "core:window:allow-set-focus"
+  ]
+}
