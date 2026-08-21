@@ -100,11 +100,72 @@ fn code_only(text: &str) -> String {
         .join("\n")
 }
 
+/// A repo-relative path, written with `/` on every platform.
+///
+/// `display()` uses the platform's own separator, so on Windows this returned
+/// `src-tauri\tests\guards.rs` while every guard below compares against `/`.
+/// That cost two ways at once: `only_the_scheduler_owns_a_clock` stopped skipping
+/// test files and failed on a `tokio::time::sleep` that belongs in one, and
+/// `reading_a_repository_never_writes_to_it` stopped recognising its own reader
+/// crates and skipped **every** file — passing while checking nothing, which is
+/// the worse of the two failures because it is silent.
+///
+/// Normalising here rather than at each comparison keeps the next guard from
+/// having to remember, and makes a violation message read the same on all three
+/// platforms.
 fn relative(path: &Path) -> String {
-    path.strip_prefix(repo_root())
-        .unwrap_or(path)
-        .display()
-        .to_string()
+    match path.strip_prefix(repo_root()) {
+        Ok(inside) => inside
+            .components()
+            .map(|part| part.as_os_str().to_string_lossy())
+            .collect::<Vec<_>>()
+            .join("/"),
+        // Outside the repository, so there is no relative form to write. Shown
+        // as the platform writes it, which is what a person would search for.
+        Err(_) => path.display().to_string(),
+    }
+}
+
+#[test]
+fn a_repo_relative_path_is_written_the_same_way_on_every_platform() {
+    // The guards below are string comparisons against `/`-separated literals, and
+    // several of them *skip* files rather than flag them — `/tests/` is how a
+    // fixture is excused from a rule about product code. A separator that differed
+    // by platform therefore did not merely fail on Windows; it made those guards
+    // skip everything and pass while checking nothing.
+    //
+    // This asserts the shape the rest of the file depends on, so the day somebody
+    // simplifies `relative` back to `display()`, one clearly-named test fails
+    // instead of six guards quietly going hollow.
+    let written = relative(
+        &repo_root()
+            .join("src-tauri")
+            .join("tests")
+            .join("guards.rs"),
+    );
+
+    assert_eq!(written, "src-tauri/tests/guards.rs");
+    assert!(
+        !written.contains('\\'),
+        "a repo-relative path must never carry a platform separator: {written}"
+    );
+
+    // And the two comparisons that depend on it, spelled out.
+    assert!(
+        written.contains("/tests/"),
+        "test files must be recognisable"
+    );
+    assert!(
+        relative(
+            &repo_root()
+                .join("crates")
+                .join("mira-git")
+                .join("src")
+                .join("walk.rs")
+        )
+        .starts_with("crates/mira-git"),
+        "a crate must be recognisable by its path prefix"
+    );
 }
 
 // ── No shell, anywhere ───────────────────────────────────────────────────────
