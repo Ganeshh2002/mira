@@ -1728,3 +1728,37 @@ fn the_lane_cap_is_a_constant_and_the_interface_is_told_when_it_bites() {
         "and that a label may be missing"
     );
 }
+
+#[test]
+fn the_frontend_directory_contains_only_frontend_source() {
+    // `src/` is the React application. Rust lives in `crates/` and `src-tauri/`,
+    // and a `.rs` file here compiles into nothing, ships in nothing, and is read
+    // by nobody — which is exactly why one can sit there unnoticed.
+    //
+    // This guard exists because one did. A scratch program written while
+    // measuring the graph landed in `src/main.rs` and was committed: every gate
+    // stayed green, because no gate was looking. Vite ignores it, `tsc` ignores
+    // it, and Cargo never sees it.
+    let frontend = repo_root().join("src");
+    let allowed = ["ts", "tsx", "css"];
+
+    let mut strays = Vec::new();
+    for (path, _) in sources(&["rs", "js", "jsx", "mjs", "cjs", "toml", "lock"]) {
+        if !path.starts_with(&frontend) {
+            continue;
+        }
+        let extension = path
+            .extension()
+            .map(|found| found.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        if !allowed.contains(&extension.as_str()) {
+            strays.push(relative(&path));
+        }
+    }
+
+    assert!(
+        strays.is_empty(),
+        "src/ is the React application; these belong in crates/ or src-tauri/, or \
+         nowhere: {strays:#?}"
+    );
+}
