@@ -13,7 +13,8 @@ use crate::graph::CommitGraph;
 use crate::history::{CommitId, CommitLookup, CommitPage};
 use crate::model::{Commit, GitOverview, Head, Upstream};
 use crate::provider::GitProvider;
-use crate::{patch, walk};
+use crate::trace::{FileHistory, FileSubject};
+use crate::{patch, trace, walk};
 
 /// How many hex characters an abbreviated commit id gets.
 const SHORT_SHA: usize = 7;
@@ -101,6 +102,19 @@ impl GitProvider for Libgit2 {
             Ok(repo) => patch::file_diff(&repo, scope, at),
             Err(Absent::NotARepository) => FileDiff::NotARepository,
             Err(Absent::Unreadable(detail)) => FileDiff::Unreadable { detail },
+        }
+    }
+
+    fn file_history(
+        &self,
+        root: &Path,
+        subject: &FileSubject,
+        from: Option<&CommitId>,
+    ) -> FileHistory {
+        match open(root) {
+            Ok(repo) => trace::file_history(&repo, subject, from),
+            Err(Absent::NotARepository) => FileHistory::NotARepository,
+            Err(Absent::Unreadable(detail)) => FileHistory::Unreadable { detail },
         }
     }
 }

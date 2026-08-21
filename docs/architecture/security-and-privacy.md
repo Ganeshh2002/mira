@@ -274,6 +274,32 @@ first Git read that could be made expensive on purpose.
     `DiffScope`. Nesting a value does not launder it
     ([ADR-0016](../adr/0016-bounded-diffs.md)).
 
+### Tracing a file
+
+Slice 5d is the feature whose defining input is, everywhere else, a path.
+
+33. **A file is named by a `FileSubject`** — a change set Mira produced, a
+    position in it, and which side of that change to take the name from. There is
+    no field on the struct a path could live in, and a guard test asserts that
+    while also asserting positively what *is* there, so it cannot pass vacuously.
+    The interface receives a subject and hands it back; it cannot construct one.
+
+34. **No command accepts a pathspec, a glob or a pattern.** `git log -- <path>` is
+    how every other tool spells this, which is exactly why the guard names
+    `pathspec`, `glob`, `pattern`, `match`, `filter`, `regex` and the rest.
+
+35. **A trace is bounded by commits examined.** File history is inherently
+    O(repository history), measured at 740 ms for one file in a
+    twenty-thousand-commit repository. `MAX_SCAN` is where one request stops, and
+    `ScanStopped::Budget` says how far it got — because a trace that stopped early
+    looks exactly like a file with no history unless it says otherwise.
+
+36. **Deciding whether a commit touched a path is two tree lookups**, not a diff.
+    A guard test asserts the per-commit test contains no `diff_tree_to_tree`,
+    `Patch::`, `changed_files` or `find_similar`: at two thousand commits that is
+    the difference between a request in milliseconds and one in seconds
+    ([ADR-0017](../adr/0017-file-history.md)).
+
 ### Keeping a machine awake
 
 19. **Keep Awake holds an operating-system power request and nothing else.** Mira
@@ -452,3 +478,7 @@ after the people who wrote it move on.
 | Binary files are never decoded | `FileDiff::Binary` carries sizes and no content field |
 | A size limit reads a header, not a file | `patch.rs` uses `read_header` and libgit2's `max_size` |
 | The frontend directory holds no Rust | `src/` contains only `.ts`, `.tsx`, `.css` |
+| No command accepts a pathspec or glob | Command-signature scan for `pathspec`, `glob`, `pattern`, … |
+| A file subject carries no path | `FileSubject` holds a scope and an ordinal, nothing else |
+| A file trace is bounded by commits examined | `MAX_SCAN`, the stop, and the state that reports it |
+| A trace reads trees, not diffs | `touched()` contains no diff or patch call |

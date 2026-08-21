@@ -469,6 +469,14 @@ fn resolve(repo: &Repository, id: &CommitId) -> Option<Oid> {
     object.peel_to_commit().ok().map(|commit| commit.id())
 }
 
+/// One commit, in the shape every surface shows it.
+///
+/// Re-exported from the history walk rather than written again: a commit summary
+/// is the same summary wherever it appears, and two of them would drift.
+pub fn summarise_commit(commit: &git2::Commit<'_>) -> crate::model::Commit {
+    crate::walk::summarise(commit)
+}
+
 /// A count as the wire carries it.
 ///
 /// Saturating rather than wrapping: every count here is bounded by a constant in

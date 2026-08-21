@@ -10,7 +10,7 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Added
 - Product definition, product scope, PRD, information architecture, and design system
 - Architecture, platform abstraction, data model, and security/privacy documents
-- ADRs 0001–0016 covering the foundational technical decisions
+- ADRs 0001–0017 covering the foundational technical decisions
 - Locked phase plan (0.1 through 0.6+) and the fourteen-slice implementation roadmap
 - Open-source project files (licence, contributing, code of conduct, security policy)
 - **Foundation (slice 0).** Cargo workspace with `mira-core`, `mira-platform`, `mira-db`,
@@ -115,6 +115,23 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   because it is never read, while a 1 MB one takes 4 ms to compare. And it is **a view,
   never an edit** — no staging, discarding, checkout, revert or apply, and nothing greyed
   out implying otherwise ([ADR-0016](docs/adr/0016-bounded-diffs.md)).
+- **File history (slice 5d, part).** Every changed file now offers **History**: the
+  commits that touched it, following it back across renames and copies. Each row shows
+  the subject, the author, how long ago and the short id — and a rename says "Renamed
+  from src/old.ts" in words. Clicking a commit opens that commit, in the detail view that
+  already exists.
+
+  This is the one read in Mira whose cost is set by how long your history is, not by how
+  much you asked for — to know whether a commit touched a file you have to look at that
+  commit. So a request looks at a bounded number of them and **tells you when it stopped**:
+  "Nothing in the last 2,000 commits. There may be more further back" is a different
+  sentence from "No commit has touched this file", and **Look further back** continues.
+  Measured: an unbounded trace grows 24× across a twenty-fold repository; Mira's page
+  grows 1.4× and stays around a tenth of a second.
+
+  Following renames turned out to cost nothing — 0.03 ms per rename, and nothing per
+  commit — which is why the limit is on commits examined rather than on the feature
+  everybody expects to be expensive ([ADR-0017](docs/adr/0017-file-history.md)).
 - macOS and Windows ask the platform for its standard window material — Liquid Glass on
   macOS 26, Mica on Windows 11 — rather than drawing an imitation. Linux stays opaque.
 

@@ -1,3 +1,4 @@
+import type { CommitId } from '../bindings/CommitId';
 import type { Project } from '../bindings/Project';
 import { Button } from '../components/Button';
 import { Changes } from '../components/Changes';
@@ -16,7 +17,19 @@ import { Icon } from '../components/Icon';
  * or reverts — and there is no greyed-out control implying that one is coming.
  * The absence is part of the design (`information-architecture.md` §5).
  */
-export function WorkingTree({ project, onBack }: { project: Project; onBack: () => void }) {
+export function WorkingTree({
+  project,
+  onBack,
+  onOpenCommit,
+}: {
+  project: Project;
+  onBack: () => void;
+  /**
+   * A commit reached from a file's history. It opens in History's existing
+   * commit detail rather than in a second detail surface here.
+   */
+  onOpenCommit: (commit: CommitId) => void;
+}) {
   return (
     <div className="flex min-w-0 flex-col gap-[var(--section-gap)]">
       <header className="flex flex-col gap-[var(--space-2)]">
@@ -35,7 +48,12 @@ export function WorkingTree({ project, onBack }: { project: Project; onBack: () 
         </p>
       </header>
 
-      <Changes projectId={project.id} scope={{ kind: 'workingTree' }} label="Changed files" />
+      <Changes
+        projectId={project.id}
+        scope={{ kind: 'workingTree' }}
+        label="Changed files"
+        onOpenCommit={onOpenCommit}
+      />
 
       <div>
         <Button onClick={onBack}>Back to the project</Button>

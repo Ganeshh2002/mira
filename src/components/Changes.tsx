@@ -2,12 +2,14 @@ import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 
 import type { ChangeKind } from '../bindings/ChangeKind';
+import type { CommitId } from '../bindings/CommitId';
 import type { Comparison } from '../bindings/Comparison';
 import type { DiffScope } from '../bindings/DiffScope';
 import type { FileChange } from '../bindings/FileChange';
 import { Icon } from './Icon';
 import { Row } from './Row';
 import { Section } from './Section';
+import { FileHistory } from './FileHistory';
 import { FilePatch } from './FilePatch';
 import { commands, describeUnknown } from '../lib/ipc';
 
@@ -31,13 +33,21 @@ export function Changes({
   projectId,
   scope,
   label,
+  onOpenCommit,
 }: {
   projectId: number;
   scope: DiffScope;
   /** What this change set is, for the section heading. */
   label: string;
+  /**
+   * Go to a commit's own detail. Given when this list sits somewhere a commit
+   * can be opened from; without it, a file's history is shown and its rows are
+   * not links to anywhere.
+   */
+  onOpenCommit?: ((commit: CommitId) => void) | undefined;
 }) {
   const [opened, setOpened] = useState<number | null>(null);
+  const [traced, setTraced] = useState<number | null>(null);
 
   const changes = useQuery({
     queryKey: ['git', 'changes', projectId, scope],
@@ -126,7 +136,10 @@ export function Changes({
             scope={scope}
             change={change}
             opened={opened === change.at}
+            traced={traced === change.at}
             onOpen={() => setOpened(opened === change.at ? null : change.at)}
+            onTrace={() => setTraced(traced === change.at ? null : change.at)}
+            onOpenCommit={onOpenCommit}
           />
         ))}
       </ul>
@@ -153,56 +166,90 @@ function ChangedFileRow({
   scope,
   change,
   opened,
+  traced,
   onOpen,
+  onTrace,
+  onOpenCommit,
 }: {
   projectId: number;
   scope: DiffScope;
   change: FileChange;
   opened: boolean;
+  traced: boolean;
   onOpen: () => void;
+  onTrace: () => void;
+  onOpenCommit?: ((commit: CommitId) => void) | undefined;
 }) {
   return (
     <li className="flex flex-col border-b border-line last:border-b-0">
-      <button
-        type="button"
-        onClick={onOpen}
-        aria-expanded={opened}
-        data-change={change.at}
-        className={`flex min-h-[var(--row-height)] w-full cursor-default items-center gap-[var(--space-3)] px-[var(--space-3)] py-[var(--space-2)] text-left ${
-          opened ? 'bg-ember-wash' : 'hover:bg-ground-2'
-        }`}
+      <div
+        className={`flex items-center ${opened || traced ? 'bg-ember-wash' : 'hover:bg-ground-2'}`}
       >
-        <span
-          aria-hidden="true"
-          className={`t-micro w-[1.25em] shrink-0 text-center ${tone(change.kind)}`}
+        <button
+          type="button"
+          onClick={onOpen}
+          aria-expanded={opened}
+          data-change={change.at}
+          className="flex min-h-[var(--row-height)] min-w-0 flex-1 cursor-default items-center gap-[var(--space-3)] px-[var(--space-3)] py-[var(--space-2)] text-left"
         >
-          {letter(change.kind)}
-        </span>
-
-        <span className="flex min-w-0 flex-1 flex-col gap-[var(--space-1)]">
-          <span className="t-ui min-w-0 truncate text-ink-0" title={change.path}>
-            {change.path}
+          <span
+            aria-hidden="true"
+            className={`t-micro w-[1.25em] shrink-0 text-center ${tone(change.kind)}`}
+          >
+            {letter(change.kind)}
           </span>
-          {change.fromPath ? (
-            <span className="t-micro flex items-center gap-[var(--space-1)] text-ink-2">
-              <Icon name="rename" />
-              from {change.fromPath}
-            </span>
-          ) : null}
-        </span>
 
-        <span className="t-micro flex shrink-0 items-center gap-[var(--space-2)]">
-          {/* The word, so the letter never has to be decoded. */}
-          <span className="text-ink-2">{word(change.kind)}</span>
-          {change.binary ? <span className="text-ink-2">binary</span> : null}
-          {change.additions !== null ? (
-            <span className="text-signal-ok">+{change.additions}</span>
-          ) : null}
-          {change.deletions !== null ? (
-            <span className="text-signal-danger">−{change.deletions}</span>
-          ) : null}
-        </span>
-      </button>
+          <span className="flex min-w-0 flex-1 flex-col gap-[var(--space-1)]">
+            <span className="t-ui min-w-0 truncate text-ink-0" title={change.path}>
+              {change.path}
+            </span>
+            {change.fromPath ? (
+              <span className="t-micro flex items-center gap-[var(--space-1)] text-ink-2">
+                <Icon name="rename" />
+                from {change.fromPath}
+              </span>
+            ) : null}
+          </span>
+
+          <span className="t-micro flex shrink-0 items-center gap-[var(--space-2)]">
+            {/* The word, so the letter never has to be decoded. */}
+            <span className="text-ink-2">{word(change.kind)}</span>
+            {change.binary ? <span className="text-ink-2">binary</span> : null}
+            {change.additions !== null ? (
+              <span className="text-signal-ok">+{change.additions}</span>
+            ) : null}
+            {change.deletions !== null ? (
+              <span className="text-signal-danger">−{change.deletions}</span>
+            ) : null}
+          </span>
+        </button>
+
+        {/*
+        A second disclosure rather than a second surface. The file is named to
+        the backend by its **ordinal in this list**, which the row already
+        knows — no path is built here, because none can be.
+      */}
+        <button
+          type="button"
+          onClick={onTrace}
+          aria-expanded={traced}
+          aria-label={`File history of ${change.path}`}
+          title={`File history of ${change.path}`}
+          className="mr-[var(--space-2)] flex shrink-0 cursor-default items-center gap-[var(--space-1)] rounded-sm px-[var(--space-2)] py-[var(--space-1)] text-ink-2 hover:bg-ground-3 hover:text-ink-0"
+        >
+          <Icon name="trace" />
+          <span className="t-micro hidden sm:inline">History</span>
+        </button>
+      </div>
+
+      {traced ? (
+        <FileHistory
+          projectId={projectId}
+          subject={{ scope, at: change.at, before: false }}
+          path={change.path}
+          onOpenCommit={onOpenCommit ?? (() => {})}
+        />
+      ) : null}
 
       {opened ? (
         <FilePatch projectId={projectId} scope={scope} at={change.at} path={change.path} />

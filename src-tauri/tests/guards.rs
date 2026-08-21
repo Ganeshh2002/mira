@@ -612,6 +612,11 @@ fn every_command_parameter_is_one_that_has_been_reviewed() {
     //   interface can only ask for a file Mira already decided to offer, and an
     //   ordinal past the list is a stale selection rather than an attempt at
     //   anything (ADR-0016).
+    // - `subject` — a `FileSubject`: a scope, an ordinal in it, and which side of
+    //   that change to take the name from. It is how a file is named for a
+    //   history trace, and it has no field that holds a path — the interface
+    //   receives one and hands it back, and cannot describe a file Mira has not
+    //   already offered it (ADR-0017).
     // - `app`, `state` — injected by Tauri, not sent by the page.
     let reviewed = [
         "app",
@@ -628,6 +633,7 @@ fn every_command_parameter_is_one_that_has_been_reviewed() {
         "scope",
         "span",
         "state",
+        "subject",
         "workspace_id",
     ];
 
@@ -1942,4 +1948,142 @@ fn reading_a_diff_reads_a_header_before_it_reads_a_file() {
         code.contains("max_size("),
         "and libgit2 must be given the same ceiling, so nothing large is materialised at all"
     );
+}
+
+// ── Tracing a file ───────────────────────────────────────────────────────────
+
+#[test]
+fn no_command_accepts_a_pathspec_or_a_glob() {
+    // File history is the feature most likely to want one: `git log -- <path>`
+    // is how everybody else spells it. Mira spells it with an ordinal in a change
+    // set it produced, so a caller has nowhere to put a pattern even if it wanted
+    // to (ADR-0017).
+    let banned = [
+        "pathspec",
+        "spec",
+        "glob",
+        "pattern",
+        "match",
+        "filter",
+        "include",
+        "exclude",
+        "since",
+        "before_path",
+        "wildcard",
+        "regex",
+        "query",
+        "search",
+    ];
+
+    let mut violations = Vec::new();
+    for (path, signature) in command_parameters() {
+        for parameter in parameters_of(&signature) {
+            let name = parameter_name(&parameter).to_lowercase();
+            if banned.contains(&name.as_str()) {
+                violations.push(format!("{path}: {parameter}"));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "a command accepts a pattern to match files with: {violations:#?}"
+    );
+}
+
+#[test]
+fn a_file_subject_carries_no_path() {
+    // The type is the guarantee. `FileSubject` is a scope, an ordinal and a
+    // side — there is no field on it a path could live in, so "no path crosses
+    // the boundary" is a fact about the struct rather than about its callers.
+    let trace =
+        fs::read_to_string(repo_root().join("crates/mira-git/src/trace.rs")).expect("trace.rs");
+    let code = code_only(&trace);
+
+    let subject = code
+        .split("pub struct FileSubject {")
+        .nth(1)
+        .and_then(|rest| rest.split('}').next())
+        .expect("a FileSubject definition")
+        .to_owned();
+
+    for holding_a_path in ["path", "String", "PathBuf", "&str", "name", "spec"] {
+        assert!(
+            !subject.contains(holding_a_path),
+            "FileSubject carries `{holding_a_path}`; it must carry a scope and an ordinal"
+        );
+    }
+    assert!(subject.contains("scope: DiffScope"));
+    assert!(subject.contains("at: u32"));
+}
+
+#[test]
+fn a_file_trace_is_bounded_by_commits_examined() {
+    // The measured constraint, made structural. File history is inherently
+    // O(repository history) — 740 ms to walk a 20,000-commit repository for one
+    // file, growing linearly — so one request stops after a declared number of
+    // commits and says how far it got. Without the ceiling this is the one read
+    // in the product that a large repository could make arbitrarily slow.
+    let trace =
+        fs::read_to_string(repo_root().join("crates/mira-git/src/trace.rs")).expect("trace.rs");
+    let code = code_only(&trace);
+
+    assert!(
+        code.contains("pub const MAX_SCAN: usize"),
+        "the budget must be a named constant"
+    );
+    assert!(
+        code.contains("scanned >= MAX_SCAN"),
+        "and the walk must actually stop at it"
+    );
+    assert!(
+        code.contains("ScanStopped::Budget"),
+        "and say so, because a trace that stopped early looks exactly like a file \
+         with no history"
+    );
+
+    // The same rule as the graph: a sorted revwalk reads the whole history
+    // before yielding anything, which is the opposite of a bounded scan.
+    for sorting in ["Sort::TOPOLOGICAL", "Sort::TIME", "Sort::REVERSE"] {
+        assert!(
+            !code.contains(sorting),
+            "a sorted revwalk defeats the budget: {sorting}"
+        );
+    }
+}
+
+#[test]
+fn tracing_a_file_reads_trees_rather_than_diffs() {
+    // What makes the budget affordable. Deciding whether a commit touched a path
+    // is two tree lookups and an id comparison — 30 µs — not a diff. A diff runs
+    // only where a rename can hide, which is the commit where the path appears,
+    // and costs 0.03 ms when it does.
+    let trace =
+        fs::read_to_string(repo_root().join("crates/mira-git/src/trace.rs")).expect("trace.rs");
+    let code = code_only(&trace);
+
+    assert!(
+        code.contains("get_path"),
+        "the per-commit test must be a tree lookup"
+    );
+
+    let touched = code
+        .split("fn touched(")
+        .nth(1)
+        .and_then(|rest| rest.split("\n}").next())
+        .expect("a touched function")
+        .to_owned();
+
+    for expensive in [
+        "diff_tree_to_tree",
+        "Patch::",
+        "changed_files",
+        "find_similar",
+    ] {
+        assert!(
+            !touched.contains(expensive),
+            "the per-commit test uses `{expensive}`; at two thousand commits a \
+             request that would be seconds rather than milliseconds"
+        );
+    }
 }

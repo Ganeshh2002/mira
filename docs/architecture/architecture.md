@@ -23,6 +23,7 @@ the map, the ADRs are the reasoning.
 | Keep Awake | A native power request; never simulated input | [0014](../adr/0014-keep-awake.md) |
 | Git graph | Lanes over the visible window; no sorted revwalk | [0015](../adr/0015-graph-lanes.md) |
 | Git diff | Five declared limits; a file chosen by ordinal | [0016](../adr/0016-bounded-diffs.md) |
+| File history | Bounded by commits examined; named by a subject, not a path | [0017](../adr/0017-file-history.md) |
 
 Chosen because the constraints in
 [product-definition.md](../product/product-definition.md) — ≤ 30 MB installer, ≤ 150 MB
@@ -132,7 +133,7 @@ depend on* — and nothing outside it may reach past its interface.
 | **projects** | Project lifecycle, directory probing, type markers | `ProjectService` | core, db, fs |
 | **workspaces** | Workspace CRUD, application context | `WorkspaceService` | core, db |
 | **sessions** | Session start/pause/resume/close from lock+focus events | `SessionService` | core, db, platform |
-| **git** | Status, HEAD, branches, ahead/behind, paged commit walk, commit detail, lane layout, bounded diffs | `GitProvider` trait, pure `lanes::layout` | core |
+| **git** | Status, HEAD, branches, ahead/behind, paged commit walk, commit detail, lane layout, bounded diffs, file traces | `GitProvider` trait, pure `lanes::layout` | core |
 | **monorepo** | Workspace manifests → tools and package boundaries, read-only | `detect(selected, git_root)` | core |
 | **scheduler** | The only clock: intervals, gate, cancellation, isolation | `Observation`, `Gate`, `Scheduler` | core |
 | **ports** | Listening sockets → (port, pid, process) + attribution | `PortScanner` | core, processes |
@@ -187,6 +188,7 @@ git.history({ projectId, cursor })     → CommitPage
 git.graph({ projectId, cursor })       → CommitGraph
 git.changes({ projectId, scope })      → ChangedFiles
 git.file_diff({ projectId, scope, at }) → FileDiff
+git.file_history({ projectId, subject, cursor }) → FileHistory
 git.commit({ projectId, commit })      → CommitLookup
 git.copy_commit({ projectId, commit, form }) → String
 keep_awake.state()                    → KeepAwakeState
@@ -255,6 +257,13 @@ Rules:
     diff exist without an exception to rule 5, and a guard test bans the shapes
     somebody would reach for instead — `blob`, `oid`, `pathspec`, `glob`,
     `filename` ([ADR-0016](../adr/0016-bounded-diffs.md)).
+
+12. **A file trace is named the same way, across renames.** `git.file_history`
+    takes a `FileSubject` — a change set, a position in it, and which side of
+    that change to take the name from. The interface receives one and hands it
+    back; it cannot build one, and the struct has no field a path could live in.
+    The `before` flag is what lets a trace continue under an earlier name without
+    that name ever being sent ([ADR-0017](../adr/0017-file-history.md)).
 
 ### Events (backend tells)
 
@@ -380,6 +389,16 @@ the security model in §7 (any XSS becomes full database access) and dissolves t
 repository boundary, since queries would spread through React. Mira instead uses
 `rusqlite` inside `mira-db` behind repository traits, exposed only as typed commands.
 See [ADR-0004](../adr/0004-sqlite-local-first.md).
+
+**File history is bounded by commits examined, because looking is the cost.** It
+is the one read in Mira that is *inherently* O(repository history) — to know
+whether a commit touched a path you have to look at that commit — and measuring
+put a number on it: 740 ms to walk a twenty-thousand-commit repository for one
+file, growing linearly. So a request examines at most `MAX_SCAN` commits and says
+how far it got; a page that stopped early is a different sentence from a file with
+no history. The measurement also settled the question people assume matters:
+following renames costs **0.03 ms per rename event** and nothing per commit, so it
+is not where the bound belongs ([ADR-0017](../adr/0017-file-history.md)).
 
 **A diff costs what its limits say, not what the repository holds.** It is the
 first read in the product whose size is set by the repository's *files* rather than

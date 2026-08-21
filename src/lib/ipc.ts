@@ -11,6 +11,8 @@ import type { CommitLookup } from '../bindings/CommitLookup';
 import type { CommitPage } from '../bindings/CommitPage';
 import type { DiffScope } from '../bindings/DiffScope';
 import type { FileDiff } from '../bindings/FileDiff';
+import type { FileHistory } from '../bindings/FileHistory';
+import type { FileSubject } from '../bindings/FileSubject';
 import type { KeepAwakeSpan } from '../bindings/KeepAwakeSpan';
 import type { KeepAwakeState } from '../bindings/KeepAwakeState';
 import type { Launched } from '../bindings/Launched';
@@ -194,6 +196,23 @@ export const commands = {
    */
   gitFileDiff: (projectId: number, scope: DiffScope, at: number): Promise<FileDiff> =>
     call('git_file_diff', { projectId, scope, at }),
+
+  /**
+   * `git.file_history` — the commits that touched one file.
+   *
+   * The file is named by a `subject` the interface **received** — from a change
+   * list, or from a previous page's cursor — and hands back unchanged. There is
+   * no path here and no way to build one: a subject is a change set Mira produced
+   * and a position in it.
+   *
+   * Bounded by commits examined rather than by anything about the file, because
+   * looking is the cost. A page that ran out of budget says how far it got.
+   */
+  gitFileHistory: (
+    projectId: number,
+    subject: FileSubject,
+    cursor: string | null,
+  ): Promise<FileHistory> => call('git_file_history', { projectId, subject, cursor }),
 
   /** `keep_awake.state` — whether the machine is being kept awake, and until when. */
   keepAwakeState: (): Promise<KeepAwakeState> => call('keep_awake_state'),

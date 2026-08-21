@@ -14,6 +14,12 @@
 //! cargo test -p mira-git --test performance -- --ignored --nocapture
 //! ```
 //!
+//! Slice 5d adds the file-history benchmark, and it is the one that changed a
+//! design. File history is *inherently* O(repository history) — to know whether a
+//! commit touched a path you have to look at that commit — so the question was
+//! never "how fast" but "**where does it stop**"
+//! ([ADR-0017](../../../docs/adr/0017-file-history.md)).
+//!
 //! Slice 5c adds the diff benchmarks. A diff is the first read in the product
 //! whose size is set by *the repository's files* rather than by a page of
 //! history, so the question is not "how fast" but "**bounded by what**": a
@@ -32,8 +38,9 @@ use std::time::{Duration, Instant};
 
 use git2::{Repository, RepositoryInitOptions, Signature, Sort};
 use mira_git::{
-    ChangedFiles, CommitGraph, CommitId, CommitPage, DiffScope, FileDiff, GitProvider, Libgit2,
-    MAX_BYTES, MAX_FILES, MAX_FILE_BYTES, MAX_LINES, PAGE,
+    ChangedFiles, CommitGraph, CommitId, CommitPage, DiffScope, FileDiff, FileHistory, FileSubject,
+    GitProvider, Libgit2, ScanStopped, MAX_BYTES, MAX_FILES, MAX_FILE_BYTES, MAX_LINES, MAX_SCAN,
+    PAGE,
 };
 use tempfile::TempDir;
 
@@ -441,4 +448,191 @@ fn a_change_list_costs_what_the_limit_says_and_not_what_the_commit_holds() {
         "a change list grew {:.1}x for a 400x commit; the read is no longer bounded",
         ratio(&growth)
     );
+}
+
+// ── File history ─────────────────────────────────────────────────────────────
+
+/// A repository of `commits` where `subject.txt` changes every `every`-th one.
+fn repo_with_sparse_file(dir: &Path, commits: usize, every: usize) -> Repository {
+    let mut options = RepositoryInitOptions::new();
+    options.initial_head("main");
+    let repo = Repository::init_opts(dir, &options).expect("init");
+    let who = Signature::new(
+        "Blacknit",
+        "blacknit@example.com",
+        &git2::Time::new(1_700_000_000, 0),
+    )
+    .expect("signature");
+
+    fs::create_dir_all(dir.join("src/deep/nested")).expect("dirs");
+    let mut parent: Option<git2::Oid> = None;
+
+    for n in 0..commits {
+        if n % every == 0 {
+            fs::write(dir.join("src/deep/nested/subject.txt"), format!("v{n}\n")).expect("write");
+        }
+        fs::write(dir.join("noise.txt"), format!("n{n}\n")).expect("write");
+        parent = Some(commit_all(
+            &repo,
+            &who,
+            &format!("c{n}"),
+            &parent.into_iter().collect::<Vec<_>>(),
+        ));
+    }
+
+    repo
+}
+
+/// The subject naming a path in the root commit's change set.
+fn subject_in(root: &Path, commit: git2::Oid, path: &str) -> FileSubject {
+    let scope = DiffScope::Commit {
+        commit: commit.to_string().parse().expect("a commit id"),
+    };
+    let ChangedFiles::Ready { files, .. } = Libgit2.changed_files(root, &scope) else {
+        panic!("expected a change list");
+    };
+    let found = files
+        .iter()
+        .find(|change| change.path == path)
+        .unwrap_or_else(|| panic!("no change for {path}"));
+
+    FileSubject {
+        scope,
+        at: found.at,
+        before: false,
+    }
+}
+
+#[test]
+#[ignore = "builds repositories of up to 20,000 commits; run it deliberately"]
+fn a_file_trace_costs_what_its_budget_says_and_not_what_the_history_holds() {
+    // The finding, in one table. An *unbounded* trace of one file is linear in
+    // the repository — which is why there is a budget, and why the budget is
+    // about commits examined rather than about anything to do with the file.
+    println!();
+    println!("  commits   found   scanned   page ms   stopped");
+    println!("  -------   -----   -------   -------   -------");
+
+    let mut growth = Vec::new();
+
+    for commits in [1_000_usize, 5_000, 20_000] {
+        let dir = TempDir::new().expect("tempdir");
+        let repo = repo_with_sparse_file(dir.path(), commits, 50);
+        let root = repo
+            .revwalk()
+            .and_then(|mut walk| {
+                walk.set_sorting(Sort::NONE)?;
+                walk.push_head()?;
+                Ok(walk.last())
+            })
+            .expect("walk")
+            .and_then(Result::ok)
+            .expect("a root commit");
+        let subject = subject_in(dir.path(), root, "src/deep/nested/subject.txt");
+
+        let started = Instant::now();
+        let traced = Libgit2.file_history(dir.path(), &subject, None);
+        let took = started.elapsed();
+
+        match traced {
+            FileHistory::Ready {
+                commits: found,
+                scanned,
+                stopped,
+                ..
+            } => {
+                println!(
+                    "  {commits:>7}   {:>5}   {scanned:>7}   {:>5.1} ms   {}",
+                    found.len(),
+                    took.as_secs_f64() * 1000.0,
+                    match stopped {
+                        ScanStopped::No => "reached the end".to_owned(),
+                        ScanStopped::Budget { .. } => "budget".to_owned(),
+                        ScanStopped::RenameLost { .. } => "rename lost".to_owned(),
+                    },
+                );
+                assert!(found.len() <= PAGE, "a page is a page");
+                assert!(
+                    (scanned as usize) <= MAX_SCAN,
+                    "examined {scanned}, past the ceiling of {MAX_SCAN}"
+                );
+            }
+            other => panic!("expected a trace, got {other:?}"),
+        }
+
+        growth.push(took.as_secs_f64());
+    }
+
+    println!();
+    println!(
+        "  1,000 -> 20,000 commits: x{:.1}   (budget {MAX_SCAN} commits, page {PAGE})",
+        ratio(&growth)
+    );
+    println!();
+
+    // Twenty times the history must not cost twenty times the page. The
+    // threshold is generous because this runs on whatever machine is to hand; it
+    // catches a return to an unbounded walk, which is an order of magnitude.
+    assert!(
+        ratio(&growth) < 5.0,
+        "a trace grew {:.1}x for a 20x repository; the walk is no longer bounded",
+        ratio(&growth)
+    );
+}
+
+#[test]
+#[ignore = "builds a 20,000-commit repository; run it deliberately"]
+fn an_unbounded_trace_would_be_linear_in_the_repository() {
+    // The number the budget exists because of. This walks the *whole* history the
+    // way `git log -- <path>` does, which is what Mira refuses to do in one
+    // request — measured here so the refusal stays justified.
+    println!();
+    println!("  commits   full scan   per commit");
+    println!("  -------   ---------   ----------");
+
+    let mut growth = Vec::new();
+
+    for commits in [1_000_usize, 5_000, 20_000] {
+        let dir = TempDir::new().expect("tempdir");
+        let repo = repo_with_sparse_file(dir.path(), commits, 50);
+
+        let started = Instant::now();
+        let mut walk = repo.revwalk().expect("revwalk");
+        walk.set_sorting(Sort::NONE).expect("sorting");
+        walk.push_head().expect("head");
+        let subject = Path::new("src/deep/nested/subject.txt");
+        let mut scanned = 0usize;
+        for oid in walk {
+            let Ok(oid) = oid else { break };
+            scanned += 1;
+            let found = repo.find_commit(oid).expect("commit");
+            let new = found
+                .tree()
+                .ok()
+                .and_then(|tree| tree.get_path(subject).ok())
+                .map(|entry| entry.id());
+            let old = found
+                .parent(0)
+                .ok()
+                .and_then(|parent| parent.tree().ok())
+                .and_then(|tree| tree.get_path(subject).ok())
+                .map(|entry| entry.id());
+            let _ = new != old;
+        }
+        let took = started.elapsed();
+
+        println!(
+            "  {commits:>7}   {:>6.1} ms   {:>7.1} us",
+            took.as_secs_f64() * 1000.0,
+            took.as_secs_f64() * 1_000_000.0 / scanned as f64,
+        );
+        growth.push(took.as_secs_f64());
+    }
+
+    println!();
+    println!(
+        "  1,000 -> 20,000 commits: x{:.1}  <- linear, which is why Mira bounds it",
+        ratio(&growth)
+    );
+    println!();
 }
