@@ -5,6 +5,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CommitGraph } from '../bindings/CommitGraph';
 import type { CommitLookup } from '../bindings/CommitLookup';
 import type { CommitPage } from '../bindings/CommitPage';
+import type { ChangedFiles } from '../bindings/ChangedFiles';
+import type { FilteredHistory } from '../bindings/FilteredHistory';
+import type { KnownAuthors } from '../bindings/KnownAuthors';
+import type { KnownRefs } from '../bindings/KnownRefs';
 import type { GraphRow } from '../bindings/GraphRow';
 import type { Project } from '../bindings/Project';
 import type { RepositoryLayout } from '../bindings/RepositoryLayout';
@@ -118,9 +122,28 @@ function backend(
       const commit = (args as { commit?: string } | undefined)?.commit;
       return Promise.resolve(commit ?? '');
     }
+    // The filter bar's three menus. Empty by default, so a test that is not
+    // about filtering does not have to say anything about it.
+    if (command === 'git_refs') return Promise.resolve(NO_REFS);
+    if (command === 'git_authors') return Promise.resolve(NO_AUTHORS);
+    if (command === 'git_changes') return Promise.resolve(NO_CHANGES);
     return Promise.resolve(undefined);
   });
 }
+
+const NO_REFS: KnownRefs = { state: 'ready', refs: [], truncated: false };
+const NO_AUTHORS: KnownAuthors = {
+  state: 'ready',
+  authors: [],
+  scanned: 0,
+  stopped: { state: 'no' },
+};
+const NO_CHANGES: ChangedFiles = {
+  state: 'ready',
+  files: [],
+  against: { kind: 'parent' },
+  truncated: { state: 'no' },
+};
 
 function show(layout: RepositoryLayout | null = null, onBack = vi.fn()) {
   return renderApp(<History project={project()} layout={layout} onBack={onBack} />);
@@ -750,5 +773,442 @@ describe('the graph', () => {
     await userEvent.keyboard('{Enter}');
 
     expect(await screen.findByText('A longer explanation.')).toBeInTheDocument();
+  });
+});
+
+// ── Narrowing ────────────────────────────────────────────────────────────────
+
+const REFS: KnownRefs = {
+  state: 'ready',
+  refs: [
+    { kind: 'branch', name: 'main', tip: 'b'.repeat(40) },
+    { kind: 'branch', name: 'feature/graph', tip: 'c'.repeat(40) },
+    { kind: 'tag', name: 'v1.0', tip: 'd'.repeat(40) },
+  ],
+  truncated: false,
+};
+
+const AUTHORS: KnownAuthors = {
+  state: 'ready',
+  authors: [
+    { name: 'Ganeshh', commits: 40 },
+    { name: 'Grace Hopper', commits: 2 },
+  ],
+  scanned: 42,
+  stopped: { state: 'no' },
+};
+
+const CHANGES: ChangedFiles = {
+  state: 'ready',
+  files: [
+    {
+      at: 0,
+      kind: 'modified',
+      path: 'src/app.ts',
+      fromPath: null,
+      binary: false,
+      additions: 4,
+      deletions: 1,
+    },
+    {
+      at: 1,
+      kind: 'added',
+      path: 'docs/notes.md',
+      fromPath: null,
+      binary: false,
+      additions: 9,
+      deletions: 0,
+    },
+  ],
+  against: { kind: 'head' },
+  truncated: { state: 'no' },
+};
+
+function found(
+  overrides: Partial<Extract<FilteredHistory, { state: 'ready' }>> = {},
+): FilteredHistory {
+  return {
+    state: 'ready',
+    head: { kind: 'branch', name: 'main' },
+    commits: commits(2),
+    next: null,
+    scanned: 120,
+    stopped: { state: 'no' },
+    shallow: false,
+    ...overrides,
+  };
+}
+
+/** The full history, plus menus with something in them and a search to serve. */
+function searchable(results: FilteredHistory[] = [found()]) {
+  let served = 0;
+  backend([page()], {
+    git_refs: REFS,
+    git_authors: AUTHORS,
+    git_changes: CHANGES,
+  });
+
+  const paged = invoke.getMockImplementation() as (
+    command: string,
+    args?: Record<string, unknown>,
+  ) => Promise<unknown>;
+  invoke.mockImplementation((command: string, args?: Record<string, unknown>) => {
+    if (command === 'git_search') {
+      const next = results[Math.min(served, results.length - 1)]!;
+      served += 1;
+      return Promise.resolve(next);
+    }
+    return paged(command, args);
+  });
+}
+
+/** Open one of the bar's menus and pick something from it. */
+async function pick(menu: string, option: string) {
+  await userEvent.click(await screen.findByRole('button', { name: new RegExp(`^${menu}`) }));
+  await userEvent.click(await screen.findByRole('menuitem', { name: new RegExp(option) }));
+}
+
+/** The arguments of the last search, whatever they were. */
+function lastSearch() {
+  const calls = invoke.mock.calls.filter(([command]) => command === 'git_search');
+  return calls[calls.length - 1]?.[1] as
+    { projectId: number; wanted: Record<string, unknown>; cursor: string | null } | undefined;
+}
+
+describe('the filter bar', () => {
+  it('does not narrow anything until something is chosen', async () => {
+    searchable();
+    show();
+
+    await screen.findByRole('list', { name: 'Commits' });
+
+    expect(screen.getByRole('search', { name: 'Filter history' })).toBeInTheDocument();
+    expect(invoke.mock.calls.some(([command]) => command === 'git_search')).toBe(false);
+  });
+
+  it('sends a branch as its tip and never as its name', async () => {
+    // The contract the slice rests on: `main` is a label, `bbbb…` is the question.
+    searchable();
+    show();
+    await screen.findByRole('list', { name: 'Commits' });
+
+    await pick('Branch', 'main');
+
+    await waitFor(() => expect(lastSearch()).toBeDefined());
+    expect(lastSearch()?.wanted).toEqual({
+      branch: 'b'.repeat(40),
+      author: null,
+      subject: null,
+      file: null,
+    });
+    expect(JSON.stringify(lastSearch())).not.toContain('main');
+    expect(JSON.stringify(lastSearch())).not.toContain('refs/');
+  });
+
+  it('sends a file as its place in a change list and never as a path', async () => {
+    searchable();
+    show();
+    await screen.findByRole('list', { name: 'Commits' });
+
+    await pick('File', 'src/app.ts');
+
+    await waitFor(() => expect(lastSearch()).toBeDefined());
+    expect(lastSearch()?.wanted.file).toEqual({
+      scope: { kind: 'workingTree' },
+      at: 0,
+      before: false,
+    });
+    expect(JSON.stringify(lastSearch())).not.toContain('src/app.ts');
+  });
+
+  it('searches subject text only when it is submitted', async () => {
+    searchable();
+    show();
+    await screen.findByRole('list', { name: 'Commits' });
+
+    const field = screen.getByRole('searchbox', { name: 'Search' });
+    await userEvent.type(field, 'widget');
+
+    expect(invoke.mock.calls.some(([command]) => command === 'git_search')).toBe(false);
+
+    await userEvent.type(field, '{Enter}');
+
+    await waitFor(() => expect(lastSearch()?.wanted.subject).toBe('widget'));
+  });
+
+  it('says what the search does, since “search” means five things', async () => {
+    searchable();
+    show();
+
+    expect(
+      await screen.findByRole('searchbox', { name: 'Search' }),
+    ).toHaveAccessibleDescription(
+      /Matches part of a commit’s subject line, ignoring case\. Not a pattern/,
+    );
+  });
+
+  it('composes filters rather than replacing them', async () => {
+    searchable();
+    show();
+    await screen.findByRole('list', { name: 'Commits' });
+
+    await pick('Branch', 'main');
+    await pick('Author', 'Grace Hopper');
+    await userEvent.type(screen.getByRole('searchbox', { name: 'Search' }), 'widget{Enter}');
+
+    await waitFor(() =>
+      expect(lastSearch()?.wanted).toEqual({
+        branch: 'b'.repeat(40),
+        author: 'Grace Hopper',
+        subject: 'widget',
+        file: null,
+      }),
+    );
+  });
+
+  it('returns to ordinary pagination when the filters are cleared', async () => {
+    searchable();
+    show();
+    await screen.findByRole('list', { name: 'Commits' });
+
+    await pick('Author', 'Ganeshh');
+    await waitFor(() => expect(lastSearch()).toBeDefined());
+
+    await userEvent.click(screen.getByRole('button', { name: 'Clear filters' }));
+
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: 'Clear filters' })).not.toBeInTheDocument(),
+    );
+    expect(screen.queryByText(/of \d+ examined/)).not.toBeInTheDocument();
+    expect(await screen.findByRole('list', { name: 'Commits' })).toBeInTheDocument();
+    expect(screen.getByRole('searchbox', { name: 'Search' })).toHaveValue('');
+  });
+
+  it('offers the graph again once the filters are gone', async () => {
+    searchable();
+    show();
+    await screen.findByRole('list', { name: 'Commits' });
+
+    expect(screen.getByRole('button', { name: 'Graph' })).toBeInTheDocument();
+
+    await pick('Branch', 'main');
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: 'Graph' })).not.toBeInTheDocument(),
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: 'Clear filters' }));
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Graph' })).toBeInTheDocument(),
+    );
+  });
+
+  it('names a reference’s kind in a word, not only by where it sits', async () => {
+    searchable();
+    show();
+    await screen.findByRole('list', { name: 'Commits' });
+
+    await userEvent.click(screen.getByRole('button', { name: /^Branch/ }));
+
+    expect(screen.getByRole('menuitem', { name: /v1\.0/ })).toHaveTextContent('tag');
+  });
+
+  it('says the author list is only as deep as it looked', async () => {
+    searchable();
+    backend([page()], {
+      git_refs: REFS,
+      git_changes: CHANGES,
+      git_authors: {
+        ...AUTHORS,
+        scanned: 2000,
+        stopped: { state: 'budget', scanned: 2000, limit: 2000 },
+      } satisfies KnownAuthors,
+    });
+    show();
+    await screen.findByRole('list', { name: 'Commits' });
+
+    await userEvent.click(screen.getByRole('button', { name: /^Author/ }));
+
+    expect(
+      screen.getByText(
+        /Authors of the last 2000 commits\. Somebody further back may be missing/,
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('closes a menu with Escape and gives the focus back', async () => {
+    searchable();
+    show();
+    await screen.findByRole('list', { name: 'Commits' });
+
+    const trigger = screen.getByRole('button', { name: /^Author/ });
+    await userEvent.click(trigger);
+    expect(screen.getByRole('menu', { name: 'Author' })).toBeInTheDocument();
+
+    await userEvent.keyboard('{Escape}');
+
+    expect(screen.queryByRole('menu', { name: 'Author' })).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
+  });
+
+  it('moves through a menu with the arrow keys', async () => {
+    searchable();
+    show();
+    await screen.findByRole('list', { name: 'Commits' });
+
+    await userEvent.click(screen.getByRole('button', { name: /^Author/ }));
+    const items = screen.getAllByRole('menuitem');
+
+    items[0]!.focus();
+    await userEvent.keyboard('{ArrowDown}');
+    expect(items[1]).toHaveFocus();
+
+    await userEvent.keyboard('{ArrowUp}');
+    expect(items[0]).toHaveFocus();
+  });
+
+  it('says what is being filtered by, in words', async () => {
+    searchable();
+    show();
+    await screen.findByRole('list', { name: 'Commits' });
+
+    await pick('Author', 'Grace Hopper');
+
+    await waitFor(() =>
+      expect(screen.getByText('Filtering by author Grace Hopper.')).toBeInTheDocument(),
+    );
+  });
+});
+
+describe('what a search found, and how far it looked', () => {
+  it('counts the matches against the commits examined', async () => {
+    searchable([found({ commits: commits(2), scanned: 340 })]);
+    show();
+    await screen.findByRole('list', { name: 'Commits' });
+
+    await pick('Author', 'Ganeshh');
+
+    expect(
+      await screen.findByText('2 commits matching author Ganeshh, of 340 examined.'),
+    ).toBeInTheDocument();
+  });
+
+  it('never says “no results” when it means “none yet”', async () => {
+    // The whole point of the slice, in one assertion.
+    searchable([
+      found({
+        commits: [],
+        scanned: 2000,
+        stopped: { state: 'budget', scanned: 2000, limit: 2000 },
+        next: { from: 'e'.repeat(40), file: null },
+      }),
+    ]);
+    show();
+    await screen.findByRole('list', { name: 'Commits' });
+
+    await pick('Author', 'Grace Hopper');
+
+    expect(await screen.findByText('No match yet')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /Nothing matched in the 2000 commits examined\. There may be more further back/,
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('No matching commits')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Keep looking' })).toBeInTheDocument();
+  });
+
+  it('does say “no results” when it reached the end', async () => {
+    searchable([found({ commits: [], scanned: 42, stopped: { state: 'no' }, next: null })]);
+    show();
+    await screen.findByRole('list', { name: 'Commits' });
+
+    await pick('Author', 'Grace Hopper');
+
+    expect(await screen.findByText('No matching commits')).toBeInTheDocument();
+    expect(
+      screen.getByText('Nothing in this history matches author Grace Hopper.'),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Keep looking' })).not.toBeInTheDocument();
+  });
+
+  it('says a partial page is partial even when it found something', async () => {
+    searchable([
+      found({
+        scanned: 2000,
+        stopped: { state: 'budget', scanned: 2000, limit: 2000 },
+        next: { from: 'e'.repeat(40), file: null },
+      }),
+    ]);
+    show();
+    await screen.findByRole('list', { name: 'Commits' });
+
+    await pick('Author', 'Ganeshh');
+
+    expect(
+      await screen.findByText(
+        /Stopped after examining 2000 commits, so this is what matched so far/,
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('continues from the cursor, carrying the file the search is now about', async () => {
+    // Rename following across a page boundary: the second request asks about the
+    // file the backend named, which is not the one the menu chose.
+    const older = {
+      scope: { kind: 'commit' as const, commit: 'f'.repeat(40) },
+      at: 7,
+      before: true,
+    };
+    searchable([
+      found({ next: { from: 'e'.repeat(40), file: older } }),
+      found({ commits: commits(1, 9), next: null }),
+    ]);
+    show();
+    await screen.findByRole('list', { name: 'Commits' });
+
+    await pick('File', 'src/app.ts');
+    await screen.findByRole('button', { name: 'Keep looking' });
+    await userEvent.click(screen.getByRole('button', { name: 'Keep looking' }));
+
+    await waitFor(() =>
+      expect(lastSearch()).toEqual({
+        projectId: 1,
+        wanted: { branch: null, author: null, subject: null, file: older },
+        cursor: 'e'.repeat(40),
+      }),
+    );
+  });
+
+  it('says when a rename could not be followed', async () => {
+    searchable([found({ stopped: { state: 'renameLost', path: 'src/app.ts' }, next: null })]);
+    show();
+    await screen.findByRole('list', { name: 'Commits' });
+
+    await pick('File', 'src/app.ts');
+
+    expect(await screen.findByText(/so the search ends at/)).toBeInTheDocument();
+  });
+
+  it('says a stale file selection is stale rather than failing', async () => {
+    searchable([{ state: 'unknown' }]);
+    show();
+    await screen.findByRole('list', { name: 'Commits' });
+
+    await pick('File', 'docs/notes.md');
+
+    expect(await screen.findByText('That file is no longer in this list')).toBeInTheDocument();
+  });
+
+  it('offers nothing that would change the repository while filtering', async () => {
+    searchable();
+    show();
+    await screen.findByRole('list', { name: 'Commits' });
+
+    await pick('Branch', 'feature/graph');
+    await screen.findByRole('list', { name: 'Commits' });
+
+    for (const write of [/check ?out/i, /switch/i, /merge/i, /rebase/i, /reset/i, /^pull$/i]) {
+      expect(screen.queryByRole('button', { name: write })).not.toBeInTheDocument();
+    }
   });
 });

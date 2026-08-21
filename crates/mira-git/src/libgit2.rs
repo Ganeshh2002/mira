@@ -9,12 +9,13 @@ use std::path::{Path, PathBuf};
 use git2::{BranchType, ErrorCode, Repository, Status, StatusOptions};
 
 use crate::diff::{ChangedFiles, DiffScope, FileDiff};
+use crate::filter::{FilteredHistory, HistoryFilter, KnownAuthors, KnownRefs};
 use crate::graph::CommitGraph;
 use crate::history::{CommitId, CommitLookup, CommitPage};
 use crate::model::{Commit, GitOverview, Head, Upstream};
 use crate::provider::GitProvider;
 use crate::trace::{FileHistory, FileSubject};
-use crate::{patch, trace, walk};
+use crate::{filter, patch, trace, walk};
 
 /// How many hex characters an abbreviated commit id gets.
 const SHORT_SHA: usize = 7;
@@ -115,6 +116,35 @@ impl GitProvider for Libgit2 {
             Ok(repo) => trace::file_history(&repo, subject, from),
             Err(Absent::NotARepository) => FileHistory::NotARepository,
             Err(Absent::Unreadable(detail)) => FileHistory::Unreadable { detail },
+        }
+    }
+
+    fn filtered_history(
+        &self,
+        root: &Path,
+        wanted: &HistoryFilter,
+        from: Option<&CommitId>,
+    ) -> FilteredHistory {
+        match open(root) {
+            Ok(repo) => filter::filtered(&repo, wanted, from),
+            Err(Absent::NotARepository) => FilteredHistory::NotARepository,
+            Err(Absent::Unreadable(detail)) => FilteredHistory::Unreadable { detail },
+        }
+    }
+
+    fn known_refs(&self, root: &Path) -> KnownRefs {
+        match open(root) {
+            Ok(repo) => filter::known_refs(&repo),
+            Err(Absent::NotARepository) => KnownRefs::NotARepository,
+            Err(Absent::Unreadable(detail)) => KnownRefs::Unreadable { detail },
+        }
+    }
+
+    fn known_authors(&self, root: &Path, from: Option<&CommitId>) -> KnownAuthors {
+        match open(root) {
+            Ok(repo) => filter::known_authors(&repo, from),
+            Err(Absent::NotARepository) => KnownAuthors::NotARepository,
+            Err(Absent::Unreadable(detail)) => KnownAuthors::Unreadable { detail },
         }
     }
 }

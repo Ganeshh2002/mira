@@ -10,7 +10,7 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Added
 - Product definition, product scope, PRD, information architecture, and design system
 - Architecture, platform abstraction, data model, and security/privacy documents
-- ADRs 0001–0017 covering the foundational technical decisions
+- ADRs 0001–0018 covering the foundational technical decisions
 - Locked phase plan (0.1 through 0.6+) and the fourteen-slice implementation roadmap
 - Open-source project files (licence, contributing, code of conduct, security policy)
 - **Foundation (slice 0).** Cargo workspace with `mira-core`, `mira-platform`, `mira-db`,
@@ -132,6 +132,24 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   Following renames turned out to cost nothing — 0.03 ms per rename, and nothing per
   commit — which is why the limit is on commits examined rather than on the feature
   everybody expects to be expensive ([ADR-0017](docs/adr/0017-file-history.md)).
+- **History filters (slice 5e, part).** History now has a compact filter bar: pick a
+  **branch**, an **author** or a **file**, and **search** for words in a subject line.
+  They compose, and clearing them puts the ordinary paged history back exactly as it was.
+
+  Nothing you pick becomes a Git argument. A branch travels as the commit id Mira handed
+  out, a file as its place in a change list, and the two text fields are compared inside
+  Rust against commits already in memory — so `main`, `refs/heads/main`, `--all` and
+  `src/**/*.ts` are not values these fields can hold at all. Search is a plain
+  case-insensitive substring of the subject line, and the field says so: `^feat` finds
+  commits containing `^feat`, not commits starting with `feat`.
+
+  Measuring first collapsed four bounds into one: testing author, subject and path against
+  a commit costs 19.1 µs, and *not* testing them costs 21.9 µs — loading the commit is the
+  whole expense. So there is one budget, on commits examined, and a search that spends it
+  says **"No match yet — nothing matched in the 2,000 commits examined"** with **Keep
+  looking**, which is a different sentence from "No matching commits". A broad filter is
+  flat across a hundred-fold repository; a narrow one plateaus at the budget instead of
+  climbing ([ADR-0018](docs/adr/0018-history-filters.md)).
 - macOS and Windows ask the platform for its standard window material — Liquid Glass on
   macOS 26, Mica on Windows 11 — rather than drawing an imitation. Linux stays opaque.
 

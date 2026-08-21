@@ -374,6 +374,36 @@ distinction is the whole reason the bound is visible rather than silent
 
 `↑` and `↓` move between commits here too.
 
+**As built (slice 5e) — filtering.** A single compact bar sits under History's
+header: `[ Branch ▾ ] [ Author ▾ ] [ File ▾ ]` and a **Search** field. Nothing
+above it moves, and the default view is unchanged — with no filter on, History is
+the same list it was, asking the same cheap question.
+
+Every menu is a list Mira produced. Branches and tags come from `git.refs`,
+authors from the commits within one scan budget, files from the working tree's
+bounded change list. Each item is picked, never typed, which is what keeps a name
+off the wire; and each menu says its own limit when it has one (*"Authors of the
+last 2,000 commits. Somebody further back may be missing."*).
+
+The **Search** field is submitted rather than searched-as-typed, because each
+search is a bounded walk. What it matches is written in the field's own
+description: *part of a commit's subject line, ignoring case; not a pattern.*
+
+Filters **compose** — branch and author and file and text all narrow together —
+and **Clear filters** returns the surface to ordinary pagination rather than to an
+empty search. The graph toggle is absent while a filter is on, because a filtered
+history is a set of matches rather than a shape, and lanes drawn between
+non-adjacent commits would be a picture of something that does not exist.
+
+**A search that ran out of budget says "No match yet", never "No results".** The
+three endings are three different sentences: *"Nothing in this history matches
+author Grace Hopper"* when the walk reached the end; *"Nothing matched in the 2,000
+commits examined. There may be more further back"* with **Keep looking** when it
+did not; and *"Stopped after examining 2,000 commits, so this is what matched so
+far"* above a partial list. What is filtered is also announced in words for a
+reader who cannot see which controls are lit
+([ADR-0018](../adr/0018-history-filters.md)).
+
 ### Ports view (machine-scoped)
 All listening ports, grouped: *this project*, *other projects*, *unattributed*. Same row
 actions as the project section. This is the one place Mira shows machine-wide data

@@ -26,7 +26,8 @@ use std::sync::Arc;
 use mira_core::{MiraError, Project, ProjectId, Result};
 use mira_git::{
     ChangedFiles, CommitGraph, CommitId, CommitLookup, CommitPage, DiffScope, FileDiff,
-    FileHistory, FileSubject, GitProvider, Libgit2,
+    FileHistory, FileSubject, FilteredHistory, GitProvider, HistoryFilter, KnownAuthors, KnownRefs,
+    Libgit2,
 };
 use mira_platform::{Clipboard, ClipboardHost};
 use mira_projects::ProjectService;
@@ -224,6 +225,59 @@ pub async fn git_file_history(
     let root = repository_of(&state.projects().get(project_id)?);
 
     read(move || Libgit2.file_history(&root, &subject, cursor.as_ref())).await
+}
+
+/// `git.search` — the commits matching a filter.
+///
+/// Composable: branch, author, subject text and file narrow together, and every
+/// one that is set has to match.
+///
+/// **Nothing in `wanted` becomes a Git argument.** A branch is a `CommitId` — a
+/// tip Mira listed — so there is no ref *name* on the wire at all. A file is a
+/// `FileSubject`, 5d's change-set position, so there is no path. Author and
+/// subject are validated terms that are only ever *compared*, in Rust, against
+/// fields of a commit already in memory; neither reaches libgit2.
+///
+/// Bounded by `mira_git::MAX_FILTER_SCAN` commits examined. A search that ran out
+/// of budget says how far it looked, because *"nothing in the first two thousand
+/// commits"* and *"nothing in this history"* are different facts and the second
+/// one would be a lie ([ADR-0018](../../../docs/adr/0018-history-filters.md)).
+#[tauri::command]
+pub async fn git_search(
+    project_id: ProjectId,
+    wanted: HistoryFilter,
+    cursor: Option<CommitId>,
+    state: State<'_, Arc<AppState>>,
+) -> Result<FilteredHistory> {
+    let root = repository_of(&state.projects().get(project_id)?);
+
+    read(move || Libgit2.filtered_history(&root, &wanted, cursor.as_ref())).await
+}
+
+/// `git.refs` — the branches and tags a search may start from.
+///
+/// Each carries the commit it points at, and **that** is what a filter sends
+/// back. The name is for reading; the tip is for asking.
+#[tauri::command]
+pub async fn git_refs(project_id: ProjectId, state: State<'_, Arc<AppState>>) -> Result<KnownRefs> {
+    let root = repository_of(&state.projects().get(project_id)?);
+
+    read(move || Libgit2.known_refs(&root)).await
+}
+
+/// `git.authors` — the authors of the commits within one scan budget.
+///
+/// Of what was *examined*, not of the repository: a name missing from the list
+/// may still be further back, and the answer says how far it looked. It is a menu
+/// to choose from, which is why it is bounded like everything else.
+#[tauri::command]
+pub async fn git_authors(
+    project_id: ProjectId,
+    state: State<'_, Arc<AppState>>,
+) -> Result<KnownAuthors> {
+    let root = repository_of(&state.projects().get(project_id)?);
+
+    read(move || Libgit2.known_authors(&root, None)).await
 }
 
 /// The repository a project's history belongs to.

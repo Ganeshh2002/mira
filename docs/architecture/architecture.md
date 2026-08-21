@@ -24,6 +24,7 @@ the map, the ADRs are the reasoning.
 | Git graph | Lanes over the visible window; no sorted revwalk | [0015](../adr/0015-graph-lanes.md) |
 | Git diff | Five declared limits; a file chosen by ordinal | [0016](../adr/0016-bounded-diffs.md) |
 | File history | Bounded by commits examined; named by a subject, not a path | [0017](../adr/0017-file-history.md) |
+| History filters | One scan budget; a branch is a tip, never a name | [0018](../adr/0018-history-filters.md) |
 
 Chosen because the constraints in
 [product-definition.md](../product/product-definition.md) — ≤ 30 MB installer, ≤ 150 MB
@@ -265,6 +266,16 @@ Rules:
     The `before` flag is what lets a trace continue under an earlier name without
     that name ever being sent ([ADR-0017](../adr/0017-file-history.md)).
 
+13. **A search is described with identities, not with arguments.** `git.search`
+    takes a `HistoryFilter`: a branch as the **commit id** `git.refs` handed out,
+    a file as a `FileSubject`, and author and subject as `Term`s that are compared
+    in Rust against a commit already in memory. So `main`, `refs/heads/main`,
+    `--all`, `src/**/*.ts` and `^feat` are not values these fields can hold — wire
+    tests assert each one fails to deserialise. It is rules 11 and 12
+    generalised: *anything picked from a list Mira produced goes back as the
+    identity Mira gave it, never as the label that was read*
+    ([ADR-0018](../adr/0018-history-filters.md)).
+
 ### Events (backend tells)
 
 ```
@@ -399,6 +410,17 @@ how far it got; a page that stopped early is a different sentence from a file wi
 no history. The measurement also settled the question people assume matters:
 following renames costs **0.03 ms per rename event** and nothing per commit, so it
 is not where the bound belongs ([ADR-0017](../adr/0017-file-history.md)).
+
+**Filtering costs the walk, and nothing else — which is why there is one budget.**
+Measuring each predicate separately was meant to size four bounds and instead
+collapsed them into one: loading the commit object costs ~22 µs and testing
+author, subject and path against it is free (19.1 µs for all three, against
+21.9 µs for the bare walk). So there is no cheap filter to fast-path and no
+expensive one to bound apart; the only lever is how many commits are examined, and
+`MAX_FILTER_SCAN` is it. The consequence in the numbers: a broad filter is flat
+across a hundred-fold repository (×0.9), and a narrow one grows to the budget and
+then stops (×30 at ten thousand commits, and ×30 at a million)
+([ADR-0018](../adr/0018-history-filters.md)).
 
 **A diff costs what its limits say, not what the repository holds.** It is the
 first read in the product whose size is set by the repository's *files* rather than

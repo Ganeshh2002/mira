@@ -12,7 +12,8 @@ use mira_db::{NewProject, ProjectRepo};
 use mira_fs::PathMatching;
 use mira_git::{
     ChangedFiles, CommitGraph, CommitId, CommitLookup, CommitPage, DiffScope, FileDiff,
-    FileHistory, FileSubject, GitOverview, GitProvider,
+    FileHistory, FileSubject, FilteredHistory, GitOverview, GitProvider, HistoryFilter,
+    KnownAuthors, KnownRefs,
 };
 use mira_projects::{ProjectService, Projects};
 use tempfile::TempDir;
@@ -75,6 +76,23 @@ impl GitProvider for NoGit {
         _from: Option<&CommitId>,
     ) -> FileHistory {
         FileHistory::NotARepository
+    }
+
+    fn filtered_history(
+        &self,
+        _root: &Path,
+        _filter: &HistoryFilter,
+        _from: Option<&CommitId>,
+    ) -> FilteredHistory {
+        FilteredHistory::NotARepository
+    }
+
+    fn known_refs(&self, _root: &Path) -> KnownRefs {
+        KnownRefs::NotARepository
+    }
+
+    fn known_authors(&self, _root: &Path, _from: Option<&CommitId>) -> KnownAuthors {
+        KnownAuthors::NotARepository
     }
 }
 

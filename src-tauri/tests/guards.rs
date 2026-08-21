@@ -617,6 +617,10 @@ fn every_command_parameter_is_one_that_has_been_reviewed() {
     //   history trace, and it has no field that holds a path — the interface
     //   receives one and hands it back, and cannot describe a file Mira has not
     //   already offered it (ADR-0017).
+    // - `wanted` — a `HistoryFilter`: a branch as a **commit id**, a file as a
+    //   change-set position, and author and subject as validated terms that are
+    //   only ever compared in Rust. There is no ref name, no path and no pattern
+    //   in it; nothing it holds reaches libgit2 as an argument (ADR-0018).
     // - `app`, `state` — injected by Tauri, not sent by the page.
     let reviewed = [
         "app",
@@ -634,6 +638,7 @@ fn every_command_parameter_is_one_that_has_been_reviewed() {
         "span",
         "state",
         "subject",
+        "wanted",
         "workspace_id",
     ];
 
@@ -2086,4 +2091,156 @@ fn tracing_a_file_reads_trees_rather_than_diffs() {
              request that would be seconds rather than milliseconds"
         );
     }
+}
+
+// ── Searching history ────────────────────────────────────────────────────────
+
+#[test]
+fn a_history_filter_carries_no_ref_name_no_path_and_no_pattern() {
+    // The type is the guarantee. Everything a filter holds is a validated commit
+    // id, a change-set position, or a value that is only ever compared — so there
+    // is nothing in it a caller could smuggle a revision expression through.
+    let filter =
+        fs::read_to_string(repo_root().join("crates/mira-git/src/filter.rs")).expect("filter.rs");
+    let code = code_only(&filter);
+
+    let fields = code
+        .split("pub struct HistoryFilter {")
+        .nth(1)
+        .and_then(|rest| rest.split("\n}").next())
+        .expect("a HistoryFilter definition")
+        .to_owned();
+
+    // Positive first, so the parse cannot succeed vacuously.
+    assert!(fields.contains("branch: Option<CommitId>"), "got: {fields}");
+    assert!(
+        fields.contains("file: Option<FileSubject>"),
+        "got: {fields}"
+    );
+    assert!(fields.contains("author: Option<Term>"), "got: {fields}");
+    assert!(fields.contains("subject: Option<Term>"), "got: {fields}");
+
+    for smuggled in [
+        "String", "PathBuf", "&str", "pathspec", "glob", "refspec", "rev",
+    ] {
+        assert!(
+            !fields.contains(smuggled),
+            "HistoryFilter carries `{smuggled}`; every field must be a validated type"
+        );
+    }
+}
+
+#[test]
+fn no_filter_value_ever_reaches_libgit2() {
+    // Author and subject are compared in Rust against fields of a commit already
+    // in memory. `revparse` is the one call that would interpret a string as a
+    // revision, and it is not in this file at all — commit ids are resolved
+    // through the same helper every other slice uses.
+    let filter =
+        fs::read_to_string(repo_root().join("crates/mira-git/src/filter.rs")).expect("filter.rs");
+    let code = code_only(&filter);
+
+    for interpreting in [
+        "revparse",
+        "reference_to_annotated_commit",
+        "Pathspec",
+        "pathspec",
+        "DiffOptions",
+        "glob",
+    ] {
+        assert!(
+            !code.contains(interpreting),
+            "a filter value could reach libgit2 through `{interpreting}`"
+        );
+    }
+
+    // And the comparison is what it says it is: lower-cased on both sides.
+    assert!(
+        code.contains("to_lowercase"),
+        "matching must fold case on both sides, as the type documents"
+    );
+
+    // Nowhere in the workspace does Mira spell a filter the way a command line
+    // would. These are the flags a reviewer would look for, so they are the
+    // flags the build looks for.
+    for (path, source) in sources(&["rs"]) {
+        let code = code_only(&source);
+
+        for flag in [
+            "--author",
+            "--committer",
+            "--grep",
+            "--all-match",
+            "--fixed-strings",
+            "--regexp-ignore-case",
+            "--follow",
+            "push_glob",
+            "push_ref",
+            "push_range",
+        ] {
+            assert!(
+                !code.contains(flag),
+                "{}: `{flag}` — a filter is a typed value, never an argument",
+                relative(&path)
+            );
+        }
+    }
+}
+
+#[test]
+fn a_search_is_bounded_by_commits_examined() {
+    // The same ceiling as a file trace, for the same reason: a search over
+    // history is proportional to the history. Measured at ~110 ms in the worst
+    // case — a filter matching nothing in a ten-thousand-commit repository —
+    // which plateaus at the budget instead of climbing with the repository.
+    let filter =
+        fs::read_to_string(repo_root().join("crates/mira-git/src/filter.rs")).expect("filter.rs");
+    let code = code_only(&filter);
+
+    assert!(code.contains("pub const MAX_FILTER_SCAN: usize"));
+    assert!(
+        code.contains("scanned >= MAX_FILTER_SCAN"),
+        "the walk must actually stop at it"
+    );
+    assert!(
+        code.contains("ScanStopped::Budget"),
+        "and say so, because a search that stopped early looks exactly like a \
+         search that found nothing"
+    );
+
+    for sorting in ["Sort::TOPOLOGICAL", "Sort::TIME", "Sort::REVERSE"] {
+        assert!(
+            !code.contains(sorting),
+            "a sorted revwalk reads the whole history before yielding: {sorting}"
+        );
+    }
+}
+
+#[test]
+fn a_branch_is_chosen_by_its_tip_rather_than_by_its_name() {
+    // `git.refs` hands out a name to read and a **commit id** to ask with. That
+    // is what keeps a ref name off the wire entirely: a name that never arrives
+    // is a name that cannot be interpreted.
+    let filter =
+        fs::read_to_string(repo_root().join("crates/mira-git/src/filter.rs")).expect("filter.rs");
+    let code = code_only(&filter);
+
+    let tip = code
+        .split("pub struct RefTip {")
+        .nth(1)
+        .and_then(|rest| rest.split("\n}").next())
+        .expect("a RefTip definition")
+        .to_owned();
+
+    assert!(tip.contains("tip: CommitId"), "got: {tip}");
+    assert!(
+        tip.contains("name: String"),
+        "the name is for reading: {tip}"
+    );
+
+    // And the filter itself takes the id, never the name.
+    assert!(
+        !code.contains("branch: Option<String>"),
+        "a branch filter must carry a commit id"
+    );
 }

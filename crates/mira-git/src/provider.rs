@@ -3,6 +3,7 @@
 use std::path::{Path, PathBuf};
 
 use crate::diff::{ChangedFiles, DiffScope, FileDiff};
+use crate::filter::{FilteredHistory, HistoryFilter, KnownAuthors, KnownRefs};
 use crate::graph::CommitGraph;
 use crate::history::{CommitId, CommitLookup, CommitPage};
 use crate::model::GitOverview;
@@ -76,4 +77,23 @@ pub trait GitProvider {
         subject: &FileSubject,
         from: Option<&CommitId>,
     ) -> FileHistory;
+
+    /// The commits matching a filter, newest first.
+    ///
+    /// Composable: branch, author, subject text and file all narrow together.
+    /// Nothing in a [`HistoryFilter`] becomes a Git argument — a branch is a
+    /// commit id, a file is a change-set position, and author and subject are
+    /// values compared in Rust ([ADR-0018](../../../docs/adr/0018-history-filters.md)).
+    fn filtered_history(
+        &self,
+        root: &Path,
+        filter: &HistoryFilter,
+        from: Option<&CommitId>,
+    ) -> FilteredHistory;
+
+    /// The branches and tags a filter may start from, with the commit each names.
+    fn known_refs(&self, root: &Path) -> KnownRefs;
+
+    /// The authors of the commits within one scan budget.
+    fn known_authors(&self, root: &Path, from: Option<&CommitId>) -> KnownAuthors;
 }
