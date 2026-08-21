@@ -604,9 +604,18 @@ fn every_command_parameter_is_one_that_has_been_reviewed() {
     // - `span` — a fixed four-variant enum: off, thirty minutes, an hour, until
     //   turned off. The interface cannot name a duration, so there is no number
     //   here to bound (ADR-0014).
+    // - `scope` — a two-variant enum: one commit, or the working tree. The
+    //   commit arm carries a `CommitId`, validated on the same terms as anywhere
+    //   else, so the whole space this parameter admits is "a commit that exists"
+    //   or "what is on disk right now".
+    // - `at` — an ordinal in a change list Mira produced. **Not a path.** The
+    //   interface can only ask for a file Mira already decided to offer, and an
+    //   ordinal past the list is a stale selection rather than an attempt at
+    //   anything (ADR-0016).
     // - `app`, `state` — injected by Tauri, not sent by the page.
     let reviewed = [
         "app",
+        "at",
         "commit",
         "cursor",
         "description",
@@ -616,6 +625,7 @@ fn every_command_parameter_is_one_that_has_been_reviewed() {
         "name",
         "port",
         "project_id",
+        "scope",
         "span",
         "state",
         "workspace_id",
@@ -1760,5 +1770,176 @@ fn the_frontend_directory_contains_only_frontend_source() {
         strays.is_empty(),
         "src/ is the React application; these belong in crates/ or src-tauri/, or \
          nowhere: {strays:#?}"
+    );
+}
+
+// ── Diffs are a view, never an edit ──────────────────────────────────────────
+
+#[test]
+fn no_command_lets_the_frontend_name_a_file_to_read() {
+    // The rule that makes bounded diffs safe as well as fast. A diff needs to
+    // know *which* file — and the answer is an **ordinal in a list Mira
+    // produced**, never a path. `no_command_lets_the_frontend_name_a_path_on_disk`
+    // already bans path-shaped parameters; this bans the shapes somebody would
+    // reach for when they wanted a path and knew that rule existed.
+    let banned = [
+        "blob",
+        "oid",
+        "object",
+        "entry",
+        "filename",
+        "basename",
+        "relative",
+        "pathspec",
+        "glob",
+        "pattern",
+        "prefix",
+        "location",
+        "source",
+        "destination",
+    ];
+
+    let mut violations = Vec::new();
+    for (path, signature) in command_parameters() {
+        for parameter in parameters_of(&signature) {
+            let name = parameter_name(&parameter).to_lowercase();
+            if banned.contains(&name.as_str()) {
+                violations.push(format!("{path}: {parameter}"));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "a command names a file to read; the ordinal in a bounded change list is \
+         the only way to choose one: {violations:#?}"
+    );
+}
+
+#[test]
+fn every_commit_a_command_accepts_is_a_validated_commit_id() {
+    // Three commands take a commit now, directly or inside a scope. None of them
+    // takes a `String`: `CommitId` validates as it deserialises, so `HEAD`, a
+    // refspec, a path and a flag all fail on the wire (ADR-0009, ADR-0015).
+    let commands = repo_root().join("src-tauri/src/commands");
+
+    let mut taking = 0;
+    let mut violations = Vec::new();
+    for (path, text) in sources(&["rs"]) {
+        if !path.starts_with(&commands) {
+            continue;
+        }
+        for signature in command_signatures(&code_only(&text)) {
+            for parameter in parameters_of(&signature) {
+                let name = parameter_name(&parameter).to_lowercase();
+                if name != "commit" && name != "cursor" && name != "scope" {
+                    continue;
+                }
+                taking += 1;
+                let admits_a_validated_id =
+                    parameter.contains("CommitId") || parameter.contains("DiffScope");
+                if !admits_a_validated_id {
+                    violations.push(format!("{}: {parameter}", relative(&path)));
+                }
+            }
+        }
+    }
+
+    assert!(
+        taking > 0,
+        "the scan found no commit parameters — it is broken"
+    );
+    assert!(
+        violations.is_empty(),
+        "a commit arrives as something other than a validated id: {violations:#?}"
+    );
+}
+
+#[test]
+fn the_diff_limits_are_constants_and_every_one_reports_itself() {
+    // `security-and-privacy.md`: nothing is truncated silently. Each ceiling is a
+    // named constant in `mira-git`, and each has a state that says it bit —
+    // a shorter answer with no explanation would look like a complete one.
+    let diff =
+        fs::read_to_string(repo_root().join("crates/mira-git/src/diff.rs")).expect("diff.rs");
+    let code = code_only(&diff);
+
+    for limit in [
+        "pub const MAX_FILES: usize",
+        "pub const MAX_LINES: usize",
+        "pub const MAX_BYTES: usize",
+        "pub const MAX_LINE_BYTES: usize",
+        "pub const MAX_FILE_BYTES: u64",
+    ] {
+        assert!(code.contains(limit), "missing a declared limit: {limit}");
+    }
+
+    for reported in [
+        "pub enum FilesTruncated",
+        "pub enum PatchTruncated",
+        "TooLarge",
+        "Binary",
+    ] {
+        assert!(
+            code.contains(reported),
+            "a limit bites with nothing to say about it: {reported}"
+        );
+    }
+}
+
+#[test]
+fn a_binary_file_is_never_decoded_as_text() {
+    // Identified, not decoded. `FileDiff::Binary` carries two sizes and no
+    // content, and the renderer is only reached once libgit2 has said the file is
+    // not binary — so there is no path on which bytes of a binary file become a
+    // `String`.
+    let patch =
+        fs::read_to_string(repo_root().join("crates/mira-git/src/patch.rs")).expect("patch.rs");
+    let code = code_only(&patch);
+
+    assert!(
+        code.contains("is_binary()"),
+        "binariness has to be asked about before a patch is rendered"
+    );
+    assert!(
+        code.contains("FileDiff::Binary"),
+        "and answered with a state that carries no text"
+    );
+
+    let diff =
+        fs::read_to_string(repo_root().join("crates/mira-git/src/diff.rs")).expect("diff.rs");
+    let binary_variant = code_only(&diff)
+        .split("Binary {")
+        .nth(1)
+        .and_then(|rest| rest.split('}').next())
+        .unwrap_or_default()
+        .to_owned();
+
+    for carrying_content in ["text", "content", "lines", "hunks", "body"] {
+        assert!(
+            !binary_variant.contains(carrying_content),
+            "FileDiff::Binary carries `{carrying_content}`; it must carry sizes and nothing else"
+        );
+    }
+}
+
+#[test]
+fn reading_a_diff_reads_a_header_before_it_reads_a_file() {
+    // The difference between a limit and a cleanup. libgit2 fills a delta's size
+    // only once it has loaded the blob, so asking it directly would mean reading
+    // the very file the ceiling exists to refuse. The size comes from the object
+    // header instead — measured at 0.17 ms to refuse a 30 MB file, against 4 ms
+    // to diff a 1 MB one (`tests/performance.rs`).
+    let patch =
+        fs::read_to_string(repo_root().join("crates/mira-git/src/patch.rs")).expect("patch.rs");
+    let code = code_only(&patch);
+
+    assert!(
+        code.contains("read_header"),
+        "a size must come from the object header, not from loading the object"
+    );
+    assert!(
+        code.contains("max_size("),
+        "and libgit2 must be given the same ceiling, so nothing large is materialised at all"
     );
 }

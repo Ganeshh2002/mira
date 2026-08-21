@@ -11,6 +11,7 @@ import type { Head } from '../bindings/Head';
 import type { Project } from '../bindings/Project';
 import type { RepositoryLayout } from '../bindings/RepositoryLayout';
 import { Button } from '../components/Button';
+import { Changes } from '../components/Changes';
 import { LaneGutter } from '../components/LaneGutter';
 import { Icon } from '../components/Icon';
 import { Row } from '../components/Row';
@@ -519,9 +520,12 @@ function CopySha({
  * One commit, read-only.
  *
  * Subject, body, both spellings of the id, who wrote it and when, how many parents
- * it has, and how many paths it changed. **No diff** — what a commit changed is
- * still the next slice, and half of one here would be the speculative structure
- * `roadmap.md` rule 8 exists to prevent.
+ * it has — and, below that, what it changed.
+ *
+ * The changed files sit **inside** this panel rather than opening a further level,
+ * and a file's patch opens inside its own row. History → commit → files → patch is
+ * four things to read and one place to be, which is what keeps
+ * `information-architecture.md` §6's depth cap true rather than merely obeyed.
  */
 function CommitDetailPanel({
   project,
@@ -637,12 +641,18 @@ function CommitDetailPanel({
           }
           detail={
             it.changedFiles === null
-              ? 'A merge changes different things depending on which parent you compare against, so there is no single number to show.'
+              ? 'A merge changes different things depending on which parent you compare against. The list below compares with the first.'
               : undefined
           }
         />
         <Row label="Repository" value={project.name} />
       </div>
+
+      <Changes
+        projectId={project.id}
+        scope={{ kind: 'commit', commit }}
+        label="Changed files"
+      />
     </section>
   );
 }

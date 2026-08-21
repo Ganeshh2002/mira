@@ -23,6 +23,7 @@ one; the old file stays, marked superseded, because the reasoning is the point.
 | [0013](0013-launching-applications.md) | Launching applications: a kind, not a command; `NSWorkspace` on macOS | Accepted |
 | [0014](0014-keep-awake.md) | Keep Awake: a power request, never simulated activity | Accepted |
 | [0015](0015-graph-lanes.md) | Graph lanes over a bounded window, without topological ordering | Accepted |
+| [0016](0016-bounded-diffs.md) | Bounded diffs, and a file chosen by ordinal | Accepted |
 
 Decisions **not** recorded here because they are reversible in an afternoon: Tailwind,
 TanStack Query, Zustand, Vite, the icon set. Those live in

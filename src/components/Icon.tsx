@@ -18,6 +18,8 @@ export type IconName =
   | 'merge'
   | 'tag'
   | 'graph'
+  | 'rename'
+  | 'binary'
   | 'person'
   | 'clock'
   | 'copy'
@@ -64,6 +66,22 @@ const PATHS: Record<IconName, React.ReactNode> = {
       <circle cx="4" cy="6" r="1.5" />
       <circle cx="11" cy="10.5" r="1.5" />
       <path d="M5.5 6h1.5a3 3 0 0 1 3 3v0.6" />
+    </>
+  ),
+  // An arrow turning into a new place: what a rename or a copy is.
+  rename: (
+    <>
+      <path d="M2.5 4.5h6a3.5 3.5 0 0 1 3.5 3.5v3.5" />
+      <path d="M9.75 13.25L12 11l2.25 2.25" />
+      <path d="M2.5 4.5L4.75 2.25M2.5 4.5l2.25 2.25" />
+    </>
+  ),
+  // Not text: a file Mira reports the size of rather than decoding.
+  binary: (
+    <>
+      <path d="M3.5 2.5h6l3 3v8a0.5 0.5 0 0 1-0.5 0.5H3.5a0.5 0.5 0 0 1-0.5-0.5v-11a0.5 0.5 0 0 1 0.5-0.5z" />
+      <path d="M9.25 2.5v3.25h3.25" />
+      <path d="M5.5 9.5h1.5v2.5H5.5zM9 9.5h1.5v2.5H9z" />
     </>
   ),
   person: (

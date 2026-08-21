@@ -8,11 +8,12 @@ use std::path::{Path, PathBuf};
 
 use git2::{BranchType, ErrorCode, Repository, Status, StatusOptions};
 
+use crate::diff::{ChangedFiles, DiffScope, FileDiff};
 use crate::graph::CommitGraph;
 use crate::history::{CommitId, CommitLookup, CommitPage};
 use crate::model::{Commit, GitOverview, Head, Upstream};
 use crate::provider::GitProvider;
-use crate::walk;
+use crate::{patch, walk};
 
 /// How many hex characters an abbreviated commit id gets.
 const SHORT_SHA: usize = 7;
@@ -84,6 +85,22 @@ impl GitProvider for Libgit2 {
             Ok(repo) => walk::graph(&repo, from),
             Err(Absent::NotARepository) => CommitGraph::NotARepository,
             Err(Absent::Unreadable(detail)) => CommitGraph::Unreadable { detail },
+        }
+    }
+
+    fn changed_files(&self, root: &Path, scope: &DiffScope) -> ChangedFiles {
+        match open(root) {
+            Ok(repo) => patch::changed_files(&repo, scope),
+            Err(Absent::NotARepository) => ChangedFiles::NotARepository,
+            Err(Absent::Unreadable(detail)) => ChangedFiles::Unreadable { detail },
+        }
+    }
+
+    fn file_diff(&self, root: &Path, scope: &DiffScope, at: u32) -> FileDiff {
+        match open(root) {
+            Ok(repo) => patch::file_diff(&repo, scope, at),
+            Err(Absent::NotARepository) => FileDiff::NotARepository,
+            Err(Absent::Unreadable(detail)) => FileDiff::Unreadable { detail },
         }
     }
 }

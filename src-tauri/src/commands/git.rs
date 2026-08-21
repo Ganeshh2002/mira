@@ -24,7 +24,10 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use mira_core::{MiraError, Project, ProjectId, Result};
-use mira_git::{CommitGraph, CommitId, CommitLookup, CommitPage, GitProvider, Libgit2};
+use mira_git::{
+    ChangedFiles, CommitGraph, CommitId, CommitLookup, CommitPage, DiffScope, FileDiff,
+    GitProvider, Libgit2,
+};
 use mira_platform::{Clipboard, ClipboardHost};
 use mira_projects::ProjectService;
 use serde::{Deserialize, Serialize};
@@ -150,6 +153,51 @@ pub async fn git_copy_commit(
 
     Clipboard::new(state.platform.clone()).copy(&value)?;
     Ok(value)
+}
+
+/// `git.changes` — what a commit changed, or what the working tree has.
+///
+/// The scope is a two-variant enum: a **commit** (whose id is validated as it
+/// deserialises, like every other Git value the interface may name) or the
+/// **working tree**. They are separate questions and stay separate answers — a
+/// working tree is not a commit, and one list of both would make it impossible to
+/// tell what is recorded from what is merely on disk.
+///
+/// Bounded by `mira_git::MAX_FILES`, and the answer says when the bound bit.
+/// There is still no parameter that says how much to read.
+#[tauri::command]
+pub async fn git_changes(
+    project_id: ProjectId,
+    scope: DiffScope,
+    state: State<'_, Arc<AppState>>,
+) -> Result<ChangedFiles> {
+    let root = repository_of(&state.projects().get(project_id)?);
+
+    read(move || Libgit2.changed_files(&root, &scope)).await
+}
+
+/// `git.file_diff` — one file's patch.
+///
+/// **`at` is an ordinal, not a path.** It is a position in the list `git.changes`
+/// returned, so the interface can only ask for a file Mira already decided to
+/// offer — there is no argument here through which a page could name a location on
+/// disk, and a guard test fails the build if one appears
+/// (`security-and-privacy.md` §5 rule 8, [ADR-0016](../../../docs/adr/0016-bounded-diffs.md)).
+///
+/// An ordinal past the list is a stale selection, which is a state rather than an
+/// error. Every limit that bites comes back as a value saying which one it was:
+/// nothing is truncated silently, and a binary file is identified rather than
+/// decoded.
+#[tauri::command]
+pub async fn git_file_diff(
+    project_id: ProjectId,
+    scope: DiffScope,
+    at: u32,
+    state: State<'_, Arc<AppState>>,
+) -> Result<FileDiff> {
+    let root = repository_of(&state.projects().get(project_id)?);
+
+    read(move || Libgit2.file_diff(&root, &scope, at)).await
 }
 
 /// The repository a project's history belongs to.

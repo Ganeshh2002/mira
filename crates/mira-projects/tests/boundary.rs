@@ -10,7 +10,10 @@ use std::path::{Path, PathBuf};
 use mira_core::{MiraError, Project, ProjectId, Result};
 use mira_db::{NewProject, ProjectRepo};
 use mira_fs::PathMatching;
-use mira_git::{CommitGraph, CommitId, CommitLookup, CommitPage, GitOverview, GitProvider};
+use mira_git::{
+    ChangedFiles, CommitGraph, CommitId, CommitLookup, CommitPage, DiffScope, FileDiff,
+    GitOverview, GitProvider,
+};
 use mira_projects::{ProjectService, Projects};
 use tempfile::TempDir;
 
@@ -58,6 +61,12 @@ impl GitProvider for NoGit {
     }
     fn graph(&self, _root: &Path, _from: Option<&CommitId>) -> CommitGraph {
         CommitGraph::NotARepository
+    }
+    fn changed_files(&self, _root: &Path, _scope: &DiffScope) -> ChangedFiles {
+        ChangedFiles::NotARepository
+    }
+    fn file_diff(&self, _root: &Path, _scope: &DiffScope, _at: u32) -> FileDiff {
+        FileDiff::NotARepository
     }
 }
 

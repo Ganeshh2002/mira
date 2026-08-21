@@ -22,6 +22,7 @@ the map, the ADRs are the reasoning.
 | Workspaces | Stated, not observed; opening is a view change | [0012](../adr/0012-workspace-semantics.md) |
 | Keep Awake | A native power request; never simulated input | [0014](../adr/0014-keep-awake.md) |
 | Git graph | Lanes over the visible window; no sorted revwalk | [0015](../adr/0015-graph-lanes.md) |
+| Git diff | Five declared limits; a file chosen by ordinal | [0016](../adr/0016-bounded-diffs.md) |
 
 Chosen because the constraints in
 [product-definition.md](../product/product-definition.md) — ≤ 30 MB installer, ≤ 150 MB
@@ -131,7 +132,7 @@ depend on* — and nothing outside it may reach past its interface.
 | **projects** | Project lifecycle, directory probing, type markers | `ProjectService` | core, db, fs |
 | **workspaces** | Workspace CRUD, application context | `WorkspaceService` | core, db |
 | **sessions** | Session start/pause/resume/close from lock+focus events | `SessionService` | core, db, platform |
-| **git** | Status, HEAD, branches, ahead/behind, paged commit walk, commit detail, lane layout | `GitProvider` trait, pure `lanes::layout` | core |
+| **git** | Status, HEAD, branches, ahead/behind, paged commit walk, commit detail, lane layout, bounded diffs | `GitProvider` trait, pure `lanes::layout` | core |
 | **monorepo** | Workspace manifests → tools and package boundaries, read-only | `detect(selected, git_root)` | core |
 | **scheduler** | The only clock: intervals, gate, cancellation, isolation | `Observation`, `Gate`, `Scheduler` | core |
 | **ports** | Listening sockets → (port, pid, process) + attribution | `PortScanner` | core, processes |
@@ -184,6 +185,8 @@ workspaces.openable()                 → AppReport[]
 workspaces.launch({ workspaceId, kind }) → Launched
 git.history({ projectId, cursor })     → CommitPage
 git.graph({ projectId, cursor })       → CommitGraph
+git.changes({ projectId, scope })      → ChangedFiles
+git.file_diff({ projectId, scope, at }) → FileDiff
 git.commit({ projectId, commit })      → CommitLookup
 git.copy_commit({ projectId, commit, form }) → String
 keep_awake.state()                    → KeepAwakeState
@@ -239,12 +242,19 @@ Rules:
    `thirtyMinutes`, `oneHour` or `untilTurnedOff`. There is no number of minutes
    to send and nothing downstream to bound ([ADR-0014](../adr/0014-keep-awake.md)).
 
-10. **No command acts on a commit.** The graph is a picture. There is no
-    parameter named `checkout`, `merge`, `rebase`, `reset`, `revert`,
+10. **No command acts on a commit.** The graph and the diff are pictures. There
+    is no parameter named `checkout`, `merge`, `rebase`, `reset`, `revert`,
     `cherrypick`, `branch`, `tag`, `push`, `pull` or `fetch` on any command, and
     a guard test fails the build if one appears — as does a second guard that
     keeps every libgit2 *write* API out of `mira-git` entirely
     ([ADR-0015](../adr/0015-graph-lanes.md)).
+
+11. **A file is named by its ordinal, never by its path.** `git.file_diff` takes
+    a **position in the change list `git.changes` returned**, so the interface
+    can only ask for a file Mira already decided to offer. That is what lets a
+    diff exist without an exception to rule 5, and a guard test bans the shapes
+    somebody would reach for instead — `blob`, `oid`, `pathspec`, `glob`,
+    `filename` ([ADR-0016](../adr/0016-bounded-diffs.md)).
 
 ### Events (backend tells)
 
@@ -370,6 +380,16 @@ the security model in §7 (any XSS becomes full database access) and dissolves t
 repository boundary, since queries would spread through React. Mira instead uses
 `rusqlite` inside `mira-db` behind repository traits, exposed only as typed commands.
 See [ADR-0004](../adr/0004-sqlite-local-first.md).
+
+**A diff costs what its limits say, not what the repository holds.** It is the
+first read in the product whose size is set by the repository's *files* rather than
+by a page of history — one commit can touch ten thousand paths, and one path can be
+a forty-megabyte bundle on a single line. So there are five declared limits, none
+nameable by a caller, and every one reports itself rather than truncating silently:
+a diff that quietly stopped short would be worse than none, because it would look
+complete. The load-bearing detail is that the size gate reads an **object header**
+rather than the object — measured at 0.17 ms to refuse a 30 MB file, against 4 ms
+to diff a 1 MB one ([ADR-0016](../adr/0016-bounded-diffs.md)).
 
 **The graph is drawn over the visible window, never the repository.** The lane
 algorithm is a pure function of the twenty-five rows on screen and their parent
