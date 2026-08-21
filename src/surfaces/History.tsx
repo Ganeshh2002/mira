@@ -5,6 +5,8 @@ import type { Commit } from '../bindings/Commit';
 import type { CommitGraph } from '../bindings/CommitGraph';
 import type { CommitId } from '../bindings/CommitId';
 import type { CommitPage } from '../bindings/CommitPage';
+import type { FileSubject } from '../bindings/FileSubject';
+import type { FilteredHistory } from '../bindings/FilteredHistory';
 import type { GitRef } from '../bindings/GitRef';
 import type { GraphRow } from '../bindings/GraphRow';
 import type { Head } from '../bindings/Head';
@@ -12,6 +14,14 @@ import type { Project } from '../bindings/Project';
 import type { RepositoryLayout } from '../bindings/RepositoryLayout';
 import { Button } from '../components/Button';
 import { Changes } from '../components/Changes';
+import {
+  FilterBar,
+  NOTHING,
+  asFilter,
+  describeNarrowing,
+  isNarrowed,
+  type Narrowing,
+} from '../components/FilterBar';
 import { LaneGutter } from '../components/LaneGutter';
 import { Icon } from '../components/Icon';
 import { Row } from '../components/Row';
@@ -36,6 +46,11 @@ import { absoluteTime, relativeTime } from '../lib/time';
  * reads the commits alone. The toggle is a real choice rather than a cosmetic one
  * — and it is the deliberate end of the same behaviour that hides the gutter on a
  * narrow window.
+ *
+ * **Filtering is a third, costlier question.** Plain history walks twenty-five
+ * commits per page; a filtered one may examine two thousand to find twenty-five,
+ * so it is asked only when something is actually narrowed and it always says how
+ * far it looked ([ADR-0018](../../docs/adr/0018-history-filters.md)).
  */
 export function History({
   project,
@@ -55,6 +70,10 @@ export function History({
 }) {
   const [opened, setOpened] = useState<CommitId | null>(initialCommit);
   const [drawing, setDrawing] = useState(true);
+  const [narrowing, setNarrowing] = useState<Narrowing>(NOTHING);
+
+  const narrowed = isNarrowed(narrowing);
+  const filter = asFilter(narrowing);
 
   // `Esc` goes back one level, everywhere (`information-architecture.md` §6
   // rule 2): out of a commit if one is open, out of History otherwise.
@@ -69,17 +88,39 @@ export function History({
   }, [opened, onBack]);
 
   const history = useInfiniteQuery({
-    queryKey: ['git', drawing ? 'graph' : 'history', project.id],
-    // Annotated, because the two commands return two shapes of the same page and
-    // the union is the thing this surface renders.
-    queryFn: ({ pageParam }): Promise<CommitPage | CommitGraph> =>
-      drawing
-        ? commands.gitGraph(project.id, pageParam)
-        : commands.gitHistory(project.id, pageParam),
-    initialPageParam: null as CommitId | null,
+    // The filter is part of the key, so narrowing is a different question rather
+    // than a mutation of the same one — and clearing it finds the plain history
+    // already cached.
+    queryKey: [
+      'git',
+      narrowed ? 'search' : drawing ? 'graph' : 'history',
+      project.id,
+      narrowed ? filter : null,
+    ],
+    // Annotated, because the three commands return three shapes of the same page
+    // and the union is the thing this surface renders.
+    queryFn: ({ pageParam }): Promise<CommitPage | CommitGraph | FilteredHistory> =>
+      narrowed
+        ? // The file travels in the cursor rather than the filter, because a
+          // rename crossed mid-search changes which file the next page is about.
+          commands.gitSearch(
+            project.id,
+            pageParam.file ? { ...filter, file: pageParam.file } : filter,
+            pageParam.from,
+          )
+        : drawing
+          ? commands.gitGraph(project.id, pageParam.from)
+          : commands.gitHistory(project.id, pageParam.from),
+    initialPageParam: { from: null as CommitId | null, file: null as FileSubject | null },
     // `null` ends the paging. A page that could not be read has no next either,
     // so a failure stops the list rather than looping on it.
-    getNextPageParam: (last) => (last.state === 'ready' ? last.next : null),
+    getNextPageParam: (last) => {
+      if (last.state !== 'ready' || last.next === null) return null;
+
+      return typeof last.next === 'string'
+        ? { from: last.next, file: null }
+        : { from: last.next.from, file: last.next.file };
+    },
   });
 
   const pages = history.data?.pages ?? [];
@@ -89,6 +130,15 @@ export function History({
   );
   const shape = first?.state === 'ready' ? first : null;
   const lanes = shape && 'lanes' in shape ? shape.lanes : 0;
+
+  // How far the search got, which is a different fact from what it found. Summed
+  // across pages, because "keep looking" spends the budget again.
+  const newest = pages[pages.length - 1];
+  const examined = pages.reduce(
+    (total, page) => total + (page.state === 'ready' && 'scanned' in page ? page.scanned : 0),
+    0,
+  );
+  const stopped = newest?.state === 'ready' && 'stopped' in newest ? newest.stopped : null;
 
   return (
     <div className="flex min-w-0 flex-col gap-[var(--section-gap)]">
@@ -104,8 +154,14 @@ export function History({
         </button>
         <div className="flex flex-wrap items-baseline justify-between gap-[var(--space-3)]">
           <h1 className="t-value-lg m-0 text-ink-0">History</h1>
+          {/*
+            A filtered history is a list of matches rather than a shape, so the
+            graph is not offered while one is on. Clearing the filters brings it
+            back, which is why the toggle's own state is left alone.
+          */}
           <button
             type="button"
+            hidden={narrowed}
             onClick={() => setDrawing(!drawing)}
             aria-pressed={drawing}
             className={`t-ui flex cursor-default items-center gap-[var(--space-2)] rounded-sm border px-[var(--space-3)] py-[var(--space-1)] transition-colors duration-[var(--motion-instant)] ${
@@ -123,6 +179,14 @@ export function History({
           layout={layout}
           head={first?.state === 'ready' ? first.head : null}
         />
+        <FilterBar projectId={project.id} narrowing={narrowing} onChange={setNarrowing} />
+        {/*
+          What is narrowed, said in words — for a reader who cannot see which
+          controls are lit (`design-system.md` §5).
+        */}
+        <p aria-live="polite" className="sr-only">
+          {narrowed ? `Filtering by ${describeNarrowing(narrowing)}.` : 'No filters.'}
+        </p>
       </header>
 
       {opened ? (
@@ -144,6 +208,16 @@ export function History({
         <Section label="">
           <Row mark={<span className="text-ink-3">○</span>} label="Not a repository" />
         </Section>
+      ) : first?.state === 'unknown' ? (
+        // Only a filtered read can answer this: the file a filter names is a
+        // place in a change set, and a change set moves on.
+        <Section label="">
+          <Row
+            mark={<span className="text-signal-warn">◐</span>}
+            label="That file is no longer in this list"
+            detail="Refresh to see what has changed since, then choose it again."
+          />
+        </Section>
       ) : first?.state === 'unreadable' ? (
         <Section label="">
           <Row
@@ -154,11 +228,29 @@ export function History({
         </Section>
       ) : rows.length === 0 ? (
         <Section label="">
-          <Row
-            mark={<span className="text-ink-3">○</span>}
-            label="No commits yet"
-            detail="This repository has a branch but nothing on it."
-          />
+          {/*
+            The sentence this whole slice turns on. A search that ran out of
+            budget has found nothing *yet*; a search that reached the end has
+            found nothing at all. Saying the second when the first is true would
+            be a lie about the repository.
+          */}
+          {narrowed ? (
+            <Row
+              mark={<span className="text-ink-3">○</span>}
+              label={stopped?.state === 'budget' ? 'No match yet' : 'No matching commits'}
+              detail={
+                stopped?.state === 'budget'
+                  ? `Nothing matched in the ${examined} commits examined. There may be more further back.`
+                  : `Nothing in this history matches ${describeNarrowing(narrowing)}.`
+              }
+            />
+          ) : (
+            <Row
+              mark={<span className="text-ink-3">○</span>}
+              label="No commits yet"
+              detail="This repository has a branch but nothing on it."
+            />
+          )}
         </Section>
       ) : (
         <>
@@ -182,6 +274,24 @@ export function History({
               label may be missing from a row that has one.
             </p>
           ) : null}
+          {narrowed ? (
+            <p className="t-ui m-0 text-ink-1">
+              {rows.length} {rows.length === 1 ? 'commit' : 'commits'} matching{' '}
+              {describeNarrowing(narrowing)}, of {examined} examined.
+            </p>
+          ) : null}
+          {narrowed && stopped?.state === 'budget' ? (
+            <p className="t-ui m-0 text-ink-2">
+              Stopped after examining {examined} commits, so this is what matched so far rather
+              than everything that matches.
+            </p>
+          ) : null}
+          {narrowed && stopped?.state === 'renameLost' ? (
+            <p className="t-ui m-0 text-ink-2">
+              This file was renamed in a commit that changed more paths than Mira reads at once,
+              so the search ends at <span className="t-micro">{stopped.path}</span>.
+            </p>
+          ) : null}
           {shape?.shallow ? (
             <p className="t-ui m-0 text-ink-2">
               This is a shallow copy, so the oldest commit here is where the clone stops — not
@@ -197,7 +307,13 @@ export function History({
             onClick={() => void history.fetchNextPage()}
             disabled={history.isFetchingNextPage}
           >
-            {history.isFetchingNextPage ? 'Loading…' : 'Load more'}
+            {history.isFetchingNextPage
+              ? narrowed
+                ? 'Looking further back…'
+                : 'Loading…'
+              : narrowed
+                ? 'Keep looking'
+                : 'Load more'}
           </Button>
         ) : null}
         <Button onClick={() => void history.refetch()} disabled={history.isFetching}>

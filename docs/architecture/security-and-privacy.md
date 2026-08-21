@@ -300,6 +300,36 @@ Slice 5d is the feature whose defining input is, everywhere else, a path.
     the difference between a request in milliseconds and one in seconds
     ([ADR-0017](../adr/0017-file-history.md)).
 
+### Searching a history
+
+Slice 5e is the feature made of the four strings other tools pass straight to
+`git log`. None of them is a string here.
+
+37. **A branch is the commit id Mira handed out, never a ref name.** `git.refs`
+    returns `RefTip { kind, name, tip }`; the interface shows the name and sends
+    back the tip. `main`, `refs/heads/main`, `HEAD`, `origin/main`, `main..dev`,
+    `@{upstream}` and `--all` are not values `HistoryFilter::branch` can hold, and
+    a wire test asserts each one fails to deserialise. A guard test asserts the
+    field's type is `CommitId` rather than `String`.
+
+38. **Author and subject are `Term`s that are compared in Rust.** A `Term`
+    validates as it deserialises — trimmed, non-empty, at most 200 characters,
+    single line, no control characters — and is then matched against
+    `commit.author().name_bytes()` and `commit.summary_bytes()`, values already in
+    memory. It never reaches libgit2 and there is no `--author=` or `--grep=`
+    anywhere in the workspace; a guard test scans for both.
+
+39. **The file filter is rule 33, unchanged.** Same `FileSubject`, same guard.
+    Filtering did not get its own way of naming a file, because a second way to
+    name a file is a second thing to keep safe.
+
+40. **A search is bounded by commits examined, and says how far it looked.**
+    `MAX_FILTER_SCAN` is one budget for all four filters, because measurement
+    showed every predicate costs what the walk costs. A search that spent its
+    budget reports `ScanStopped::Budget`, and the interface renders that as *"No
+    match yet — nothing matched in the 2 000 commits examined"* rather than as
+    "No results" ([ADR-0018](../adr/0018-history-filters.md)).
+
 ### Keeping a machine awake
 
 19. **Keep Awake holds an operating-system power request and nothing else.** Mira
@@ -482,3 +512,7 @@ after the people who wrote it move on.
 | A file subject carries no path | `FileSubject` holds a scope and an ordinal, nothing else |
 | A file trace is bounded by commits examined | `MAX_SCAN`, the stop, and the state that reports it |
 | A trace reads trees, not diffs | `touched()` contains no diff or patch call |
+| A filter carries no ref name, path or pattern | `HistoryFilter` holds a `CommitId`, two `Term`s and a subject |
+| No filter value reaches libgit2 | No `--author=`, `--grep=`, `pathspec` or `Revwalk::push_ref` anywhere |
+| A branch is chosen by its tip | `RefTip` carries the commit; `branch` is a `CommitId` |
+| A search is bounded by commits examined | `MAX_FILTER_SCAN`, the stop, and the state that reports it |

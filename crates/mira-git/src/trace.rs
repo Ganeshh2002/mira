@@ -360,7 +360,7 @@ fn start_walk(repo: &Repository, start: Oid) -> Result<git2::Revwalk<'_>, git2::
 /// `diff.rs` makes and for the same reason: against the other parent the answer
 /// would differ, and picking one silently would be worse than picking one and
 /// saying so.
-fn touched(commit: &git2::Commit<'_>, path: &str) -> Option<ChangeKind> {
+pub(crate) fn touched(commit: &git2::Commit<'_>, path: &str) -> Option<ChangeKind> {
     let subject = Path::new(path);
 
     let new = commit
@@ -388,7 +388,7 @@ fn touched(commit: &git2::Commit<'_>, path: &str) -> Option<ChangeKind> {
 }
 
 /// Where a path that appears in this commit came from.
-enum Origin {
+pub(crate) enum Origin {
     /// It is genuinely new here.
     New,
     /// It was renamed from another name.
@@ -404,7 +404,7 @@ enum Origin {
 ///
 /// Reuses the bounded change list `diff.rs` already builds, which is what keeps
 /// this one call rather than a second Git implementation. Measured at 0.03 ms.
-fn came_from(repo: &Repository, commit: &git2::Commit<'_>, path: &str) -> Origin {
+pub(crate) fn came_from(repo: &Repository, commit: &git2::Commit<'_>, path: &str) -> Origin {
     let Ok(id) = CommitId::try_from(commit.id().to_string()) else {
         return Origin::New;
     };
@@ -438,7 +438,12 @@ fn came_from(repo: &Repository, commit: &git2::Commit<'_>, path: &str) -> Origin
 /// The file is in this commit's change list by construction — it is there because
 /// this commit touched it — so its position in that list names it without a path
 /// being written down anywhere.
-fn anchor(repo: &Repository, commit: Oid, path: &str, renamed: bool) -> Option<FileSubject> {
+pub(crate) fn anchor(
+    repo: &Repository,
+    commit: Oid,
+    path: &str,
+    renamed: bool,
+) -> Option<FileSubject> {
     let id = CommitId::try_from(commit.to_string()).ok()?;
     let scope = DiffScope::Commit { commit: id };
 
@@ -464,7 +469,7 @@ fn anchor(repo: &Repository, commit: Oid, path: &str, renamed: bool) -> Option<F
 }
 
 /// The path a subject names, resolved through the bounded change list.
-fn name_of(repo: &Repository, subject: &FileSubject) -> Option<String> {
+pub(crate) fn name_of(repo: &Repository, subject: &FileSubject) -> Option<String> {
     let ChangedFiles::Ready { files, .. } = patch::changed_files(repo, &subject.scope) else {
         return None;
     };
@@ -482,7 +487,7 @@ fn name_of(repo: &Repository, subject: &FileSubject) -> Option<String> {
 }
 
 /// The object this id names, if this repository has it.
-fn resolve(repo: &Repository, id: &CommitId) -> Option<Oid> {
+pub(crate) fn resolve(repo: &Repository, id: &CommitId) -> Option<Oid> {
     let object = repo.revparse_single(id.as_str()).ok()?;
     object.peel_to_commit().ok().map(|commit| commit.id())
 }

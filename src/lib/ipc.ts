@@ -13,6 +13,10 @@ import type { DiffScope } from '../bindings/DiffScope';
 import type { FileDiff } from '../bindings/FileDiff';
 import type { FileHistory } from '../bindings/FileHistory';
 import type { FileSubject } from '../bindings/FileSubject';
+import type { FilteredHistory } from '../bindings/FilteredHistory';
+import type { HistoryFilter } from '../bindings/HistoryFilter';
+import type { KnownAuthors } from '../bindings/KnownAuthors';
+import type { KnownRefs } from '../bindings/KnownRefs';
 import type { KeepAwakeSpan } from '../bindings/KeepAwakeSpan';
 import type { KeepAwakeState } from '../bindings/KeepAwakeState';
 import type { Launched } from '../bindings/Launched';
@@ -213,6 +217,34 @@ export const commands = {
     subject: FileSubject,
     cursor: string | null,
   ): Promise<FileHistory> => call('git_file_history', { projectId, subject, cursor }),
+
+  /**
+   * `git.search` — the commits matching a filter.
+   *
+   * Composable: branch, author, subject and file narrow together. Nothing in the
+   * filter is a Git argument — a branch is a **commit id** the interface was
+   * given, a file is a change-set position, and author and subject are text that
+   * is only ever compared in Rust.
+   *
+   * Bounded by commits examined. A search that ran out of budget says so, and
+   * that is a different answer from one that found nothing.
+   */
+  gitSearch: (
+    projectId: number,
+    wanted: HistoryFilter,
+    cursor: string | null,
+  ): Promise<FilteredHistory> => call('git_search', { projectId, wanted, cursor }),
+
+  /**
+   * `git.refs` — the branches and tags a search may start from.
+   *
+   * Each carries the commit it points at, and that is what a filter sends back.
+   * The name is for reading; the tip is for asking.
+   */
+  gitRefs: (projectId: number): Promise<KnownRefs> => call('git_refs', { projectId }),
+
+  /** `git.authors` — the authors of the commits within one scan budget. */
+  gitAuthors: (projectId: number): Promise<KnownAuthors> => call('git_authors', { projectId }),
 
   /** `keep_awake.state` — whether the machine is being kept awake, and until when. */
   keepAwakeState: (): Promise<KeepAwakeState> => call('keep_awake_state'),

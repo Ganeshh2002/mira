@@ -349,3 +349,126 @@ fn the_diff_limits_are_the_only_thing_that_decides_how_much_is_read() {
     assert_eq!(mira_git::MAX_LINE_BYTES, 2_000);
     assert_eq!(mira_git::MAX_FILE_BYTES, 2 * 1024 * 1024);
 }
+
+// ── Naming a search ──────────────────────────────────────────────────────────
+
+fn term(raw: serde_json::Value) -> Result<mira_git::Term, serde_json::Error> {
+    serde_json::from_value(raw)
+}
+
+fn filter(raw: serde_json::Value) -> Result<mira_git::HistoryFilter, serde_json::Error> {
+    serde_json::from_value(raw)
+}
+
+#[test]
+fn a_filter_term_is_one_short_line_of_text() {
+    for accepted in ["Grace Hopper", "widget", "fix:", "Ångström", "  trimmed  "] {
+        assert!(term(json!(accepted)).is_ok(), "{accepted} must deserialise");
+    }
+}
+
+#[test]
+fn nothing_that_could_be_a_payload_is_a_filter_term() {
+    // A term is compared in Rust and never reaches Git, so this is defence in
+    // depth rather than the only wall — but a value that can carry a newline is
+    // a value somebody will eventually try to put somewhere it matters.
+    for refused in [
+        json!(""),
+        json!("   "),
+        json!("two\nlines"),
+        json!("carriage\rreturn"),
+        json!("null\u{0}byte"),
+        json!("x".repeat(201)),
+        json!(0),
+        json!(true),
+        json!(null),
+        json!(["widget"]),
+        json!({ "contains": "widget" }),
+    ] {
+        assert!(
+            term(refused.clone()).is_err(),
+            "{refused} must not deserialise into a filter term"
+        );
+    }
+}
+
+#[test]
+fn a_branch_filter_is_a_commit_id_and_never_a_ref_name() {
+    // The whole reason a ref name never crosses the boundary: there is nowhere
+    // for one to go. `main`, `refs/heads/main` and `HEAD` are not commit ids.
+    assert!(filter(json!({ "branch": "ad50fc7" })).is_ok());
+    assert!(filter(json!({})).is_ok(), "an empty filter is legal");
+
+    for refused in [
+        json!({ "branch": "main" }),
+        json!({ "branch": "refs/heads/main" }),
+        json!({ "branch": "HEAD" }),
+        json!({ "branch": "origin/main" }),
+        json!({ "branch": "v1.0" }),
+        json!({ "branch": "@{upstream}" }),
+        json!({ "branch": "main..dev" }),
+        json!({ "branch": "--all" }),
+    ] {
+        assert!(
+            filter(refused.clone()).is_err(),
+            "{refused} must not deserialise into a filter"
+        );
+    }
+}
+
+#[test]
+fn no_pathspec_or_glob_can_be_sent_as_a_file_filter() {
+    // A file is a change-set position, so a pattern has nowhere to live.
+    for refused in [
+        json!({ "file": "src/app.ts" }),
+        json!({ "file": "src/**/*.ts" }),
+        json!({ "file": "*.rs" }),
+        json!({ "file": { "path": "src/app.ts" } }),
+        json!({ "file": { "scope": { "kind": "workingTree" } } }),
+        json!({ "file": { "scope": { "kind": "commit", "commit": "HEAD" }, "at": 0, "before": false } }),
+    ] {
+        assert!(
+            filter(refused.clone()).is_err(),
+            "{refused} must not deserialise into a filter"
+        );
+    }
+
+    assert!(
+        filter(json!({
+            "file": { "scope": { "kind": "workingTree" }, "at": 3, "before": false }
+        }))
+        .is_ok(),
+        "a change-set position is the only way to name a file"
+    );
+}
+
+#[test]
+fn a_filter_admits_no_field_that_git_would_interpret() {
+    // Unknown keys are ignored by serde rather than honoured, which is the safe
+    // half — but the point is that there is no field here that *would* be read as
+    // a revision, a pathspec or a flag even if one arrived.
+    let smuggled = filter(json!({
+        "branch": "ad50fc7",
+        "pathspec": "src/**",
+        "glob": "*.rs",
+        "args": ["--all"],
+        "rev": "HEAD~5"
+    }))
+    .expect("a filter");
+
+    assert_eq!(
+        smuggled,
+        mira_git::HistoryFilter {
+            branch: Some("ad50fc7".parse().expect("a commit id")),
+            ..mira_git::HistoryFilter::default()
+        },
+        "every stray key is dropped, not carried"
+    );
+}
+
+#[test]
+fn the_search_budget_is_the_only_thing_that_decides_how_far_it_looks() {
+    assert_eq!(mira_git::MAX_FILTER_SCAN, 2_000);
+    assert_eq!(mira_git::MAX_AUTHORS, 100);
+    assert_eq!(mira_git::LONGEST_TERM, 200);
+}

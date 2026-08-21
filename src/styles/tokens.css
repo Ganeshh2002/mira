@@ -81,6 +81,11 @@
   --lane-7: #93a3ac;
 
   /* Git graph geometry. 1px strokes, at most eight lanes. */
+  /* Filter menus: a menu wide enough for a path, short enough to stay a menu. */
+  --menu-width: 288px;
+  --menu-height: 288px;
+  --field-width: 224px;
+
   --graph-row: 48px;
   --graph-lane: 14px;
   --graph-node: 3.5px;

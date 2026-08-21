@@ -14,6 +14,11 @@
 //! cargo test -p mira-git --test performance -- --ignored --nocapture
 //! ```
 //!
+//! Slice 5e adds the filter benchmarks, and their finding is the opposite of the
+//! usual one: **every filter costs the same**, because loading the commit object
+//! dominates and the walk pays that anyway
+//! ([ADR-0018](../../../docs/adr/0018-history-filters.md)).
+//!
 //! Slice 5d adds the file-history benchmark, and it is the one that changed a
 //! design. File history is *inherently* O(repository history) — to know whether a
 //! commit touched a path you have to look at that commit — so the question was
@@ -39,8 +44,8 @@ use std::time::{Duration, Instant};
 use git2::{Repository, RepositoryInitOptions, Signature, Sort};
 use mira_git::{
     ChangedFiles, CommitGraph, CommitId, CommitPage, DiffScope, FileDiff, FileHistory, FileSubject,
-    GitProvider, Libgit2, ScanStopped, MAX_BYTES, MAX_FILES, MAX_FILE_BYTES, MAX_LINES, MAX_SCAN,
-    PAGE,
+    FilteredHistory, GitProvider, HistoryFilter, Libgit2, ScanStopped, Term, MAX_BYTES, MAX_FILES,
+    MAX_FILE_BYTES, MAX_FILTER_SCAN, MAX_LINES, MAX_SCAN, PAGE,
 };
 use tempfile::TempDir;
 
@@ -634,5 +639,237 @@ fn an_unbounded_trace_would_be_linear_in_the_repository() {
         "  1,000 -> 20,000 commits: x{:.1}  <- linear, which is why Mira bounds it",
         ratio(&growth)
     );
+    println!();
+}
+
+// ── Filtering ────────────────────────────────────────────────────────────────
+
+/// A repository with several authors, varied subjects, and a rare file.
+fn repo_for_filtering(dir: &Path, commits: usize) -> Repository {
+    let mut options = RepositoryInitOptions::new();
+    options.initial_head("main");
+    let repo = Repository::init_opts(dir, &options).expect("init");
+    fs::create_dir_all(dir.join("src/deep/nested")).expect("dirs");
+
+    let names = [
+        "Ada Lovelace",
+        "Grace Hopper",
+        "Alan Turing",
+        "Barbara Liskov",
+    ];
+    let mut parent: Option<git2::Oid> = None;
+
+    for n in 0..commits {
+        if n % 50 == 0 {
+            fs::write(dir.join("src/deep/nested/subject.txt"), format!("v{n}\n")).expect("write");
+        }
+        fs::write(dir.join("noise.txt"), format!("n{n}\n")).expect("write");
+
+        let who = Signature::new(
+            names[n % names.len()],
+            "a@b.c",
+            &git2::Time::new(1_700_000_000 + n as i64, 0),
+        )
+        .expect("signature");
+        let subject = format!(
+            "change {n} to the {} module",
+            if n % 3 == 0 { "widget" } else { "gadget" }
+        );
+        parent = Some(commit_all(
+            &repo,
+            &who,
+            &subject,
+            &parent.into_iter().collect::<Vec<_>>(),
+        ));
+    }
+
+    repo
+}
+
+fn term(text: &str) -> Term {
+    text.parse().expect("a filter term")
+}
+
+/// One filtered request: (ms, matched, examined, stopped early).
+fn time_filter(root: &Path, filter: &HistoryFilter) -> (f64, usize, u32, bool) {
+    let started = Instant::now();
+    let found = Libgit2.filtered_history(root, filter, None);
+    let took = started.elapsed().as_secs_f64() * 1000.0;
+
+    match found {
+        FilteredHistory::Ready {
+            commits,
+            scanned,
+            stopped,
+            ..
+        } => (
+            took,
+            commits.len(),
+            scanned,
+            !matches!(stopped, ScanStopped::No),
+        ),
+        other => panic!("expected a filtered page, got {other:?}"),
+    }
+}
+
+#[test]
+#[ignore = "builds repositories of up to 10,000 commits; run it deliberately"]
+fn every_filter_costs_what_the_walk_costs() {
+    // The finding. Author, subject and file all land within noise of an
+    // unfiltered walk, because loading the commit object is the expense and the
+    // walk has already paid it — so one budget serves every filter, and ordering
+    // the predicates cheapest-first would buy nothing.
+    println!();
+    println!("  commits   filter               matched  examined     ms   partial");
+    println!("  -------   -------------------  -------  --------  -----   -------");
+
+    let mut broad = Vec::new();
+    let mut selective = Vec::new();
+
+    for commits in [100_usize, 1_000, 10_000] {
+        let dir = TempDir::new().expect("tempdir");
+        let repo = repo_for_filtering(dir.path(), commits);
+        let head = repo.head().expect("head").target().expect("target");
+        let root = repo
+            .revwalk()
+            .and_then(|mut walk| {
+                walk.set_sorting(Sort::NONE)?;
+                walk.push_head()?;
+                Ok(walk.last())
+            })
+            .expect("walk")
+            .and_then(Result::ok)
+            .expect("root");
+
+        let file = subject_in(dir.path(), root, "src/deep/nested/subject.txt");
+        let tip: CommitId = head.to_string().parse().expect("a commit id");
+
+        let cases: Vec<(&str, HistoryFilter)> = vec![
+            (
+                "branch only",
+                HistoryFilter {
+                    branch: Some(tip.clone()),
+                    ..HistoryFilter::default()
+                },
+            ),
+            (
+                "author (broad)",
+                HistoryFilter {
+                    author: Some(term("Grace")),
+                    ..HistoryFilter::default()
+                },
+            ),
+            (
+                "subject (broad)",
+                HistoryFilter {
+                    subject: Some(term("widget")),
+                    ..HistoryFilter::default()
+                },
+            ),
+            (
+                "file (selective)",
+                HistoryFilter {
+                    file: Some(file.clone()),
+                    ..HistoryFilter::default()
+                },
+            ),
+            (
+                "all four",
+                HistoryFilter {
+                    branch: Some(tip),
+                    author: Some(term("Grace")),
+                    subject: Some(term("widget")),
+                    file: Some(file),
+                },
+            ),
+            (
+                "no match at all",
+                HistoryFilter {
+                    subject: Some(term("marzipan")),
+                    ..HistoryFilter::default()
+                },
+            ),
+        ];
+
+        for (name, filter) in cases {
+            let (ms, matched, examined, partial) = time_filter(dir.path(), &filter);
+            println!(
+                "  {commits:>7}   {name:<19}  {matched:>7}  {examined:>8}  {ms:>5.1}   {}",
+                if partial { "yes" } else { "no" }
+            );
+
+            assert!(matched <= PAGE, "a page is a page");
+            assert!(
+                (examined as usize) <= MAX_FILTER_SCAN,
+                "examined {examined}, past the ceiling of {MAX_FILTER_SCAN}"
+            );
+
+            if name == "author (broad)" {
+                broad.push(ms);
+            }
+            if name == "no match at all" {
+                selective.push(ms);
+            }
+        }
+        println!();
+    }
+
+    println!(
+        "  100 -> 10,000 commits:  broad filter x{:.1}   no-match filter x{:.1}   (budget {MAX_FILTER_SCAN})",
+        ratio(&broad),
+        ratio(&selective),
+    );
+    println!();
+
+    // A broad filter fills a page early, so it barely grows. A no-match filter
+    // spends the whole budget every time — which is the point of having one, and
+    // is why it plateaus instead of climbing with the repository.
+    assert!(
+        ratio(&broad) < 5.0,
+        "a broad filter grew {:.1}x for a 100x repository",
+        ratio(&broad)
+    );
+    assert!(
+        ratio(&selective) < 40.0,
+        "a no-match filter grew {:.1}x; it should plateau at the budget",
+        ratio(&selective)
+    );
+}
+
+#[test]
+#[ignore = "builds a 10,000-commit repository; run it deliberately"]
+fn offering_authors_to_choose_from_is_bounded_too() {
+    println!();
+    println!("  commits   authors  examined     ms   partial");
+    println!("  -------   -------  --------  -----   -------");
+
+    for commits in [100_usize, 1_000, 10_000] {
+        let dir = TempDir::new().expect("tempdir");
+        repo_for_filtering(dir.path(), commits);
+
+        let started = Instant::now();
+        let listed = Libgit2.known_authors(dir.path(), None);
+        let ms = started.elapsed().as_secs_f64() * 1000.0;
+
+        match listed {
+            mira_git::KnownAuthors::Ready {
+                authors,
+                scanned,
+                stopped,
+            } => {
+                println!(
+                    "  {commits:>7}   {:>7}  {scanned:>8}  {ms:>5.1}   {}",
+                    authors.len(),
+                    if matches!(stopped, ScanStopped::No) {
+                        "no"
+                    } else {
+                        "yes"
+                    }
+                );
+                assert!((scanned as usize) <= MAX_FILTER_SCAN);
+            }
+            other => panic!("expected an author list, got {other:?}"),
+        }
+    }
     println!();
 }

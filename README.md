@@ -128,6 +128,7 @@ block the first release.
 | Git graph | Lanes, edges and ref labels over the visible page | 5b (part) | 🟡 In progress |
 | Git diff | Changed files and bounded patches, commit and working tree | 5c (part) | 🟡 In progress |
 | File history | The commits that touched one file, across renames | 5d (part) | 🟡 In progress |
+| History filters | Narrow by branch, author, file or subject text, within a budget | 5e (part) | 🟡 In progress |
 | **0.1 — Core Companion** | Projects, Git status and history, ports, processes, editor/terminal/browser, tray, global shortcut | 1–3, 5a | 🟡 In progress |
 | 0.2 — Workspace | Workspace model, app groups, restoration, Git graph and diff | 4, 5b, 11 | 🟡 In progress |
 | 0.3 — Shelf | Drag-drop, temporary storage, Quick Peek | 6–7 | ⬜ Not started |

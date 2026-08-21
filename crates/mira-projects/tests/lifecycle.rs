@@ -14,7 +14,8 @@ use mira_db::{Db, ProjectRepo};
 use mira_fs::PathMatching;
 use mira_git::{
     ChangedFiles, CommitGraph, CommitId, CommitLookup, CommitPage, DiffScope, FileDiff,
-    FileHistory, FileSubject, GitOverview, GitProvider, Head,
+    FileHistory, FileSubject, FilteredHistory, GitOverview, GitProvider, Head, HistoryFilter,
+    KnownAuthors, KnownRefs,
 };
 use mira_projects::{ProjectService, Projects};
 use tempfile::TempDir;
@@ -88,6 +89,23 @@ impl GitProvider for FakeGit {
         _from: Option<&CommitId>,
     ) -> FileHistory {
         panic!("the project service must not trace a file");
+    }
+
+    fn filtered_history(
+        &self,
+        _root: &Path,
+        _filter: &HistoryFilter,
+        _from: Option<&CommitId>,
+    ) -> FilteredHistory {
+        panic!("the project service must not search a history");
+    }
+
+    fn known_refs(&self, _root: &Path) -> KnownRefs {
+        panic!("the project service must not read references");
+    }
+
+    fn known_authors(&self, _root: &Path, _from: Option<&CommitId>) -> KnownAuthors {
+        panic!("the project service must not read authors");
     }
 }
 

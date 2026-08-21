@@ -269,6 +269,15 @@ filtering by branch, author, or path.
 **Done when:** merges draw correctly and lane computation stays inside 5a's render
 budget on the same fixture repo.
 
+**As built.** Shipped in four slices rather than one, because each turned out to
+need its own bound and its own way of naming things: **5b** the graph
+([ADR-0015](../adr/0015-graph-lanes.md)), **5c** bounded diffs
+([ADR-0016](../adr/0016-bounded-diffs.md)), **5d** file history
+([ADR-0017](../adr/0017-file-history.md)), **5e** filtering by branch, author,
+file and subject text ([ADR-0018](../adr/0018-history-filters.md)). All four are
+read-only, all four measured before they were designed, and all four ended with a
+declared limit that reports itself.
+
 **Risks.** Graph layout is the fiddliest UI in the product. Keeping lanes in Rust behind
 a pure function — testable against fixture repos — is the mitigation, and it is
 non-negotiable. This is exactly why it is not in the first release.

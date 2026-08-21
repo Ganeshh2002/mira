@@ -21,6 +21,8 @@ export type IconName =
   | 'rename'
   | 'binary'
   | 'trace'
+  | 'filter'
+  | 'search'
   | 'person'
   | 'clock'
   | 'copy'
@@ -91,6 +93,18 @@ const PATHS: Record<IconName, React.ReactNode> = {
       <path d="M9.5 2.5H4.5a1 1 0 0 0-1 1v9a1 1 0 0 0 1 1h7a1 1 0 0 0 1-1V5.5z" />
       <path d="M9.25 2.5v3.25h3.25" />
       <path d="M5.75 8.25h4.5M5.75 10.75h3" />
+    </>
+  ),
+  // A funnel: what a filter does to a list.
+  filter: (
+    <>
+      <path d="M2 3.25h12l-4.5 5.25v4.25l-3 1.75V8.5z" />
+    </>
+  ),
+  search: (
+    <>
+      <circle cx="7" cy="7" r="4.25" />
+      <path d="M10.25 10.25L14 14" />
     </>
   ),
   person: (

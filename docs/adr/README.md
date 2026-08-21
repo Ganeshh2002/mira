@@ -25,6 +25,7 @@ one; the old file stays, marked superseded, because the reasoning is the point.
 | [0015](0015-graph-lanes.md) | Graph lanes over a bounded window, without topological ordering | Accepted |
 | [0016](0016-bounded-diffs.md) | Bounded diffs, and a file chosen by ordinal | Accepted |
 | [0017](0017-file-history.md) | File history: bounded by commits examined, named without a path | Accepted |
+| [0018](0018-history-filters.md) | History filters: one budget, four questions, nothing that is an argument | Accepted |
 
 Decisions **not** recorded here because they are reversible in an afternoon: Tailwind,
 TanStack Query, Zustand, Vite, the icon set. Those live in
