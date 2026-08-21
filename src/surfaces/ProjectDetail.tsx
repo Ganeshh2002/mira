@@ -10,6 +10,7 @@ import { Button } from '../components/Button';
 import { Chip } from '../components/Chip';
 import { GitPanel } from '../components/GitPanel';
 import { History } from './History';
+import { WorkingTree } from './WorkingTree';
 import { LayoutPanel } from '../components/LayoutPanel';
 import { Row } from '../components/Row';
 import { MissingFolder } from '../components/MissingFolder';
@@ -40,7 +41,7 @@ export function ProjectDetail({
   const [confirming, setConfirming] = useState(false);
   // Which sub-view is showing. `information-architecture.md` §6 caps depth at
   // three: rail → project → sub-view, and History is that third level.
-  const [viewing, setViewing] = useState<'project' | 'history'>('project');
+  const [viewing, setViewing] = useState<'project' | 'history' | 'workingTree'>('project');
 
   const live = useLive();
   const observation = observationOf(live.data, project.id);
@@ -91,6 +92,10 @@ export function ProjectDetail({
         onBack={() => setViewing('project')}
       />
     );
+  }
+
+  if (viewing === 'workingTree') {
+    return <WorkingTree project={project} onBack={() => setViewing('project')} />;
   }
 
   return (
@@ -160,8 +165,16 @@ export function ProjectDetail({
               </div>
               <GitPanel git={observation.git} labelled={false} />
               {observation.git.state === 'ready' ? (
-                <div>
+                <div className="flex flex-wrap gap-[var(--space-3)]">
                   <Button onClick={() => setViewing('history')}>Git history</Button>
+                  {/*
+                    Offered only when there is something to show. A button that
+                    opens an empty list is worse than no button
+                    (`information-architecture.md` §8).
+                  */}
+                  {!observation.git.clean ? (
+                    <Button onClick={() => setViewing('workingTree')}>Changed files</Button>
+                  ) : null}
                 </div>
               ) : null}
             </>

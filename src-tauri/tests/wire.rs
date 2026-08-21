@@ -243,3 +243,109 @@ fn the_clipboard_never_accepts_anything_but_a_short_single_line_fact() {
         "a file's worth of text must not be copyable"
     );
 }
+
+// ── Naming a change set ──────────────────────────────────────────────────────
+
+fn scope(raw: serde_json::Value) -> Result<mira_git::DiffScope, serde_json::Error> {
+    serde_json::from_value(raw)
+}
+
+#[test]
+fn a_diff_scope_is_one_commit_or_the_working_tree() {
+    assert!(scope(json!({ "kind": "workingTree" })).is_ok());
+    assert!(scope(json!({ "kind": "commit", "commit": "ad50fc7" })).is_ok());
+    assert!(scope(json!({
+        "kind": "commit",
+        "commit": "ad50fc71f70b122469a9772cb772dc86b2c83521"
+    }))
+    .is_ok());
+}
+
+#[test]
+fn nothing_that_is_not_a_commit_survives_inside_a_scope() {
+    // The scope is the second place a commit crosses the boundary, so it is the
+    // second place the same wall has to stand. Nesting a value does not launder
+    // it: `CommitId` validates wherever it is deserialised.
+    for refused in [
+        json!({ "kind": "commit", "commit": "HEAD" }),
+        json!({ "kind": "commit", "commit": "refs/heads/main" }),
+        json!({ "kind": "commit", "commit": "--output=/etc/passwd" }),
+        json!({ "kind": "commit", "commit": "../../../etc/passwd" }),
+        json!({ "kind": "commit", "commit": "ad50fc7; rm -rf ~" }),
+        json!({ "kind": "commit", "commit": "" }),
+        json!({ "kind": "commit", "commit": 0 }),
+        json!({ "kind": "commit" }),
+        json!({ "kind": "index" }),
+        json!({ "kind": "path", "path": "/etc/passwd" }),
+        json!("workingTree"),
+        json!("/etc/passwd"),
+        json!(null),
+        json!([]),
+    ] {
+        assert!(
+            scope(refused.clone()).is_err(),
+            "{refused} must not deserialise into a scope"
+        );
+    }
+
+    // Extra keys are the one shape serde accepts, and it *ignores* them rather
+    // than honouring them — which is the property that matters. A path bolted
+    // onto a scope reaches nothing, because nothing downstream reads one.
+    assert_eq!(
+        scope(json!({ "kind": "workingTree", "commit": "ad50fc7" })).expect("a scope"),
+        mira_git::DiffScope::WorkingTree,
+        "a stray key must not turn a working-tree read into a commit read"
+    );
+    assert_eq!(
+        scope(json!({ "kind": "commit", "commit": "ad50fc7", "path": "/etc/passwd" }))
+            .expect("a scope"),
+        mira_git::DiffScope::Commit {
+            commit: "ad50fc7".parse().expect("a commit id")
+        },
+        "a stray path must be dropped, not carried"
+    );
+}
+
+#[test]
+fn a_file_is_chosen_by_its_place_in_a_list_and_never_by_a_path() {
+    // The whole file-selection contract, at the boundary. `at` is a `u32`, so the
+    // entire space of things the interface can ask for is "the nth change Mira
+    // listed" — and Mira lists at most `MAX_FILES` of them.
+    for accepted in [0u32, 1, 199, u32::MAX] {
+        assert!(serde_json::from_value::<u32>(json!(accepted)).is_ok());
+    }
+
+    // Everything somebody would send if they wanted a path instead.
+    for refused in [
+        json!("src/app.ts"),
+        json!("/etc/passwd"),
+        json!("../../../etc/passwd"),
+        json!("*"),
+        json!(-1),
+        json!(1.5),
+        json!(null),
+        json!({ "path": "src/app.ts" }),
+        json!(["src/app.ts"]),
+    ] {
+        assert!(
+            serde_json::from_value::<u32>(refused.clone()).is_err(),
+            "{refused} must not deserialise into an ordinal"
+        );
+    }
+
+    // And an ordinal past what Mira lists reads nothing at all — asserted in
+    // `mira-git`'s own suite, because it is a property of the read rather than of
+    // the wire.
+    assert!(mira_git::MAX_FILES < u32::MAX as usize);
+}
+
+#[test]
+fn the_diff_limits_are_the_only_thing_that_decides_how_much_is_read() {
+    // No command carries a number that could raise them, so these constants are
+    // the whole story about how much one request can cost.
+    assert_eq!(mira_git::MAX_FILES, 200);
+    assert_eq!(mira_git::MAX_LINES, 2_000);
+    assert_eq!(mira_git::MAX_BYTES, 256 * 1024);
+    assert_eq!(mira_git::MAX_LINE_BYTES, 2_000);
+    assert_eq!(mira_git::MAX_FILE_BYTES, 2 * 1024 * 1024);
+}

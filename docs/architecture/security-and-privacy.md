@@ -238,6 +238,42 @@ reasonably wonder whether a row might also be *actionable*. It is not.
     and would make a large repository a way to make Mira stall
     ([ADR-0015](../adr/0015-graph-lanes.md)).
 
+### Showing what changed
+
+Slice 5c reads file *contents* for the first time outside Peek, which makes it the
+first Git read that could be made expensive on purpose.
+
+27. **Five declared limits, none of them nameable.** Files per change set, lines
+    per file, bytes per file, bytes per line, and the blob size Mira will diff at
+    all — all constants in `mira-git`, all asserted by test. No command carries a
+    number that could raise one.
+
+28. **The size gate reads a header, not a file.** libgit2 fills a delta's size
+    only once it has loaded the blob, so asking it directly would mean reading the
+    very file the ceiling exists to refuse. The size comes from the object header,
+    and libgit2 is handed the same ceiling as its own `max_size` — measured at
+    0.17 ms to refuse a 30 MB file.
+
+29. **Nothing is truncated silently.** Every limit has a value that says it bit,
+    carrying what was shown and what the ceiling was. A diff that quietly stopped
+    short would be worse than no diff, because somebody would review a change they
+    had not seen.
+
+30. **Binary files are identified, never decoded.** `FileDiff::Binary` carries two
+    sizes and no text, and a guard test asserts the variant carries no field named
+    for content.
+
+31. **A file is chosen by its ordinal, never by its path.** `git.file_diff` takes
+    a position in the list `git.changes` returned. There is no path on the wire,
+    so rule 8 needs no exception for this feature — the interface can only ask for
+    a file Mira already decided to offer, and an ordinal past the list reads
+    nothing. A guard bans the shapes somebody would reach for instead: `blob`,
+    `oid`, `pathspec`, `glob`, `filename`, `prefix`.
+
+32. **Every commit still arrives as a validated `CommitId`**, including inside
+    `DiffScope`. Nesting a value does not launder it
+    ([ADR-0016](../adr/0016-bounded-diffs.md)).
+
 ### Keeping a machine awake
 
 19. **Keep Awake holds an operating-system power request and nothing else.** Mira
@@ -410,3 +446,9 @@ after the people who wrote it move on.
 | No command acts on a commit | Command-signature scan for checkout/merge/rebase/reset/… |
 | No unbounded topological walk | Source scan for `Sort::*` in `mira-git/src` |
 | Lane layout cannot reach a repository | `lanes.rs` mentions no `Repository`, `git2`, `PAGE` or `fs::` |
+| No command names a file to read | Command-signature scan for `blob`, `oid`, `pathspec`, `glob`, … |
+| Every commit is a validated id | Command-signature scan: `CommitId` or `DiffScope`, never `String` |
+| Every diff limit is declared and reported | `diff.rs` carries the constants and the truncation states |
+| Binary files are never decoded | `FileDiff::Binary` carries sizes and no content field |
+| A size limit reads a header, not a file | `patch.rs` uses `read_header` and libgit2's `max_size` |
+| The frontend directory holds no Rust | `src/` contains only `.ts`, `.tsx`, `.css` |

@@ -14,6 +14,12 @@
 //! cargo test -p mira-git --test performance -- --ignored --nocapture
 //! ```
 //!
+//! Slice 5c adds the diff benchmarks. A diff is the first read in the product
+//! whose size is set by *the repository's files* rather than by a page of
+//! history, so the question is not "how fast" but "**bounded by what**": a
+//! forty-megabyte file and a four-thousand-file commit must cost what the limits
+//! say, not what the repository holds ([ADR-0016](../../../docs/adr/0016-bounded-diffs.md)).
+//!
 //! Slice 5b adds the comparison that decided the graph's design: a page of
 //! history, the same page with lanes and labels, and what a **topologically
 //! ordered** walk of the same repository costs. The last one is measured here and
@@ -25,7 +31,10 @@ use std::path::Path;
 use std::time::{Duration, Instant};
 
 use git2::{Repository, RepositoryInitOptions, Signature, Sort};
-use mira_git::{CommitGraph, CommitId, CommitPage, GitProvider, Libgit2, PAGE};
+use mira_git::{
+    ChangedFiles, CommitGraph, CommitId, CommitPage, DiffScope, FileDiff, GitProvider, Libgit2,
+    MAX_BYTES, MAX_FILES, MAX_FILE_BYTES, MAX_LINES, PAGE,
+};
 use tempfile::TempDir;
 
 /// A repository of `count` commits, built as cheaply as the object format allows.
@@ -223,4 +232,213 @@ fn ratio(measurements: &[f64]) -> f64 {
         (Some(first), Some(last)) if *first > 0.0 => last / first,
         _ => 1.0,
     }
+}
+
+// ── Diffs ────────────────────────────────────────────────────────────────────
+
+/// A repository whose HEAD commit adds one file of `body`.
+fn repo_with_file(dir: &Path, name: &str, body: &[u8]) -> git2::Oid {
+    let mut options = RepositoryInitOptions::new();
+    options.initial_head("main");
+    let repo = Repository::init_opts(dir, &options).expect("init");
+    let who = Signature::new(
+        "Blacknit",
+        "blacknit@example.com",
+        &git2::Time::new(1_700_000_000, 0),
+    )
+    .expect("signature");
+
+    fs::write(dir.join("seed.txt"), "seed\n").expect("write");
+    let first = commit_all(&repo, &who, "seed", &[]);
+
+    fs::write(dir.join(name), body).expect("write");
+    commit_all(&repo, &who, "add the subject", &[first])
+}
+
+/// A repository whose HEAD commit adds `count` small files.
+fn repo_with_many(dir: &Path, count: usize) -> git2::Oid {
+    let mut options = RepositoryInitOptions::new();
+    options.initial_head("main");
+    let repo = Repository::init_opts(dir, &options).expect("init");
+    let who = Signature::new(
+        "Blacknit",
+        "blacknit@example.com",
+        &git2::Time::new(1_700_000_000, 0),
+    )
+    .expect("signature");
+
+    fs::write(dir.join("seed.txt"), "seed\n").expect("write");
+    let first = commit_all(&repo, &who, "seed", &[]);
+
+    for n in 0..count {
+        fs::write(dir.join(format!("file-{n:05}.txt")), format!("body {n}\n")).expect("write");
+    }
+    commit_all(&repo, &who, "many files", &[first])
+}
+
+fn commit_all(
+    repo: &Repository,
+    who: &Signature<'_>,
+    subject: &str,
+    parents: &[git2::Oid],
+) -> git2::Oid {
+    let mut index = repo.index().expect("index");
+    index
+        .add_all(["*"], git2::IndexAddOption::DEFAULT, None)
+        .expect("add");
+    index.write().expect("write index");
+    let tree = repo
+        .find_tree(index.write_tree().expect("write tree"))
+        .expect("tree");
+    let found: Vec<git2::Commit<'_>> = parents
+        .iter()
+        .map(|oid| repo.find_commit(*oid).expect("parent"))
+        .collect();
+    let borrowed: Vec<&git2::Commit<'_>> = found.iter().collect();
+
+    repo.commit(Some("HEAD"), who, who, subject, &tree, &borrowed)
+        .expect("commit")
+}
+
+fn scope(id: git2::Oid) -> DiffScope {
+    DiffScope::Commit {
+        commit: id.to_string().parse().expect("a commit id"),
+    }
+}
+
+/// How long a change list takes, and how much of it came back.
+fn time_list(root: &Path, at: &DiffScope) -> (Duration, usize, String) {
+    let started = Instant::now();
+    let listed = Libgit2.changed_files(root, at);
+    let took = started.elapsed();
+
+    match listed {
+        ChangedFiles::Ready {
+            files, truncated, ..
+        } => (took, files.len(), format!("{truncated:?}")),
+        other => panic!("expected a change list, got {other:?}"),
+    }
+}
+
+/// How long one file's patch takes, and what came back.
+fn time_patch(root: &Path, at: &DiffScope) -> (Duration, usize, usize, String) {
+    let started = Instant::now();
+    let found = Libgit2.file_diff(root, at, 0);
+    let took = started.elapsed();
+
+    match found {
+        FileDiff::Ready {
+            hunks, truncated, ..
+        } => {
+            let lines: usize = hunks.iter().map(|hunk| hunk.lines.len()).sum();
+            let bytes: usize = hunks
+                .iter()
+                .flat_map(|hunk| hunk.lines.iter())
+                .map(|line| line.text.len())
+                .sum();
+            (took, lines, bytes, format!("{truncated:?}"))
+        }
+        FileDiff::Binary { .. } => (took, 0, 0, "Binary".to_owned()),
+        FileDiff::TooLarge { .. } => (took, 0, 0, "TooLarge".to_owned()),
+        other => panic!("expected a patch, got {other:?}"),
+    }
+}
+
+#[test]
+#[ignore = "writes files of up to 32 MB; run it deliberately"]
+fn a_diff_costs_what_the_limits_say_and_not_what_the_file_holds() {
+    println!();
+    println!("  subject                on disk     list      patch     lines    returned   state");
+    println!("  ---------------------  ---------  --------  --------  -------  ---------  -----");
+
+    let tiny = "one\ntwo\nthree\n".to_owned();
+    let one_mb: String = (0..80_000).map(|n| format!("line {n:06}\n")).collect();
+    let large: String = (0..600_000).map(|n| format!("line {n:06}\n")).collect();
+    let wide: String = (0..20_000)
+        .map(|_| format!("{}\n", "w".repeat(1_500)))
+        .collect();
+    // Under the file ceiling, so the *binary* path is what gets measured rather
+    // than the size gate — which fires first for the larger one below.
+    let binary_small: Vec<u8> = (0..1_500_000u32).map(|n| (n % 251) as u8).collect();
+    let binary_large: Vec<u8> = (0..4_000_000u32).map(|n| (n % 251) as u8).collect();
+
+    let cases: Vec<(&str, Vec<u8>)> = vec![
+        ("tiny text", tiny.into_bytes()),
+        ("1 MB text", one_mb.into_bytes()),
+        ("large text (~8 MB)", large.into_bytes()),
+        ("wide lines (~30 MB)", wide.into_bytes()),
+        ("binary, under ceiling", binary_small),
+        ("binary, over ceiling", binary_large),
+    ];
+
+    for (name, body) in cases {
+        let dir = TempDir::new().expect("tempdir");
+        let head = repo_with_file(dir.path(), "subject.bin", &body);
+        let at = scope(head);
+
+        let (list, listed, list_state) = time_list(dir.path(), &at);
+        let (patch, lines, bytes, state) = time_patch(dir.path(), &at);
+
+        println!(
+            "  {name:<21}  {:>7} KB  {:>6.2} ms  {:>6.2} ms  {lines:>7}  {:>7} KB  {state} / {list_state}",
+            body.len() / 1024,
+            list.as_secs_f64() * 1000.0,
+            patch.as_secs_f64() * 1000.0,
+            bytes / 1024,
+        );
+
+        assert_eq!(listed, 1, "one file changed, whatever its size");
+        assert!(lines <= MAX_LINES, "{lines} lines exceeded the ceiling");
+        assert!(
+            bytes <= MAX_BYTES + 4_096,
+            "{bytes} bytes exceeded the ceiling"
+        );
+    }
+
+    println!();
+    println!(
+        "  limits: {MAX_FILES} files · {MAX_LINES} lines · {} KB patch · {} MB file",
+        MAX_BYTES / 1024,
+        MAX_FILE_BYTES / 1024 / 1024
+    );
+    println!();
+}
+
+#[test]
+#[ignore = "builds commits of up to 4,000 files; run it deliberately"]
+fn a_change_list_costs_what_the_limit_says_and_not_what_the_commit_holds() {
+    println!();
+    println!("  files changed   list      returned   state");
+    println!("  -------------  --------  ---------  -----");
+
+    let mut growth = Vec::new();
+
+    for count in [10_usize, 500, 4_000] {
+        let dir = TempDir::new().expect("tempdir");
+        let head = repo_with_many(dir.path(), count);
+        let (took, listed, state) = time_list(dir.path(), &scope(head));
+
+        println!(
+            "  {count:>13}  {:>6.2} ms  {listed:>9}  {state}",
+            took.as_secs_f64() * 1000.0
+        );
+
+        assert!(listed <= MAX_FILES, "{listed} files exceeded the ceiling");
+        growth.push(took.as_secs_f64());
+    }
+
+    println!();
+    println!("  10 -> 4,000 changed files: x{:.1}", ratio(&growth));
+    println!();
+
+    // The list is capped, but building the diff still walks the trees, so this is
+    // not flat — it is *sub-linear in the change set* and bounded in what it
+    // returns and reads. The threshold is generous because this runs on whatever
+    // machine is to hand; it exists to catch a return to unbounded work, which
+    // would be an order of magnitude, not a few per cent.
+    assert!(
+        ratio(&growth) < 50.0,
+        "a change list grew {:.1}x for a 400x commit; the read is no longer bounded",
+        ratio(&growth)
+    );
 }

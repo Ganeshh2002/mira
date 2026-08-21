@@ -194,6 +194,8 @@ pub fn run() {
             commands::live::live_open_service,
             commands::git::git_history,
             commands::git::git_graph,
+            commands::git::git_changes,
+            commands::git::git_file_diff,
             commands::git::git_commit,
             commands::git::git_copy_commit,
             commands::awake::keep_awake_state,

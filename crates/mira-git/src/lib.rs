@@ -7,11 +7,14 @@
 //! It also never opens a network transport. `git2` is built with its HTTPS and
 //! SSH features off, so a fetch is not merely unused — it is not compiled in.
 //!
-//! Three questions are answered here: **where does this repository stand**
+//! Four questions are answered here: **where does this repository stand**
 //! ([`GitProvider::overview`]), **what happened lately**
-//! ([`GitProvider::history`]), and **how do those commits relate**
-//! ([`GitProvider::graph`]). All three are paged, and the page size is this
-//! crate's ([`PAGE`]), so no caller can ask Mira to walk an entire repository.
+//! ([`GitProvider::history`]), **how do those commits relate**
+//! ([`GitProvider::graph`]), and **what changed**
+//! ([`GitProvider::changed_files`], [`GitProvider::file_diff`]). Every one is
+//! bounded by a constant in this crate — [`PAGE`] for history, and the five
+//! limits in [`diff`] for changes — so no caller can ask Mira to read an entire
+//! repository.
 //!
 //! The graph is a picture, not a client. Nothing here can check out, merge,
 //! rebase, reset, cherry-pick, create a commit, stage a path, or reach a remote,
@@ -24,14 +27,21 @@
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
 
+pub mod diff;
 pub mod graph;
 pub mod history;
 pub mod lanes;
 pub mod libgit2;
 pub mod model;
+pub mod patch;
 pub mod provider;
 mod walk;
 
+pub use diff::{
+    ChangeKind, ChangedFiles, Comparison, DiffLine, DiffScope, FileChange, FileDiff,
+    FilesTruncated, Hunk, LineKind, PatchTruncated, MAX_BYTES, MAX_FILES, MAX_FILE_BYTES,
+    MAX_LINES, MAX_LINE_BYTES,
+};
 pub use graph::{
     CommitGraph, Edge, EdgeKind, GitRef, GraphRow, RefKind, RowKind, MAX_LANES, MAX_REFS,
 };
@@ -39,4 +49,5 @@ pub use history::{CommitDetail, CommitId, CommitLookup, CommitPage, MalformedCom
 pub use lanes::{layout, Layout, Node, Placement};
 pub use libgit2::Libgit2;
 pub use model::{Commit, GitOverview, Head, Upstream};
+pub use patch::MAX_STATS_BYTES;
 pub use provider::GitProvider;

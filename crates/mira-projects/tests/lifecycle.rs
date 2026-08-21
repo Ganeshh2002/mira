@@ -12,7 +12,10 @@ use std::path::{Path, PathBuf};
 use mira_core::MiraError;
 use mira_db::{Db, ProjectRepo};
 use mira_fs::PathMatching;
-use mira_git::{CommitGraph, CommitId, CommitLookup, CommitPage, GitOverview, GitProvider, Head};
+use mira_git::{
+    ChangedFiles, CommitGraph, CommitId, CommitLookup, CommitPage, DiffScope, FileDiff,
+    GitOverview, GitProvider, Head,
+};
 use mira_projects::{ProjectService, Projects};
 use tempfile::TempDir;
 
@@ -68,6 +71,14 @@ impl GitProvider for FakeGit {
 
     fn graph(&self, _root: &Path, _from: Option<&CommitId>) -> CommitGraph {
         panic!("the project service must not draw a graph");
+    }
+
+    fn changed_files(&self, _root: &Path, _scope: &DiffScope) -> ChangedFiles {
+        panic!("the project service must not read a diff");
+    }
+
+    fn file_diff(&self, _root: &Path, _scope: &DiffScope, _at: u32) -> FileDiff {
+        panic!("the project service must not read a diff");
     }
 }
 

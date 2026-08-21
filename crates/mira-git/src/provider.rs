@@ -2,6 +2,7 @@
 
 use std::path::{Path, PathBuf};
 
+use crate::diff::{ChangedFiles, DiffScope, FileDiff};
 use crate::graph::CommitGraph;
 use crate::history::{CommitId, CommitLookup, CommitPage};
 use crate::model::GitOverview;
@@ -43,4 +44,18 @@ pub trait GitProvider {
     /// the graph *is* the history, with the relationships kept
     /// ([ADR-0015](../../../docs/adr/0015-graph-lanes.md)).
     fn graph(&self, root: &Path, from: Option<&CommitId>) -> CommitGraph;
+
+    /// What one commit changed, or what the working tree has that `HEAD` does not.
+    ///
+    /// Bounded by `diff::MAX_FILES`, and says when the bound bit. A merge is
+    /// compared against its **first** parent and the answer records that
+    /// ([ADR-0016](../../../docs/adr/0016-bounded-diffs.md)).
+    fn changed_files(&self, root: &Path, scope: &DiffScope) -> ChangedFiles;
+
+    /// One file's patch, by its **position** in the change list.
+    ///
+    /// An ordinal rather than a path: the caller can only name a file Mira
+    /// already decided to offer. Bounded by the five limits in `diff`, each of
+    /// which reports itself rather than truncating silently.
+    fn file_diff(&self, root: &Path, scope: &DiffScope, at: u32) -> FileDiff;
 }

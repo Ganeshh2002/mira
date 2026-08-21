@@ -10,7 +10,7 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Added
 - Product definition, product scope, PRD, information architecture, and design system
 - Architecture, platform abstraction, data model, and security/privacy documents
-- ADRs 0001–0015 covering the foundational technical decisions
+- ADRs 0001–0016 covering the foundational technical decisions
 - Locked phase plan (0.1 through 0.6+) and the fourteen-slice implementation roadmap
 - Open-source project files (licence, contributing, code of conduct, security policy)
 - **Foundation (slice 0).** Cargo workspace with `mira-core`, `mira-platform`, `mira-db`,
@@ -96,6 +96,25 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   entire history before yielding one commit — 3.4 ms, 34 ms and 426 ms for the same
   twenty-five rows on repositories of 100, 1,000 and 10,000 commits, against a flat
   ~0.9 ms. A page costs a page ([ADR-0015](docs/adr/0015-graph-lanes.md)).
+- **Git diff (slice 5c, part).** See what changed. A commit's changed files sit inside
+  its detail in History, and what you have not committed yet is its own **Working tree**
+  view — separate on purpose, because what is recorded and what is on disk are different
+  questions. A row reads `M src/app.ts Modified +24 −8`: the letter *and* the word,
+  because `C` and `M` mean nothing to somebody who has not memorised them. Renames say
+  where they came from, binary files say they are binary, and opening a file shows its
+  patch as a table with line numbers on both sides — `+` and `−` in the text as well as
+  in colour, so it reads correctly in a screen reader and on a monochrome display. Long
+  lines scroll inside their own box.
+
+  **Nothing is shortened quietly.** A change set that stops at two hundred files says how
+  many there were; a patch that stops says which limit it hit and what the limit is; a
+  file too large to compare says so rather than appearing empty. A diff that looked
+  complete when it was not would be worse than no diff at all.
+
+  It stays fast by refusing rather than by hurrying: a 30 MB file is declined in 0.17 ms
+  because it is never read, while a 1 MB one takes 4 ms to compare. And it is **a view,
+  never an edit** — no staging, discarding, checkout, revert or apply, and nothing greyed
+  out implying otherwise ([ADR-0016](docs/adr/0016-bounded-diffs.md)).
 - macOS and Windows ask the platform for its standard window material — Liquid Glass on
   macOS 26, Mica on Windows 11 — rather than drawing an imitation. Linux stays opaque.
 

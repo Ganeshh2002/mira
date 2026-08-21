@@ -322,6 +322,37 @@ path rather than the only one (§7).
 reflowed, and the ref chips wrap. That is the degradation rule in one line: drop
 the decoration, keep the content.
 
+**As built (slice 5c) — changed files and diffs.** The **Changes** tab arrives, in
+two places rather than one, because there are two questions:
+
+- **A commit's changes** sit inside the commit's own detail panel in History, and a
+  file's patch opens inside its own row. History → commit → files → patch is four
+  things to read and *one place to be*: the depth cap in §6 is kept by disclosure
+  rather than by navigation.
+- **The working tree** is its own sub-view, reached from the project's Git panel by
+  **Changed files** — offered only when there is something to show. It is separate
+  on purpose: one is what is recorded and the other is what is on disk, and a
+  single list of both would make it impossible to tell them apart.
+
+A row reads `M  src/app.ts  Modified  +24 −8`. The letter *and* the word, because
+`C` and `M` are indistinguishable to somebody who has not memorised them, and
+colour is the third channel rather than the first. A rename says where it came
+from; a binary file says it is binary.
+
+The patch is a **table** — line before, line after, the line — with `+` and `−` in
+the text as well as colour, so it reads correctly in a screen reader and on a
+monochrome display. Long lines scroll inside the table's own box; the page never
+scrolls sideways.
+
+**Every stopping point is a sentence.** "Showing 200 of 4,312 changed files";
+"Showing the first 2,000 lines"; "8.0 MB is larger than the 2.0 MB Mira will
+compare, so this file was not read". Nothing is shortened quietly — a truncated
+diff that looked complete would be the worst thing this surface could do
+([ADR-0016](../adr/0016-bounded-diffs.md)).
+
+**Still read-only.** No staging, discarding, checkout, revert or apply — and no
+greyed-out control implying that one is coming.
+
 ### Ports view (machine-scoped)
 All listening ports, grouped: *this project*, *other projects*, *unattributed*. Same row
 actions as the project section. This is the one place Mira shows machine-wide data

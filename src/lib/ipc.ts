@@ -4,10 +4,13 @@ import type { FoundationStatus } from '../bindings/FoundationStatus';
 import type { MiraError } from '../bindings/MiraError';
 import type { AppKind } from '../bindings/AppKind';
 import type { AppReport } from '../bindings/AppReport';
+import type { ChangedFiles } from '../bindings/ChangedFiles';
 import type { CommitGraph } from '../bindings/CommitGraph';
 import type { CommitId } from '../bindings/CommitId';
 import type { CommitLookup } from '../bindings/CommitLookup';
 import type { CommitPage } from '../bindings/CommitPage';
+import type { DiffScope } from '../bindings/DiffScope';
+import type { FileDiff } from '../bindings/FileDiff';
 import type { KeepAwakeSpan } from '../bindings/KeepAwakeSpan';
 import type { KeepAwakeState } from '../bindings/KeepAwakeState';
 import type { Launched } from '../bindings/Launched';
@@ -172,6 +175,25 @@ export const commands = {
    */
   gitCopyCommit: (projectId: number, commit: CommitId, form: ShaForm): Promise<string> =>
     call('git_copy_commit', { projectId, commit, form }),
+
+  /**
+   * `git.changes` — what a commit changed, or what the working tree has.
+   *
+   * The scope is a commit or the working tree, and they stay separate answers.
+   * Bounded by `MAX_FILES`; the reply says when the bound bit.
+   */
+  gitChanges: (projectId: number, scope: DiffScope): Promise<ChangedFiles> =>
+    call('git_changes', { projectId, scope }),
+
+  /**
+   * `git.file_diff` — one file's patch.
+   *
+   * `at` is the file's **position** in the list `gitChanges` returned, never a
+   * path. The interface can only ask for a file Mira already decided to offer,
+   * and an ordinal past the list reads nothing.
+   */
+  gitFileDiff: (projectId: number, scope: DiffScope, at: number): Promise<FileDiff> =>
+    call('git_file_diff', { projectId, scope, at }),
 
   /** `keep_awake.state` — whether the machine is being kept awake, and until when. */
   keepAwakeState: (): Promise<KeepAwakeState> => call('keep_awake_state'),

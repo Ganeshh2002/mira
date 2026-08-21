@@ -340,6 +340,7 @@ A small kit. Anything not on this list needs justification.
 | **Overlay** | Peek and confirmations. Only two overlays exist; they never stack. |
 | **Sparkline** | System strip only. 60 samples, 1px stroke, no axes, no grid, no fill. |
 | **Graph lanes** | Git history: 1px strokes, ≤ 8 lanes, lane colour by index from a muted 8-step ramp — never signal hues, which would imply meaning that is not there. **As built (slice 5b):** a per-row SVG gutter, `--graph-row` tall and `--graph-lane` wide per lane, so a line drawn to the bottom of one row meets the next without either row knowing the other exists. `--lane-0` … `--lane-7` are the ramp; lane 7 is neutral because it is also where everything past the eighth is folded, and a fold must not look like a branch. Node shapes: ring (commit), ring with a filled centre (merge), filled disc (root). The gutter is `aria-hidden`; every fact it draws is written on the row. |
+| **Diff table** | A patch is a table, not a pre-formatted block: line before · line after · the line, with `sr-only` headers so a screen reader reads "added line 42: …". `+` and `−` live in the text as well as in colour. Long lines scroll inside `overflow-x-auto`; the page never scrolls sideways. |
 | **Empty state** | One sentence plus the single action that resolves it. |
 
 ### Icons
@@ -355,9 +356,11 @@ the eye can find the author among three short strings, and that is the one job a
 icon does better than a label. Copy is the single icon that carries an action on its
 own, and it has an accessible name and a tooltip.
 
-As built (slices 5a–5b): `branch`, `commit`, `merge`, `tag`, `graph`, `person`,
-`clock`, `copy`, `awake`, `back`, in `src/components/Icon.tsx`. Status marks stay
-glyphs (`●`, `○`, `✓`, `◐`) because they are text with a shape, not pictures.
+As built (slices 5a–5c): `branch`, `commit`, `merge`, `tag`, `graph`, `rename`,
+`binary`, `person`, `clock`, `copy`, `awake`, `back`, in
+`src/components/Icon.tsx`. Status marks stay glyphs (`●`, `○`, `✓`, `◐`) because
+they are text with a shape, not pictures — and so do the change letters `A`, `D`,
+`M`, `R`, `C`, `T`, which always appear beside the word they abbreviate.
 
 ---
 

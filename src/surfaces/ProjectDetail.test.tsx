@@ -533,3 +533,83 @@ describe('the way into history', () => {
     expect(invoke.mock.calls.filter(([command]) => command === 'git_history')).toHaveLength(0);
   });
 });
+
+describe('the way into the working tree', () => {
+  const dirty: GitOverview = {
+    state: 'ready',
+    head: { kind: 'branch', name: 'main' },
+    clean: false,
+    changed: 3,
+    lastCommit: commit,
+    upstream: null,
+  };
+
+  it('offers Changed files only when there is something to show', async () => {
+    show(dirty);
+    expect(await screen.findByRole('button', { name: 'Changed files' })).toBeInTheDocument();
+  });
+
+  it('does not offer it for a clean working tree', async () => {
+    // A button that opens an empty list is worse than no button.
+    show({
+      state: 'ready',
+      head: { kind: 'branch', name: 'main' },
+      clean: true,
+      changed: 0,
+      lastCommit: commit,
+      upstream: null,
+    });
+
+    await screen.findByRole('button', { name: 'Git history' });
+    expect(screen.queryByRole('button', { name: 'Changed files' })).not.toBeInTheDocument();
+  });
+
+  it('opens the working tree as its own surface, separate from history', async () => {
+    // A working tree is not a commit. Mira asks a different question and shows
+    // the answer in a different place.
+    invoke.mockImplementation((command: string, args?: Record<string, unknown>) => {
+      if (command === 'workspaces_list') return Promise.resolve([]);
+      if (command === 'workspaces_applications') return Promise.resolve([]);
+      if (command === 'projects_list') return Promise.resolve([aviora]);
+      if (command === 'live_refresh' || command === 'live_snapshot')
+        return Promise.resolve(context(dirty));
+      if (command === 'git_changes') {
+        expect((args as { scope?: { kind?: string } })?.scope?.kind).toBe('workingTree');
+        return Promise.resolve({
+          state: 'ready',
+          files: [
+            {
+              at: 0,
+              kind: 'modified',
+              path: 'src/app.ts',
+              fromPath: null,
+              binary: false,
+              additions: 2,
+              deletions: 1,
+            },
+          ],
+          against: { kind: 'head' },
+          truncated: { state: 'no' },
+        });
+      }
+      return Promise.resolve(null);
+    });
+    renderApp(<App surface="main" />);
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Changed files' }));
+
+    expect(await screen.findByRole('heading', { name: 'Working tree' })).toBeInTheDocument();
+    expect(screen.getByText('src/app.ts')).toBeInTheDocument();
+    expect(screen.getByText(/never changes it/)).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Back to Aviora' }));
+    expect(await screen.findByRole('heading', { name: 'Aviora' })).toBeInTheDocument();
+  });
+
+  it('never reads the working tree until somebody opens it', async () => {
+    show(dirty);
+
+    await screen.findByRole('button', { name: 'Changed files' });
+    expect(invoke.mock.calls.filter(([command]) => command === 'git_changes')).toHaveLength(0);
+  });
+});
