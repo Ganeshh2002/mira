@@ -27,9 +27,13 @@ authors = ["The Aviora Mira contributors"]
 publish = false
 
 [workspace.dependencies]
+# Text-only: `image-data` is on by default and would add the `image` crate to a
+# build whose entire clipboard payload is a commit id.
+arboard = { version = "3", default-features = false }
+block2 = "0.6"
 objc2 = "0.6"
 objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSWorkspace", "NSRunningApplication", "block2"] }
-objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSArray", "NSString", "NSURL"] }
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSArray", "NSProcessInfo", "NSString", "NSURL", "block2"] }
 mira-core = { path = "crates/mira-core" }
 mira-db = { path = "crates/mira-db" }
 mira-fs = { path = "crates/mira-fs" }

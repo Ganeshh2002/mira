@@ -7,4 +7,4 @@
  * `docs/architecture/platform-abstraction.md` §5. That matrix is the checklist:
  * a capability without a row is a capability nobody has been honest about.
  */
-export type Capability = "globalShortcut" | "trayIcon" | "trayClickEvents" | "launchApplication" | "processEnumeration" | "processWorkingDirectory" | "processTermination" | "portEnumeration" | "portAttribution" | "lockDetection" | "sleepDetection" | "mediaNowPlaying" | "mediaControl" | "notifications" | "fileWatching" | "revealInFileManager" | "dragOutFiles" | "autoStart" | "batteryInfo" | "autoUpdate";
+export type Capability = "globalShortcut" | "trayIcon" | "trayClickEvents" | "launchApplication" | "processEnumeration" | "processWorkingDirectory" | "processTermination" | "portEnumeration" | "portAttribution" | "lockDetection" | "sleepDetection" | "mediaNowPlaying" | "mediaControl" | "notifications" | "fileWatching" | "revealInFileManager" | "dragOutFiles" | "autoStart" | "batteryInfo" | "autoUpdate" | "clipboard" | "keepAwake";

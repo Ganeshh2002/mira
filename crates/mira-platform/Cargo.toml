@@ -10,6 +10,10 @@ authors.workspace = true
 publish.workspace = true
 
 [dependencies]
+# The system clipboard through each platform's own interface — `NSPasteboard`,
+# the Win32 clipboard, the X11 selection. Default features off: image support
+# would pull the `image` crate in to copy a forty-character commit id.
+arboard = { workspace = true }
 mira-core = { workspace = true }
 serde = { workspace = true }
 ts-rs = { workspace = true }
@@ -17,7 +21,14 @@ ts-rs = { workspace = true }
 # Native application launching (ADR-0013). Already in the tree via Tauri, at the
 # same versions, so this adds a boundary rather than a build. Every binding used
 # is a safe function, which is why the crate keeps `forbid(unsafe_code)`.
+[dev-dependencies]
+serde_json = { workspace = true }
+
 [target.'cfg(target_os = "macos")'.dependencies]
+# `block2` is how Keep Awake holds `NSProcessInfo`'s activity API open: the
+# block form of the call is the safe binding, so this crate keeps
+# `forbid(unsafe_code)` (see `inhibit.rs`).
+block2 = { workspace = true }
 objc2 = { workspace = true }
 objc2-app-kit = { workspace = true }
 objc2-foundation = { workspace = true }

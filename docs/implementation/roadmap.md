@@ -223,6 +223,41 @@ the view stops the work.
 
 **Risks.** Low, by construction. The risk lives in 5b.
 
+**Delivered.** History through the existing `GitProvider` — a second method on the
+trait, not a second Git implementation. A page is twenty-five commits and the page
+size belongs to `mira-git`, so there is no argument through which the interface could
+ask for a whole repository; the cursor is a `CommitId`, a validated hexadecimal
+newtype that cannot spell `HEAD`, a refspec, a path or a flag. Every state the
+question has is a state the surface renders: empty repository, unborn HEAD, detached
+HEAD, shallow clone, a history libgit2 cannot follow, and a directory that is not a
+repository. Commit detail is subject, body, both spellings of the id, author and
+email, parent count and changed-file count — no diff, which is 5b. Copying goes
+through a typed command that resolves the commit first, so the clipboard only ever
+receives something Mira read. History belongs to the **repository**: a package inside
+a monorepo shows the repository's history and nothing is duplicated per package.
+
+Measured, on this machine, in release: a first page costs **0.9 ms** on repositories
+of 100, 1 000 and 10 000 commits, and a later page 0.7–0.8 ms
+(`crates/mira-git/tests/performance.rs`, run with `--ignored`). Getting there needed
+one finding worth keeping: asking libgit2 for an explicitly time-sorted revwalk makes
+it preprocess the whole reachable history before yielding anything — 272 ms on ten
+thousand commits — while its default order is the same reverse-chronological sequence
+produced lazily.
+
+**Not built, and why.** Cancellation on navigation: a page is twenty-five commits and
+one bounded read, so leaving the view leaves at most one short walk in flight and
+starts nothing further. A cancellation mechanism would be machinery in front of work
+that is already over. Ref badges wait for 5b, which is where refs are read.
+
+**Keep Awake**, shipped alongside. Not a Git feature and not on the original list: a
+small system capability — off, 30 minutes, an hour, or until turned off — that holds
+the operating system's own power request. Native and public API only, no subprocess,
+and **no simulated keyboard or pointer input, ever**
+([ADR-0014](../adr/0014-keep-awake.md)). macOS is Full; Windows and Linux report
+`Unavailable` with a true reason until their native mechanisms are built, which is
+rule 4 rather than an omission. It brings the first one-shot timer in the product, and
+that timer lives in `mira-scheduler` beside the only other clock.
+
 ---
 
 ## Slice 5b — Git graph and diff *(M, 0.2)*

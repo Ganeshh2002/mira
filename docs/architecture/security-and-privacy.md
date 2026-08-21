@@ -179,6 +179,69 @@ stops being hypothetical. ADR-0013 is the full argument; these are the rules.
     state. Starting an editor is something that happened, not something a
     workspace becomes.
 
+### Reading history, and copying a commit id
+
+Slice 5a adds the first Git value the interface may **name**, and the first thing
+Mira puts on somebody's clipboard. Both are narrowed at the boundary rather than
+inside it.
+
+15. **A commit id is a type, not a string.** `CommitId` is four to forty
+    hexadecimal characters, validated as it deserialises. `HEAD`, `main@{2}`,
+    `refs/heads/main`, `--upload-pack=…`, `../../etc/passwd` and anything carrying
+    a metacharacter all fail on the wire, before any code sees them. Mira links
+    libgit2 and builds no command line at all ([ADR-0009](../adr/0009-git-via-libgit2.md));
+    this is the wall that would still hold if it did.
+
+16. **No command says how much to read.** History is paged, and the page size is
+    `mira-git`'s. There is no `limit`, `count`, `depth` or `all` parameter on any
+    command — a guard test fails the build if one appears — so a page costs a page
+    whatever the repository behind it, and there is no request that makes Mira walk
+    a whole history.
+
+17. **The clipboard receives only what Mira read.** `git.copy_commit` names a
+    **commit** and a spelling, never the text. The id is resolved in the repository
+    first and what is written is what came back, so there is no path by which a
+    page could use Mira to place a string of its own choosing on the clipboard of
+    the person running it. The platform layer additionally refuses anything longer
+    than 128 characters or containing a control character — a clipboard payload
+    that can carry a newline is one that can be pasted into a terminal as two
+    commands. One construction site exists and a guard test counts it.
+
+18. **The clipboard is written natively.** `NSPasteboard`, the Win32 clipboard, the
+    X11 selection. No `pbcopy`, no `clip.exe`, no `xclip` — rule 1 applies here as
+    everywhere.
+
+### Keeping a machine awake
+
+19. **Keep Awake holds an operating-system power request and nothing else.** Mira
+    does not post keyboard events, move the pointer, warp the cursor, or
+    manufacture activity of any kind. A guard test scans every source file for the
+    APIs that would (`CGEventPost`, `SendInput`, `XTestFakeKeyEvent`, `uinput`, and
+    the rest); a second asserts that no crate or npm package capable of it —
+    `enigo`, `rdev`, `robotjs`, `nut-js` — is anywhere in the dependency tree.
+
+    The distinction is the whole feature. Synthetic input defeats idle detection
+    everywhere at once — the screen lock, the session timer, an away status
+    somebody else is reading, and any tooling a team relies on — and is
+    indistinguishable at the operating-system level from what a malicious program
+    does. **An idle screen stays idle.** Keep Awake stops the machine falling
+    asleep; it is not a way around a policy and it hides nothing from anybody.
+
+20. **No program is run to change a power setting.** No `caffeinate`, no
+    `powercfg`, no `systemd-inhibit`, no `pmset`, no `xset`. A guard test forbids
+    all of them from appearing in any source file — including in a reason string,
+    because Mira neither runs them nor recommends running them.
+
+21. **The interface cannot ask for an arbitrary duration.** A span is one of four
+    words: off, thirty minutes, an hour, until turned off. There is no number
+    crossing the boundary, so there is nothing to bound.
+
+22. **Nothing survives the process.** A lock is an OS request owned by this process
+    plus a timestamp in memory. There is no table and no column — a guard test
+    fails the build if a migration ever mentions one — so quitting releases it, a
+    crash releases it, and a restart starts off.
+    See [ADR-0014](../adr/0014-keep-awake.md).
+
 ### Registering a project root
 
 Adding a project is the moment Mira is granted read access to a directory tree, so it is
@@ -309,3 +372,10 @@ after the people who wrote it move on.
 | CSP present and strict | Built-artifact inspection |
 | No analytics dependencies | Dependency-tree scan |
 | Frontend has no fs/shell capability | `capabilities/*.json` snapshot test |
+| No arbitrary Git argument | `CommitId` deserialisation refuses revisions, refspecs, paths, flags |
+| No full-history load | No `limit`/`count`/`depth`/`all` parameter on any command |
+| History is never polled | The scheduler's observers never read history |
+| Clipboard carries only a resolved commit | One `Clipboard::new` site; no command takes the text |
+| No synthetic keyboard or pointer input | Source scan + dependency-tree scan |
+| No power command executed | Source scan for `caffeinate`, `powercfg`, `systemd-inhibit`, … |
+| Keep Awake never persists | No migration mentions it; shutdown releases before checkpoint |

@@ -365,3 +365,83 @@ async fn shutdown_waits_for_work_already_in_flight() {
     tokio::time::sleep(Duration::from_millis(120)).await;
     assert_eq!(slow.runs(), settled);
 }
+
+// ── The one-shot ─────────────────────────────────────────────────────────────
+//
+// `Deadline` is the other half of "one crate owns every clock": something that
+// happens once, later, and usually never — a Keep Awake span reaching its end
+// (ADR-0014). These are the promises the feature above it depends on.
+
+#[tokio::test(start_paused = true)]
+async fn a_deadline_fires_once_when_its_time_comes() {
+    let fired = Arc::new(AtomicUsize::new(0));
+    let count = Arc::clone(&fired);
+
+    let _deadline = mira_scheduler::Deadline::in_time(Duration::from_secs(1800), move || {
+        count.fetch_add(1, Ordering::SeqCst);
+    });
+
+    tokio::time::sleep(Duration::from_secs(1799)).await;
+    assert_eq!(fired.load(Ordering::SeqCst), 0, "not before it is due");
+
+    tokio::time::sleep(Duration::from_secs(2)).await;
+    assert_eq!(fired.load(Ordering::SeqCst), 1);
+
+    // And never again. A one-shot is not a slow interval.
+    tokio::time::sleep(Duration::from_secs(7200)).await;
+    assert_eq!(fired.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test(start_paused = true)]
+async fn cancelling_a_deadline_stops_it_firing() {
+    // What turning Keep Awake off does, and what changing the span does before it
+    // arms the new one.
+    let fired = Arc::new(AtomicUsize::new(0));
+    let count = Arc::clone(&fired);
+
+    let deadline = mira_scheduler::Deadline::in_time(Duration::from_secs(1800), move || {
+        count.fetch_add(1, Ordering::SeqCst);
+    });
+    deadline.cancel();
+
+    tokio::time::sleep(Duration::from_secs(3600)).await;
+    assert_eq!(fired.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test(start_paused = true)]
+async fn dropping_a_deadline_cancels_it_too() {
+    // The property that makes the lifecycle safe by construction: whatever holds
+    // the deadline going away is enough, so there is no cancel call to forget on a
+    // path somebody has not thought about — quitting, for instance.
+    let fired = Arc::new(AtomicUsize::new(0));
+    let count = Arc::clone(&fired);
+
+    {
+        let _deadline = mira_scheduler::Deadline::in_time(Duration::from_secs(60), move || {
+            count.fetch_add(1, Ordering::SeqCst);
+        });
+    }
+
+    tokio::time::sleep(Duration::from_secs(600)).await;
+    assert_eq!(fired.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_deadline_is_not_gated_and_does_not_wait_for_a_scheduler() {
+    // Deliberate: a gate answers *should recurring work happen now*, and a lock
+    // that stopped counting because every window was hidden would outlive the time
+    // the person chose. There is no gate parameter, and this is what asserts it.
+    let fired = Arc::new(AtomicUsize::new(0));
+    let count = Arc::clone(&fired);
+
+    let _deadline = mira_scheduler::Deadline::in_time(Duration::from_secs(30), move || {
+        count.fetch_add(1, Ordering::SeqCst);
+    });
+
+    tokio::time::sleep(Duration::from_secs(31)).await;
+    assert_eq!(
+        fired.load(Ordering::SeqCst),
+        1,
+        "a deadline is nobody's observation"
+    );
+}

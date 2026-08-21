@@ -472,3 +472,64 @@ describe('switching projects', () => {
     await waitFor(() => expect(invoke).toHaveBeenCalledWith('projects_open', { projectId: 2 }));
   });
 });
+
+describe('the way into history', () => {
+  const ready: GitOverview = {
+    state: 'ready',
+    head: { kind: 'branch', name: 'main' },
+    clean: true,
+    changed: 0,
+    lastCommit: commit,
+    upstream: null,
+  };
+
+  it('offers Git history beside the Git panel', async () => {
+    show(ready);
+
+    expect(await screen.findByRole('button', { name: 'Git history' })).toBeInTheDocument();
+  });
+
+  it('does not offer history for a directory that is not a repository', async () => {
+    // A control that opens an empty history is worse than no control
+    // (`information-architecture.md` §8: a section with nothing to say is absent).
+    show({ state: 'notARepository' });
+
+    await screen.findByRole('heading', { name: 'Aviora' });
+    expect(screen.queryByRole('button', { name: 'Git history' })).not.toBeInTheDocument();
+  });
+
+  it('opens history, and comes back to the project', async () => {
+    invoke.mockImplementation((command: string) => {
+      if (command === 'workspaces_list') return Promise.resolve([]);
+      if (command === 'workspaces_applications') return Promise.resolve([]);
+      if (command === 'projects_list') return Promise.resolve([aviora]);
+      if (command === 'live_refresh' || command === 'live_snapshot')
+        return Promise.resolve(context(ready));
+      if (command === 'git_history') {
+        return Promise.resolve({
+          state: 'ready',
+          head: { kind: 'branch', name: 'main' },
+          commits: [commit],
+          next: null,
+          shallow: false,
+        });
+      }
+      return Promise.resolve(null);
+    });
+    renderApp(<App surface="main" />);
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Git history' }));
+    expect(await screen.findByRole('heading', { name: 'History' })).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Back to Aviora' }));
+    expect(await screen.findByRole('heading', { name: 'Aviora' })).toBeInTheDocument();
+  });
+
+  it('never reads history until somebody opens it', async () => {
+    // History is the on-view tier. Opening a project must not walk a repository.
+    show(ready);
+
+    await screen.findByRole('button', { name: 'Git history' });
+    expect(invoke.mock.calls.filter(([command]) => command === 'git_history')).toHaveLength(0);
+  });
+});

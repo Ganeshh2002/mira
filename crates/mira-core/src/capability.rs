@@ -60,6 +60,10 @@ pub enum Capability {
     BatteryInfo,
     /// Update Mira in place.
     AutoUpdate,
+    /// Put a short piece of text Mira itself produced on the system clipboard.
+    Clipboard,
+    /// Ask the operating system not to fall asleep while the user says so.
+    KeepAwake,
 }
 
 impl Capability {
@@ -67,7 +71,7 @@ impl Capability {
     ///
     /// Resolution walks this, so a capability added to the enum without a resolver
     /// arm fails the exhaustiveness check in `mira-platform` at compile time.
-    pub const ALL: [Self; 20] = [
+    pub const ALL: [Self; 22] = [
         Self::GlobalShortcut,
         Self::TrayIcon,
         Self::TrayClickEvents,
@@ -88,6 +92,8 @@ impl Capability {
         Self::AutoStart,
         Self::BatteryInfo,
         Self::AutoUpdate,
+        Self::Clipboard,
+        Self::KeepAwake,
     ];
 
     /// A short human label, used in Settings and in `Unsupported` errors.
@@ -114,6 +120,8 @@ impl Capability {
             Self::AutoStart => "Start at login",
             Self::BatteryInfo => "Battery",
             Self::AutoUpdate => "Automatic updates",
+            Self::Clipboard => "Copy to clipboard",
+            Self::KeepAwake => "Keep awake",
         }
     }
 }

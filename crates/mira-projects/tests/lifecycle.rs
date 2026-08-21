@@ -12,7 +12,7 @@ use std::path::{Path, PathBuf};
 use mira_core::MiraError;
 use mira_db::{Db, ProjectRepo};
 use mira_fs::PathMatching;
-use mira_git::{GitOverview, GitProvider, Head};
+use mira_git::{CommitId, CommitLookup, CommitPage, GitOverview, GitProvider, Head};
 use mira_projects::{ProjectService, Projects};
 use tempfile::TempDir;
 
@@ -52,6 +52,18 @@ impl GitProvider for FakeGit {
             last_commit: None,
             upstream: None,
         }
+    }
+
+    // Projects never reads history — it is a question about a repository, asked
+    // by `commands::git` and answered by the provider directly. These exist so
+    // the fake is a whole provider, and asserting they are never called is what
+    // `the_project_service_asks_git_only_where_a_project_is` does next door.
+    fn history(&self, _root: &Path, _from: Option<&CommitId>) -> CommitPage {
+        panic!("the project service must not read history");
+    }
+
+    fn commit(&self, _root: &Path, _id: &CommitId) -> CommitLookup {
+        panic!("the project service must not read a commit");
     }
 }
 

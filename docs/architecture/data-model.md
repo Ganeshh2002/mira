@@ -16,8 +16,16 @@ exists.
    requires an ADR overturning [ADR-0006](../adr/0006-no-account-no-cloud.md).
 2. **Store intent, not observation.** Projects, workspaces, shelf references, and
    preferences are things the user *stated*. Ports in use, processes, containers, system
-   metrics, and Git state are observed live and never written to disk. The one exception
-   is sessions, which are observed, optional, and deletable.
+   metrics, and Git state — including commit history — are observed live and never
+   written to disk. The one exception is sessions, which are observed, optional, and
+   deletable.
+
+   The rule extends to things Mira is *holding* as well as things it has seen. A Keep
+   Awake lock is an operating-system power request owned by the running process plus a
+   timestamp in memory: there is no table for it and no column, so quitting releases it
+   and restarting starts off. A guard test fails the build if a migration ever mentions
+   one ([ADR-0014](../adr/0014-keep-awake.md)).
+
 3. **References, never copies.** The Shelf stores paths. Mira never copies file content
    into its database.
 4. **No secrets.** No passwords, tokens, keys, passphrases, or environment values are

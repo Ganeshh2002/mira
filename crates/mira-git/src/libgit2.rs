@@ -8,8 +8,10 @@ use std::path::{Path, PathBuf};
 
 use git2::{BranchType, ErrorCode, Repository, Status, StatusOptions};
 
+use crate::history::{CommitId, CommitLookup, CommitPage};
 use crate::model::{Commit, GitOverview, Head, Upstream};
 use crate::provider::GitProvider;
+use crate::walk;
 
 /// How many hex characters an abbreviated commit id gets.
 const SHORT_SHA: usize = 7;
@@ -59,6 +61,50 @@ impl GitProvider for Libgit2 {
             },
         }
     }
+
+    fn history(&self, root: &Path, from: Option<&CommitId>) -> CommitPage {
+        match open(root) {
+            Ok(repo) => walk::history(&repo, from),
+            Err(Absent::NotARepository) => CommitPage::NotARepository,
+            Err(Absent::Unreadable(detail)) => CommitPage::Unreadable { detail },
+        }
+    }
+
+    fn commit(&self, root: &Path, id: &CommitId) -> CommitLookup {
+        match open(root) {
+            Ok(repo) => walk::commit(&repo, id),
+            Err(Absent::NotARepository) => CommitLookup::NotARepository,
+            Err(Absent::Unreadable(detail)) => CommitLookup::Unreadable { detail },
+        }
+    }
+}
+
+/// Why there is no repository to read.
+enum Absent {
+    /// Nothing is here, which is a neutral state rather than a failure.
+    NotARepository,
+    /// Something is here and libgit2 could not make sense of it.
+    Unreadable(String),
+}
+
+/// Open the repository containing `root`, telling the two absences apart.
+///
+/// libgit2 reports a `.git` it cannot parse the same way it reports no `.git` at
+/// all. Telling someone with a visible `.git` directory that this is "not a
+/// repository" would read as a bug in Mira, so the two cases are separated here
+/// once, for every reader in this file.
+fn open(root: &Path) -> Result<Repository, Absent> {
+    match Repository::open_ext(root, git2::RepositoryOpenFlags::empty(), &[] as &[&Path]) {
+        Ok(repo) => Ok(repo),
+        Err(error) if error.code() == ErrorCode::NotFound => {
+            if root.join(".git").exists() {
+                Err(Absent::Unreadable(sentence(&error)))
+            } else {
+                Err(Absent::NotARepository)
+            }
+        }
+        Err(error) => Err(Absent::Unreadable(sentence(&error))),
+    }
 }
 
 fn read(repo: &Repository) -> Result<GitOverview, git2::Error> {
@@ -76,7 +122,7 @@ fn read(repo: &Repository) -> Result<GitOverview, git2::Error> {
     })
 }
 
-fn head(repo: &Repository) -> Result<Head, git2::Error> {
+pub(crate) fn head(repo: &Repository) -> Result<Head, git2::Error> {
     match repo.head() {
         Ok(reference) => {
             if reference.is_branch() {
@@ -174,12 +220,12 @@ fn upstream(repo: &Repository) -> Option<Upstream> {
     })
 }
 
-fn short(sha: &str) -> String {
+pub(crate) fn short(sha: &str) -> String {
     sha.chars().take(SHORT_SHA).collect()
 }
 
 /// libgit2's message as one sentence a person can read.
-fn sentence(error: &git2::Error) -> String {
+pub(crate) fn sentence(error: &git2::Error) -> String {
     let message = error.message().trim();
     let mut chars = message.chars();
     let capitalised = match chars.next() {

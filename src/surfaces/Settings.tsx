@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 
 import { Chip } from '../components/Chip';
+import { KeepAwakePanel } from '../components/KeepAwake';
 import { Row } from '../components/Row';
 import { Section } from '../components/Section';
 import { StatusMark, statusName } from '../components/StatusMark';
@@ -69,6 +70,8 @@ export function Settings({ status }: { status: FoundationStatus }) {
           }
         />
       </Section>
+
+      <KeepAwakePanel />
 
       <Section label="Privacy">
         <Row

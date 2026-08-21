@@ -9,6 +9,7 @@ import type { Project } from '../bindings/Project';
 import { Button } from '../components/Button';
 import { Chip } from '../components/Chip';
 import { GitPanel } from '../components/GitPanel';
+import { History } from './History';
 import { LayoutPanel } from '../components/LayoutPanel';
 import { Row } from '../components/Row';
 import { MissingFolder } from '../components/MissingFolder';
@@ -37,6 +38,9 @@ export function ProjectDetail({
 }) {
   const client = useQueryClient();
   const [confirming, setConfirming] = useState(false);
+  // Which sub-view is showing. `information-architecture.md` §6 caps depth at
+  // three: rail → project → sub-view, and History is that third level.
+  const [viewing, setViewing] = useState<'project' | 'history'>('project');
 
   const live = useLive();
   const observation = observationOf(live.data, project.id);
@@ -78,6 +82,16 @@ export function ProjectDetail({
   });
 
   const failure = reveal.error ?? remove.error;
+
+  if (viewing === 'history') {
+    return (
+      <History
+        project={project}
+        layout={observation?.layout ?? null}
+        onBack={() => setViewing('project')}
+      />
+    );
+  }
 
   return (
     <div className="flex min-w-0 flex-col gap-[var(--section-gap)]">
@@ -145,6 +159,11 @@ export function ProjectDetail({
                 <Freshness observedAt={observation.observedAt} />
               </div>
               <GitPanel git={observation.git} labelled={false} />
+              {observation.git.state === 'ready' ? (
+                <div>
+                  <Button onClick={() => setViewing('history')}>Git history</Button>
+                </div>
+              ) : null}
             </>
           ) : null}
           {observation.error ? (

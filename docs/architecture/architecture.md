@@ -20,6 +20,7 @@ the map, the ADRs are the reasoning.
 | Monorepo layout | Manifest reading in its own crate, never stored | [0010](../adr/0010-monorepo-detection.md) |
 | Recurring work | One gated scheduler, blocking observers | [0011](../adr/0011-one-scheduler.md) |
 | Workspaces | Stated, not observed; opening is a view change | [0012](../adr/0012-workspace-semantics.md) |
+| Keep Awake | A native power request; never simulated input | [0014](../adr/0014-keep-awake.md) |
 
 Chosen because the constraints in
 [product-definition.md](../product/product-definition.md) — ≤ 30 MB installer, ≤ 150 MB
@@ -129,7 +130,7 @@ depend on* — and nothing outside it may reach past its interface.
 | **projects** | Project lifecycle, directory probing, type markers | `ProjectService` | core, db, fs |
 | **workspaces** | Workspace CRUD, application context | `WorkspaceService` | core, db |
 | **sessions** | Session start/pause/resume/close from lock+focus events | `SessionService` | core, db, platform |
-| **git** | Status, HEAD, branches, ahead/behind, commit walk, lane layout | `GitProvider` trait | core |
+| **git** | Status, HEAD, branches, ahead/behind, paged commit walk, commit detail; lane layout later | `GitProvider` trait | core |
 | **monorepo** | Workspace manifests → tools and package boundaries, read-only | `detect(selected, git_root)` | core |
 | **scheduler** | The only clock: intervals, gate, cancellation, isolation | `Observation`, `Gate`, `Scheduler` | core |
 | **ports** | Listening sockets → (port, pid, process) + attribution | `PortScanner` | core, processes |
@@ -141,7 +142,7 @@ depend on* — and nothing outside it may reach past its interface.
 | **docker** | Read-only container listing over the local socket | `DockerClient` | core |
 | **media** | Now-playing where the OS permits | `MediaProvider` | core, platform |
 | **system** | CPU/memory/disk/battery/network sampling | `SystemProvider` | core, platform |
-| **platform** | Every OS-specific call in the product, plus application discovery | Capability traits, `Applications` | core |
+| **platform** | Every OS-specific call in the product, plus application discovery, the clipboard, and the Keep Awake power request | Capability traits, `Applications`, `KeepAwakeHost`, `ClipboardHost` | core |
 | **automation** | *(Future)* | — | — |
 
 ### Boundary tests
@@ -180,7 +181,11 @@ workspaces.set_applications({ workspaceId, kinds }) → Workspace
 workspaces.applications()             → AppReport[]
 workspaces.openable()                 → AppReport[]
 workspaces.launch({ workspaceId, kind }) → Launched
-git.log({ projectId, limit, cursor }) → CommitPage
+git.history({ projectId, cursor })     → CommitPage
+git.commit({ projectId, commit })      → CommitLookup
+git.copy_commit({ projectId, commit, form }) → String
+keep_awake.state()                    → KeepAwakeState
+keep_awake.set({ span })              → KeepAwakeState
 ports.scan({ projectId? })            → PortEntry[]
 processes.terminate({ pid, force })   → TerminateOutcome
 peek.read({ path, maxBytes })         → PeekPayload
@@ -214,6 +219,22 @@ Rules:
    string that means anything on disk. Four guard tests keep it that way, each proven
    able to fail by injection.
 
+7. **No command says how much to read.** `git.history` takes a project and a
+   *cursor*; the page size is `mira-git`'s (`PAGE`), so there is no argument
+   through which the interface could ask Mira to walk an entire repository. A
+   guard test fails the build if a `limit`, `count`, `depth` or `all` parameter
+   appears on any command.
+
+8. **A commit id is a type, not a string.** `CommitId` is four to forty
+   hexadecimal characters, checked as it deserialises, so `HEAD`, a refspec, a
+   path and a flag all fail on the wire. `git.copy_commit` names a **commit**
+   rather than the text to copy: the id is resolved in the repository first, so
+   the clipboard only ever receives something Mira read.
+
+9. **Keep Awake is one word out of four.** `keep_awake.set` takes `off`,
+   `thirtyMinutes`, `oneHour` or `untilTurnedOff`. There is no number of minutes
+   to send and nothing downstream to bound ([ADR-0014](../adr/0014-keep-awake.md)).
+
 ### Events (backend tells)
 
 ```
@@ -223,6 +244,7 @@ mira://ports/{projectId}      port set changed
 mira://system                 system sample tick
 mira://session                lock / unlock / sleep / wake
 mira://capability             a capability's availability changed
+mira://keep-awake             a Keep Awake span reached its end on its own
 ```
 
 Events carry **change notifications, not large payloads** — the UI re-queries what it
@@ -257,6 +279,12 @@ than an implementation detail.
   It holds `(observation, interval, gate)` and nothing else; the observers in
   `src-tauri/src/observers.rs` say what is watched. A guard test fails the build if
   any timer appears outside it.
+- **One-shot timers live there too.** `Deadline` is the single wake-up: something
+  that happens once, later, and usually never — a Keep Awake span reaching its end.
+  It is deliberately **not** gated, because a lock has to end at the time the person
+  chose even if every window is hidden. A module that grew its own `sleep` would be
+  outside the gate, outside shutdown, and outside that guard test; this is where it
+  goes instead.
 - CPU- or syscall-heavy work (`git status`, socket enumeration, process walks) runs on
   `spawn_blocking`; async is used for I/O waits (Docker socket, D-Bus), not for CPU.
 - **One scheduler owns every recurring task.** No module starts its own timer. It holds
@@ -331,6 +359,16 @@ the security model in §7 (any XSS becomes full database access) and dissolves t
 repository boundary, since queries would spread through React. Mira instead uses
 `rusqlite` inside `mira-db` behind repository traits, exposed only as typed commands.
 See [ADR-0004](../adr/0004-sqlite-local-first.md).
+
+**History is paged, and the page belongs to `mira-git`.** A repository's log is the
+one read in the product whose cost is unbounded by nature, so the boundary is where
+it is bounded: there is no page-size parameter on any command, and the walk reads
+one commit more than a page to find the next cursor. Measuring settled the sorting
+too — asking libgit2 for an explicitly time-sorted revwalk makes it preprocess the
+entire reachable history, which turned a first page into 272 ms on a
+ten-thousand-commit repository; its default order is the same reverse-chronological
+sequence produced lazily, and costs 0.9 ms at every size
+(`crates/mira-git/tests/performance.rs`).
 
 **Git through libgit2 (`git2`), behind a trait.** Recorded in full as
 [ADR-0009](../adr/0009-git-via-libgit2.md), including the licence analysis: the crates

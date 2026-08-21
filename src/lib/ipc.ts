@@ -4,7 +4,13 @@ import type { FoundationStatus } from '../bindings/FoundationStatus';
 import type { MiraError } from '../bindings/MiraError';
 import type { AppKind } from '../bindings/AppKind';
 import type { AppReport } from '../bindings/AppReport';
+import type { CommitId } from '../bindings/CommitId';
+import type { CommitLookup } from '../bindings/CommitLookup';
+import type { CommitPage } from '../bindings/CommitPage';
+import type { KeepAwakeSpan } from '../bindings/KeepAwakeSpan';
+import type { KeepAwakeState } from '../bindings/KeepAwakeState';
 import type { Launched } from '../bindings/Launched';
+import type { ShaForm } from '../bindings/ShaForm';
 import type { LiveSnapshot } from '../bindings/LiveSnapshot';
 import type { Project } from '../bindings/Project';
 import type { Workspace } from '../bindings/Workspace';
@@ -125,6 +131,45 @@ export const commands = {
    * `file://` path (`security-and-privacy.md` §5 rule 5).
    */
   openService: (port: number): Promise<void> => call('live_open_service', { port }),
+
+  /**
+   * `git.history` — one page of a project's repository history.
+   *
+   * `cursor` is the `next` the previous page returned; `null` starts at HEAD.
+   * There is no page-size argument, deliberately: the page is Mira's
+   * (`mira_git::PAGE`), so the interface cannot ask for a whole repository and a
+   * guard test fails the build if a `limit` ever appears.
+   */
+  gitHistory: (projectId: number, cursor: CommitId | null): Promise<CommitPage> =>
+    call('git_history', { projectId, cursor }),
+
+  /** `git.commit` — one commit, in the detail its own view shows. Read-only. */
+  gitCommit: (projectId: number, commit: CommitId): Promise<CommitLookup> =>
+    call('git_commit', { projectId, commit }),
+
+  /**
+   * `git.copy_commit` — put a commit id on the clipboard.
+   *
+   * A commit and a spelling, never the text itself. Mira resolves the commit in
+   * the repository and copies what came back, so this cannot be used to place a
+   * string of the interface's choosing on somebody's clipboard. Returns what was
+   * copied, so the interface can confirm it without keeping its own idea of what
+   * the clipboard holds.
+   */
+  gitCopyCommit: (projectId: number, commit: CommitId, form: ShaForm): Promise<string> =>
+    call('git_copy_commit', { projectId, commit, form }),
+
+  /** `keep_awake.state` — whether the machine is being kept awake, and until when. */
+  keepAwakeState: (): Promise<KeepAwakeState> => call('keep_awake_state'),
+
+  /**
+   * `keep_awake.set` — hold one of four spans, or none of them.
+   *
+   * One word out of four. The interface cannot name a duration, so there is no
+   * number here for anything downstream to bound (ADR-0014).
+   */
+  keepAwakeSet: (span: KeepAwakeSpan): Promise<KeepAwakeState> =>
+    call('keep_awake_set', { span }),
 
   /** `workspaces.list` — one project's workspaces, most recently opened first. */
   workspacesList: (projectId: number): Promise<Workspace[]> =>

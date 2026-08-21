@@ -10,7 +10,7 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Added
 - Product definition, product scope, PRD, information architecture, and design system
 - Architecture, platform abstraction, data model, and security/privacy documents
-- ADRs 0001–0012 covering the foundational technical decisions
+- ADRs 0001–0014 covering the foundational technical decisions
 - Locked phase plan (0.1 through 0.6+) and the fourteen-slice implementation roadmap
 - Open-source project files (licence, contributing, code of conduct, security policy)
 - **Foundation (slice 0).** Cargo workspace with `mira-core`, `mira-platform`, `mira-db`,
@@ -54,6 +54,29 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   has, so a workspace that wants an editor says "Not installed" rather than forgetting it
   wanted one. Removing a project removes its workspaces, and the confirmation says so; a
   project whose folder went missing keeps everything.
+- **Git history (slice 5a).** What happened lately, as a linear list: subject, author,
+  how long ago, and the short id, one row per commit, twenty-five at a time with
+  **Load more**. Opening a commit shows its body, both spellings of its id, the author
+  and their email, the parent count and how many paths it changed — read-only, with no
+  diff and nothing that could check out, revert or reset. Copying an id goes through a
+  typed command that resolves the commit in the repository first, so the clipboard only
+  ever receives something Mira read. History belongs to the **repository**: a package
+  inside a monorepo shows the repository's history rather than a copy of its own.
+  Every state has an answer — an empty repository, a branch with no commits, a detached
+  HEAD, a shallow clone whose oldest row is where the copy stops, a history Git cannot
+  follow, and a directory that is not a repository at all. History is read when you open
+  it, refresh it, or ask for more; nothing polls it, and there is no way to ask Mira to
+  walk a whole repository — a first page costs the same on a hundred commits as on ten
+  thousand.
+- **Keep Awake.** A small utility in the tray: Off, 30 minutes, 1 hour, or until turned
+  off. It holds your operating system's own power request so the machine and the screen
+  do not fall asleep on their own. It **never** simulates typing or pointer movement,
+  never manufactures activity, and hides nothing from anything that reports it — an idle
+  screen stays idle. It runs no program to do it. It is off by default, stops when you
+  turn it off or when the time is up, is released when Mira quits, and never comes back
+  by itself after a restart. Full on macOS; on Windows and Linux the control says why it
+  is not available yet and points at the platform's own power settings
+  ([ADR-0014](docs/adr/0014-keep-awake.md)).
 - macOS and Windows ask the platform for its standard window material — Liquid Glass on
   macOS 26, Mica on Windows 11 — rather than drawing an imitation. Linux stays opaque.
 

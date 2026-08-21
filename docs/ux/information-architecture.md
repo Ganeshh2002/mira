@@ -118,7 +118,7 @@ future feature needs one, it is the wrong feature.
 | Tier | What | When it updates |
 |---|---|---|
 | **Always-fresh** | Project name, branch, dirty dot, port count | Watcher + 5 s poll while any window is open |
-| **On-view** | Git file list, graph, processes, containers, system | While that view is on screen |
+| **On-view** | Git history, file list, graph, processes, containers, system | While that view is on screen |
 | **On-demand** | Peek content, fuzzy search, SSH reachability | Explicit user action |
 
 Nothing is computed while no window is visible, except tray-menu status refreshed on
@@ -269,6 +269,29 @@ Tabs: **Changes** (grouped path list) and **History** (commit list + commit deta
 absence of write actions is deliberate and visible — there are no disabled commit
 buttons hinting at a future.
 
+**As built (slice 5a).** History is reached from the project's Git panel and is the
+third level of the navigation model — rail → project → History. It is a linear list:
+one row per commit, carrying the subject, the author, how long ago, and the
+abbreviated id, each marked with an icon so the eye can find one among three short
+strings. A row reads correctly with the icons stripped out; none of them is load-
+bearing. Clicking a row opens that commit's detail *within* the surface rather than
+descending a fourth level, and `Esc` closes it, then leaves.
+
+Pagination is **Load more**, twenty-five commits at a time, and the button is absent
+once there is nothing more. There is no page-size control, because there is no
+page-size argument (`architecture.md` §5 rule 7).
+
+Every state has a shape: an empty repository says "No commits yet"; a directory
+without Git says so; an unreadable one shows its reason; a shallow clone says the
+oldest row is where the copy stops rather than where the history does; a detached
+HEAD names the commit it is on. A merge is a row like any other, and says on its
+detail that it has two parents and that its changed-file count depends on which
+parent you compare against.
+
+Copy is the one icon-only action, with a name and a tooltip: the short id from a
+row, the full id from the detail. The **Changes** tab is still to come — Slice 5a
+built History only.
+
 ### Ports view (machine-scoped)
 All listening ports, grouped: *this project*, *other projects*, *unattributed*. Same row
 actions as the project section. This is the one place Mira shows machine-wide data
@@ -294,6 +317,18 @@ the editor, `⌘C`/`Ctrl+C` copies the path. It never becomes a window and never
 ### System & Media
 System is a strip, not a page: compact window footer plus a Settings detail panel.
 Media is a single line, only when enabled and available.
+
+### Keep Awake
+A utility, sized like one. It lives in the **tray menu** — a machine-wide switch
+belongs where machine-wide switches go, and the tray is menu-first on every platform
+(§4.5) — as a submenu of four check items: Off, 30 minutes, 1 hour, Until turned off.
+Settings carries the same four choices plus what the state means and, where the
+platform cannot do it, the reason.
+
+It never becomes a page and never grows a dashboard. On a platform where the
+capability is `Unavailable` the submenu is one disabled line carrying the reason,
+which is §8's Unavailable rule rather than a special case
+([ADR-0014](../adr/0014-keep-awake.md)).
 
 ### Automations *(Future)*
 Reserved location: a per-project section below Apps & Commands. Nothing is built, and
