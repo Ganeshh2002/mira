@@ -9,9 +9,13 @@
 //! Reads only. `git2::Revwalk` and `git2::Commit` cannot write, and no other API
 //! is touched (ADR-0009).
 
+use std::collections::{HashMap, HashSet};
+
 use git2::{ErrorCode, Oid, Repository, Sort};
 
+use crate::graph::{CommitGraph, GitRef, GraphRow, RefKind, RowKind, MAX_REFS};
 use crate::history::{CommitDetail, CommitId, CommitLookup, CommitPage, PAGE};
+use crate::lanes::{self, Node};
 use crate::libgit2::{head, sentence, short};
 use crate::model::Commit;
 
@@ -202,4 +206,187 @@ fn changed_files(repo: &Repository, commit: &git2::Commit<'_>) -> Option<u32> {
         .ok()?;
 
     u32::try_from(diff.deltas().len()).ok()
+}
+
+// ── The graph ────────────────────────────────────────────────────────────────
+
+/// One page of history, with the shape of it.
+///
+/// Reads **the same page** as [`history`], through the same bounded walk, and
+/// adds two things: each commit's parent ids, which are already in the commit
+/// object and cost nothing extra, and the references that point into the window.
+/// There is no second traversal and no second history — the graph is the history,
+/// with the relationships kept.
+pub fn graph(repo: &Repository, from: Option<&CommitId>) -> CommitGraph {
+    let head = match head(repo) {
+        Ok(head) => head,
+        Err(error) => {
+            return CommitGraph::Unreadable {
+                detail: sentence(&error),
+            }
+        }
+    };
+
+    let (commits, next) = match page(repo, from) {
+        Ok(page) => page,
+        Err(error) => {
+            return CommitGraph::Unreadable {
+                detail: sentence(&error),
+            }
+        }
+    };
+
+    // Parent ids come from the commit objects the walk already loaded. A commit
+    // whose parents cannot be read is kept with none rather than dropped: a row
+    // missing a line is better than a history missing a commit.
+    let nodes: Vec<Node> = commits
+        .iter()
+        .map(|commit| Node {
+            id: parse(&commit.sha),
+            parents: parents_of(repo, &commit.sha),
+        })
+        .collect();
+
+    let laid = lanes::layout(&nodes);
+    let window: HashSet<String> = commits.iter().map(|commit| commit.sha.clone()).collect();
+    let (mut labels, refs_truncated) = refs_in(repo, &window);
+
+    let rows = commits
+        .into_iter()
+        .zip(nodes)
+        .zip(laid.rows)
+        .map(|((commit, node), placement)| GraphRow {
+            kind: RowKind::of(node.parents.len()),
+            refs: labels.remove(&commit.sha).unwrap_or_default(),
+            parents: node.parents,
+            lane: placement.lane,
+            edges: placement.edges,
+            continuing: placement.continuing,
+            commit,
+        })
+        .collect();
+
+    CommitGraph::Ready {
+        head,
+        rows,
+        next,
+        shallow: repo.is_shallow(),
+        lanes: laid.lanes,
+        collapsed: laid.collapsed,
+        refs_truncated,
+    }
+}
+
+/// A commit's parent ids, in Git's order.
+///
+/// An id that will not parse is dropped rather than propagated: every id libgit2
+/// hands back is forty hex characters, so this cannot happen — and if it somehow
+/// did, one missing line is a better answer than a failed page.
+fn parents_of(repo: &Repository, sha: &str) -> Vec<CommitId> {
+    let Ok(oid) = Oid::from_str(sha) else {
+        return Vec::new();
+    };
+    let Ok(commit) = repo.find_commit(oid) else {
+        return Vec::new();
+    };
+
+    commit
+        .parent_ids()
+        .filter_map(|parent| CommitId::try_from(parent.to_string()).ok())
+        .collect()
+}
+
+/// A forty-character id libgit2 produced, as a [`CommitId`].
+///
+/// Infallible in practice for the same reason as above; a malformed id would
+/// simply fail to match anything and its row would be laid out as a tip.
+fn parse(sha: &str) -> CommitId {
+    CommitId::try_from(sha.to_owned()).unwrap_or_else(|_| {
+        CommitId::try_from("0".repeat(40)).expect("forty zeroes is a well-formed id")
+    })
+}
+
+/// The branch and tag labels that point at commits in `window`.
+///
+/// Bounded by [`MAX_REFS`], and the flag says when that ceiling was reached. A
+/// reference scan is bounded by how many refs a repository has rather than by how
+/// long its history is — but a repository with tens of thousands of tags exists,
+/// and "not unbounded by history" is not the same as "small".
+///
+/// Reads references. Never writes one: there is no branch created, moved, or
+/// deleted anywhere in this crate, and a guard test fails the build if a libgit2
+/// write API appears in its sources.
+fn refs_in(repo: &Repository, window: &HashSet<String>) -> (HashMap<String, Vec<GitRef>>, bool) {
+    let mut labels: HashMap<String, Vec<GitRef>> = HashMap::new();
+
+    let Ok(references) = repo.references() else {
+        // A repository whose refs cannot be listed still has a readable history,
+        // and an unlabelled graph beats no graph.
+        return (labels, false);
+    };
+
+    let mut truncated = false;
+
+    for (seen, reference) in references.flatten().enumerate() {
+        if seen >= MAX_REFS {
+            // More references exist than Mira looks at. Said out loud rather
+            // than swallowed: a row that has a label may be shown without one.
+            truncated = true;
+            break;
+        }
+
+        let kind = if reference.is_tag() {
+            RefKind::Tag
+        } else if reference.is_remote() {
+            RefKind::Remote
+        } else if reference.is_branch() {
+            RefKind::Branch
+        } else {
+            // HEAD, notes, stash, and anything else a repository keeps. Only
+            // branches, remotes and tags label a row.
+            continue;
+        };
+
+        // Peeled, so an annotated tag lands on the commit it names rather than on
+        // the tag object, which is in no history.
+        let Ok(commit) = reference.peel_to_commit() else {
+            continue;
+        };
+        let sha = commit.id().to_string();
+        if !window.contains(&sha) {
+            continue;
+        }
+
+        let Ok(name) = reference.shorthand() else {
+            continue;
+        };
+
+        labels.entry(sha).or_default().push(GitRef {
+            kind,
+            name: name.to_owned(),
+        });
+    }
+
+    // Where HEAD is, which is the marker that makes a detached HEAD visible.
+    if let Some(sha) = repo
+        .head()
+        .ok()
+        .and_then(|head| head.target())
+        .map(|oid| oid.to_string())
+    {
+        if window.contains(&sha) {
+            labels.entry(sha).or_default().push(GitRef {
+                kind: RefKind::Head,
+                name: "HEAD".to_owned(),
+            });
+        }
+    }
+
+    // Sorted so two reads of one repository label a row in the same order.
+    for row in labels.values_mut() {
+        row.sort();
+        row.dedup();
+    }
+
+    (labels, truncated)
 }

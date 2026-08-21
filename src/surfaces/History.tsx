@@ -1,12 +1,17 @@
 import { useInfiniteQuery, useMutation, useQuery } from '@tanstack/react-query';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import type { Commit } from '../bindings/Commit';
+import type { CommitGraph } from '../bindings/CommitGraph';
 import type { CommitId } from '../bindings/CommitId';
+import type { CommitPage } from '../bindings/CommitPage';
+import type { GitRef } from '../bindings/GitRef';
+import type { GraphRow } from '../bindings/GraphRow';
 import type { Head } from '../bindings/Head';
 import type { Project } from '../bindings/Project';
 import type { RepositoryLayout } from '../bindings/RepositoryLayout';
 import { Button } from '../components/Button';
+import { LaneGutter } from '../components/LaneGutter';
 import { Icon } from '../components/Icon';
 import { Row } from '../components/Row';
 import { Section } from '../components/Section';
@@ -14,20 +19,22 @@ import { commands, describeUnknown } from '../lib/ipc';
 import { absoluteTime, relativeTime } from '../lib/time';
 
 /**
- * What happened lately, as a linear list.
+ * What happened lately, as a list — with the shape of it beside the list.
  *
- * **Read-only, and visibly so.** There is no checkout, no revert, no cherry-pick,
- * and no disabled control hinting at one — the absence of write actions is
- * deliberate and is part of the design rather than a gap in it
- * (`information-architecture.md` §5, Git view).
+ * **Read-only, and visibly so.** There is no checkout, revert, cherry-pick, merge
+ * or reset here, and no disabled control hinting at one. The graph is a picture of
+ * a repository, not a way to change it
+ * ([ADR-0015](../../docs/adr/0015-graph-lanes.md)).
  *
  * **Nothing here polls.** History is the on-view tier: it is read when this
  * surface opens, when Refresh is pressed, and when somebody asks for more. There
- * is no interval and no scheduler observer behind it, and a guard test fails the
+ * is no interval behind it and no scheduler observer, and a guard test fails the
  * build if either appears (`information-architecture.md` §3).
  *
- * **No lanes.** A merge is a row with two parents, said in words on its detail.
- * The graph is 5b.
+ * **Two modes, two costs.** Graph reads parents, lanes and reference labels; List
+ * reads the commits alone. The toggle is a real choice rather than a cosmetic one
+ * — and it is the deliberate end of the same behaviour that hides the gutter on a
+ * narrow window.
  */
 export function History({
   project,
@@ -39,6 +46,7 @@ export function History({
   onBack: () => void;
 }) {
   const [opened, setOpened] = useState<CommitId | null>(null);
+  const [drawing, setDrawing] = useState(true);
 
   // `Esc` goes back one level, everywhere (`information-architecture.md` §6
   // rule 2): out of a commit if one is open, out of History otherwise.
@@ -53,8 +61,13 @@ export function History({
   }, [opened, onBack]);
 
   const history = useInfiniteQuery({
-    queryKey: ['git', 'history', project.id],
-    queryFn: ({ pageParam }) => commands.gitHistory(project.id, pageParam),
+    queryKey: ['git', drawing ? 'graph' : 'history', project.id],
+    // Annotated, because the two commands return two shapes of the same page and
+    // the union is the thing this surface renders.
+    queryFn: ({ pageParam }): Promise<CommitPage | CommitGraph> =>
+      drawing
+        ? commands.gitGraph(project.id, pageParam)
+        : commands.gitHistory(project.id, pageParam),
     initialPageParam: null as CommitId | null,
     // `null` ends the paging. A page that could not be read has no next either,
     // so a failure stops the list rather than looping on it.
@@ -63,9 +76,11 @@ export function History({
 
   const pages = history.data?.pages ?? [];
   const first = pages[0];
-  const commits: Commit[] = pages.flatMap((page) =>
-    page.state === 'ready' ? page.commits : [],
+  const rows: GraphRow[] = pages.flatMap((page) =>
+    page.state === 'ready' ? asRows(page) : [],
   );
+  const shape = first?.state === 'ready' ? first : null;
+  const lanes = shape && 'lanes' in shape ? shape.lanes : 0;
 
   return (
     <div className="flex min-w-0 flex-col gap-[var(--section-gap)]">
@@ -79,7 +94,22 @@ export function History({
           <Icon name="back" />
           {project.name}
         </button>
-        <h1 className="t-value-lg m-0 text-ink-0">History</h1>
+        <div className="flex flex-wrap items-baseline justify-between gap-[var(--space-3)]">
+          <h1 className="t-value-lg m-0 text-ink-0">History</h1>
+          <button
+            type="button"
+            onClick={() => setDrawing(!drawing)}
+            aria-pressed={drawing}
+            className={`t-ui flex cursor-default items-center gap-[var(--space-2)] rounded-sm border px-[var(--space-3)] py-[var(--space-1)] transition-colors duration-[var(--motion-instant)] ${
+              drawing
+                ? 'border-ember-dim bg-ember-wash text-ember-bright'
+                : 'border-line bg-ground-2 text-ink-1 hover:bg-ground-3'
+            }`}
+          >
+            <Icon name="graph" />
+            Graph
+          </button>
+        </div>
         <RepositoryLine
           project={project}
           layout={layout}
@@ -109,7 +139,7 @@ export function History({
             detail={first.detail}
           />
         </Section>
-      ) : commits.length === 0 ? (
+      ) : rows.length === 0 ? (
         <Section label="">
           <Row
             mark={<span className="text-ink-3">○</span>}
@@ -119,22 +149,27 @@ export function History({
         </Section>
       ) : (
         <>
-          <ul
-            aria-label="Commits"
-            className="m-0 flex list-none flex-col overflow-hidden rounded-md border border-line bg-ground-1 p-0"
-          >
-            {commits.map((commit) => (
-              <CommitRow
-                key={commit.sha}
-                project={project}
-                commit={commit}
-                opened={opened === commit.sha}
-                onOpen={() => setOpened(opened === commit.sha ? null : commit.sha)}
-              />
-            ))}
-          </ul>
+          <CommitList
+            project={project}
+            rows={rows}
+            lanes={drawing ? lanes : 0}
+            opened={opened}
+            onOpen={(sha) => setOpened(opened === sha ? null : sha)}
+          />
 
-          {first?.state === 'ready' && first.shallow ? (
+          {shape && 'collapsed' in shape && shape.collapsed ? (
+            <p className="t-ui m-0 text-ink-2">
+              More branches meet here than the graph draws, so everything past the eighth lane
+              shares the last line. Every commit is still listed.
+            </p>
+          ) : null}
+          {shape && 'refsTruncated' in shape && shape.refsTruncated ? (
+            <p className="t-ui m-0 text-ink-2">
+              This repository has more references than Mira reads at once, so a branch or tag
+              label may be missing from a row that has one.
+            </p>
+          ) : null}
+          {shape?.shallow ? (
             <p className="t-ui m-0 text-ink-2">
               This is a shallow copy, so the oldest commit here is where the clone stops — not
               where the history does.
@@ -158,11 +193,227 @@ export function History({
       </div>
 
       <p className="t-ui m-0 text-ink-1">
-        Mira reads history and never changes it. There is nothing here that checks out, resets
-        or rewrites a commit.
+        Mira draws history and never changes it. There is nothing here that checks out, merges,
+        rebases, resets or rewrites a commit.
       </p>
     </div>
   );
+}
+
+/**
+ * A page from either command, as one row shape.
+ *
+ * The List mode's page has no lanes, parents or labels — so it becomes a row with
+ * none, and one list renders both. That is what keeps the two modes a difference
+ * in *cost* rather than a second surface to maintain.
+ */
+function asRows(page: { commits?: Commit[]; rows?: GraphRow[] }): GraphRow[] {
+  if (page.rows) return page.rows;
+
+  return (page.commits ?? []).map((commit) => ({
+    commit,
+    parents: [],
+    lane: 0,
+    kind: 'normal' as const,
+    refs: [],
+    edges: [],
+    continuing: [],
+  }));
+}
+
+/**
+ * The commit list.
+ *
+ * `↑` and `↓` move between rows, which is what `information-architecture.md` §7
+ * asks of every list in the product. Tab still reaches every row; the arrow keys
+ * are the faster path, not the only one.
+ */
+function CommitList({
+  project,
+  rows,
+  lanes,
+  opened,
+  onOpen,
+}: {
+  project: Project;
+  rows: GraphRow[];
+  lanes: number;
+  opened: CommitId | null;
+  onOpen: (sha: CommitId) => void;
+}) {
+  const list = useRef<HTMLUListElement>(null);
+
+  function onKeyDown(event: React.KeyboardEvent<HTMLUListElement>) {
+    if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+
+    const buttons = Array.from(
+      list.current?.querySelectorAll<HTMLButtonElement>('button[data-commit]') ?? [],
+    );
+    const at = buttons.indexOf(document.activeElement as HTMLButtonElement);
+    if (at === -1) return;
+
+    const moving = buttons[event.key === 'ArrowDown' ? at + 1 : at - 1];
+    if (!moving) return;
+
+    event.preventDefault();
+    moving.focus();
+  }
+
+  return (
+    <ul
+      ref={list}
+      aria-label="Commits"
+      onKeyDown={onKeyDown}
+      className="m-0 flex list-none flex-col overflow-hidden rounded-md border border-line bg-ground-1 p-0"
+    >
+      {rows.map((row, index) => (
+        <CommitRow
+          key={row.commit.sha}
+          project={project}
+          row={row}
+          // The lanes the row above left open, so its lines meet this one's.
+          above={index === 0 ? [] : (rows[index - 1]?.continuing ?? [])}
+          lanes={lanes}
+          opened={opened === row.commit.sha}
+          onOpen={() => onOpen(row.commit.sha)}
+        />
+      ))}
+    </ul>
+  );
+}
+
+/**
+ * One commit.
+ *
+ * Scannable without hover and without the gutter: the subject on its own line,
+ * then what kind of commit it is, who wrote it, when, and the abbreviated id. The
+ * graph adds a picture of the same relationships; it never carries one on its own,
+ * which is why hiding it on a narrow window loses width and nothing else.
+ */
+function CommitRow({
+  project,
+  row,
+  above,
+  lanes,
+  opened,
+  onOpen,
+}: {
+  project: Project;
+  row: GraphRow;
+  above: number[];
+  lanes: number;
+  opened: boolean;
+  onOpen: () => void;
+}) {
+  const { commit } = row;
+
+  return (
+    <li
+      className={`flex items-stretch gap-[var(--space-3)] border-b border-line pr-[var(--space-3)] last:border-b-0 ${
+        opened ? 'bg-ember-wash' : ''
+      }`}
+    >
+      {/*
+        The gutter is hidden below the `sm` breakpoint rather than reflowed. A
+        narrow window keeps the list, which carries every fact the picture does —
+        degrading by leaving out the decoration, never the content.
+      */}
+      {lanes > 0 ? (
+        <span className="hidden shrink-0 items-center pl-[var(--space-2)] sm:flex">
+          <LaneGutter row={row} above={above} lanes={lanes} />
+        </span>
+      ) : (
+        <span className="flex shrink-0 items-center pl-[var(--space-3)] text-ink-2">
+          <Icon name={row.kind === 'merge' ? 'merge' : 'commit'} />
+        </span>
+      )}
+
+      <button
+        type="button"
+        data-commit={commit.sha}
+        onClick={onOpen}
+        aria-expanded={opened}
+        className="flex min-h-[var(--graph-row)] min-w-0 flex-1 cursor-default flex-col items-start justify-center gap-[var(--space-1)] py-[var(--space-2)] text-left"
+      >
+        <span className="flex w-full min-w-0 items-center gap-[var(--space-2)]">
+          <span className="t-body min-w-0 truncate text-ink-0" title={commit.subject}>
+            {commit.subject || '(no message)'}
+          </span>
+          <RefLabels refs={row.refs} />
+        </span>
+        <span className="t-ui flex flex-wrap items-center gap-[var(--space-3)] text-ink-2">
+          {/*
+            The word, not only the shape. A merge stays distinguishable with the
+            gutter hidden, in a screen reader, and on a monochrome display
+            (`design-system.md` §5).
+          */}
+          {row.kind !== 'normal' ? (
+            <span className="flex items-center gap-[var(--space-1)] text-ink-1">
+              <Icon name={row.kind === 'merge' ? 'merge' : 'commit'} />
+              {row.kind === 'merge' ? `Merge of ${row.parents.length} parents` : 'First commit'}
+            </span>
+          ) : null}
+          <span className="flex items-center gap-[var(--space-1)]">
+            <Icon name="person" />
+            {commit.author}
+          </span>
+          <span
+            className="flex items-center gap-[var(--space-1)]"
+            title={absoluteTime(commit.committedAt)}
+          >
+            <Icon name="clock" />
+            {relativeTime(commit.committedAt)}
+          </span>
+          <span className="t-micro">{commit.shortSha}</span>
+        </span>
+      </button>
+
+      <span className="flex shrink-0 items-center">
+        <CopySha project={project} commit={commit.sha} form="short" label="Copy short SHA" />
+      </span>
+    </li>
+  );
+}
+
+/**
+ * Branch and tag labels on a row.
+ *
+ * Each says what it is in its title, because `main` and `v1.0` look alike and mean
+ * different things — and because a chip that only differed by colour would be no
+ * label at all (`design-system.md` §5).
+ */
+function RefLabels({ refs }: { refs: GitRef[] }) {
+  if (refs.length === 0) return null;
+
+  return (
+    <span className="flex min-w-0 shrink flex-wrap items-center gap-[var(--space-1)]">
+      {refs.map((found) => (
+        <span
+          key={`${found.kind}-${found.name}`}
+          title={`${describeRef(found.kind)}: ${found.name}`}
+          className={`t-micro flex max-w-[14ch] items-center gap-[var(--space-1)] rounded-sm px-[var(--space-1)] ${
+            found.kind === 'head' ? 'bg-ember-wash text-ember-bright' : 'bg-ground-3 text-ink-1'
+          }`}
+        >
+          <Icon name={found.kind === 'tag' ? 'tag' : 'branch'} />
+          <span className="truncate">{found.name}</span>
+        </span>
+      ))}
+    </span>
+  );
+}
+
+function describeRef(kind: GitRef['kind']): string {
+  switch (kind) {
+    case 'head':
+      return 'Where HEAD is';
+    case 'branch':
+      return 'Branch';
+    case 'remote':
+      return 'Remote branch, as of your last fetch';
+    case 'tag':
+      return 'Tag';
+  }
 }
 
 /**
@@ -217,65 +468,6 @@ function headLabel(head: Head): string {
 }
 
 /**
- * One commit.
- *
- * Scannable without hover: the subject on its own line, then author, time and
- * abbreviated id. The icons mark what each value *is* so the eye can find the
- * author among three short strings; strip them out and every row still reads
- * (`design-system.md` §8, Icons).
- */
-function CommitRow({
-  project,
-  commit,
-  opened,
-  onOpen,
-}: {
-  project: Project;
-  commit: Commit;
-  opened: boolean;
-  onOpen: () => void;
-}) {
-  return (
-    <li
-      className={`flex items-start gap-[var(--space-3)] border-b border-line px-[var(--space-3)] py-[var(--space-2)] last:border-b-0 ${
-        opened ? 'bg-ember-wash' : ''
-      }`}
-    >
-      <span className={`mt-[3px] ${opened ? 'text-ember-bright' : 'text-ink-2'}`}>
-        <Icon name="commit" />
-      </span>
-
-      <button
-        type="button"
-        onClick={onOpen}
-        aria-expanded={opened}
-        className="flex min-w-0 flex-1 cursor-default flex-col items-start gap-[var(--space-1)] text-left"
-      >
-        <span className="t-body w-full truncate text-ink-0" title={commit.subject}>
-          {commit.subject || '(no message)'}
-        </span>
-        <span className="t-ui flex flex-wrap items-center gap-[var(--space-3)] text-ink-2">
-          <span className="flex items-center gap-[var(--space-1)]">
-            <Icon name="person" />
-            {commit.author}
-          </span>
-          <span
-            className="flex items-center gap-[var(--space-1)]"
-            title={absoluteTime(commit.committedAt)}
-          >
-            <Icon name="clock" />
-            {relativeTime(commit.committedAt)}
-          </span>
-          <span className="t-micro">{commit.shortSha}</span>
-        </span>
-      </button>
-
-      <CopySha project={project} commit={commit.sha} form="short" label="Copy short SHA" />
-    </li>
-  );
-}
-
-/**
  * Copy a commit id.
  *
  * The interface names the **commit**, not the text. Mira resolves it in the
@@ -326,10 +518,10 @@ function CopySha({
 /**
  * One commit, read-only.
  *
- * Subject, body, both spellings of the id, who wrote it and when, how many
- * parents it has, and how many paths it changed. **No diff** — what a commit
- * changed is 5b's read-only diff view, and half of one here would be the
- * speculative structure `roadmap.md` rule 8 exists to prevent.
+ * Subject, body, both spellings of the id, who wrote it and when, how many parents
+ * it has, and how many paths it changed. **No diff** — what a commit changed is
+ * still the next slice, and half of one here would be the speculative structure
+ * `roadmap.md` rule 8 exists to prevent.
  */
 function CommitDetailPanel({
   project,
@@ -429,9 +621,12 @@ function CommitDetailPanel({
           }
         />
         <Row
+          mark={it.parents > 1 ? <Icon name="merge" /> : undefined}
           label="Parents"
           value={parentage(it.parents)}
-          detail={it.parents > 1 ? 'A merge. In 0.1 it is a row like any other.' : undefined}
+          detail={
+            it.parents > 1 ? 'A merge. In the graph it is a row with two lines.' : undefined
+          }
         />
         <Row
           label="Changed files"

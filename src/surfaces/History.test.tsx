@@ -2,8 +2,10 @@ import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import type { CommitGraph } from '../bindings/CommitGraph';
 import type { CommitLookup } from '../bindings/CommitLookup';
 import type { CommitPage } from '../bindings/CommitPage';
+import type { GraphRow } from '../bindings/GraphRow';
 import type { Project } from '../bindings/Project';
 import type { RepositoryLayout } from '../bindings/RepositoryLayout';
 import { History } from './History';
@@ -55,14 +57,61 @@ function page(overrides: Partial<Extract<CommitPage, { state: 'ready' }>> = {}):
   };
 }
 
-/** Serve one or more history pages, in order, plus whatever else is asked. */
-function backend(pages: CommitPage[], extras: Record<string, unknown> = {}) {
+/**
+ * The graph page a history page corresponds to.
+ *
+ * The two commands answer the same question with different detail, so the
+ * fixtures below describe the history once and this derives the graph — which is
+ * also the property the surface relies on: switching modes must not change which
+ * commits are shown.
+ */
+function asGraph(page: CommitPage, shape: Partial<GraphRow>[] = []): CommitGraph {
+  if (page.state !== 'ready') return page;
+
+  return {
+    state: 'ready',
+    head: page.head,
+    next: page.next,
+    shallow: page.shallow,
+    lanes: 1,
+    collapsed: false,
+    refsTruncated: false,
+    rows: page.commits.map((commit, index) => ({
+      commit,
+      parents: [],
+      lane: 0,
+      kind: 'normal',
+      refs: [],
+      edges: [],
+      continuing: [],
+      ...shape[index],
+    })),
+  };
+}
+
+/**
+ * Serve one or more pages, in order, to whichever command asks.
+ *
+ * Both `git_history` and `git_graph` are answered from the same fixtures, so a
+ * test says what the history is and does not have to care which mode the surface
+ * happens to be in.
+ */
+function backend(
+  pages: CommitPage[],
+  extras: Record<string, unknown> = {},
+  shape: Partial<GraphRow>[] = [],
+  graphOverride?: Partial<Extract<CommitGraph, { state: 'ready' }>>,
+) {
   let served = 0;
   invoke.mockImplementation((command: string, args?: Record<string, unknown>) => {
-    if (command === 'git_history') {
-      const next = pages[Math.min(served, pages.length - 1)];
+    if (command === 'git_history' || command === 'git_graph') {
+      const next = pages[Math.min(served, pages.length - 1)]!;
       served += 1;
-      return Promise.resolve(next);
+      if (command === 'git_history') return Promise.resolve(next);
+      const graph = asGraph(next, shape);
+      return Promise.resolve(
+        graph.state === 'ready' && graphOverride ? { ...graph, ...graphOverride } : graph,
+      );
     }
     if (command in extras) return Promise.resolve(extras[command]);
     if (command === 'git_copy_commit') {
@@ -145,7 +194,9 @@ describe('paging', () => {
 
     await screen.findByRole('list', { name: 'Commits' });
 
-    const asked = invoke.mock.calls.find(([command]) => command === 'git_history');
+    const asked = invoke.mock.calls.find(
+      ([command]) => command === 'git_graph' || command === 'git_history',
+    );
     const sent = (asked?.[1] ?? {}) as Record<string, unknown>;
     expect(sent).toEqual({ projectId: 1, cursor: null });
     // There is no page-size argument to send, and a guard test in Rust fails the
@@ -170,7 +221,9 @@ describe('paging', () => {
       ).toHaveLength(5);
     });
 
-    const second = invoke.mock.calls.filter(([command]) => command === 'git_history')[1];
+    const second = invoke.mock.calls.filter(
+      ([command]) => command === 'git_graph' || command === 'git_history',
+    )[1];
     expect(second?.[1]).toEqual({ projectId: 1, cursor });
     expect(screen.queryByRole('button', { name: 'Load more' })).not.toBeInTheDocument();
   });
@@ -188,15 +241,15 @@ describe('paging', () => {
     show();
 
     await screen.findByRole('list', { name: 'Commits' });
-    const before = invoke.mock.calls.filter(([command]) => command === 'git_history').length;
+    const reads = () =>
+      invoke.mock.calls.filter(
+        ([command]) => command === 'git_graph' || command === 'git_history',
+      ).length;
+    const before = reads();
 
     await userEvent.click(screen.getByRole('button', { name: 'Refresh' }));
 
-    await waitFor(() => {
-      expect(invoke.mock.calls.filter(([command]) => command === 'git_history').length).toBe(
-        before + 1,
-      );
-    });
+    await waitFor(() => expect(reads()).toBe(before + 1));
   });
 });
 
@@ -373,6 +426,9 @@ describe('copying a commit id', () => {
   it('says why nothing was copied when the platform refused', async () => {
     invoke.mockImplementation((command: string) => {
       if (command === 'git_history') return Promise.resolve(page({ commits: commits(1) }));
+      if (command === 'git_graph') {
+        return Promise.resolve(asGraph(page({ commits: commits(1) })));
+      }
       if (command === 'git_copy_commit') {
         return Promise.reject({
           kind: 'unsupported',
@@ -439,5 +495,260 @@ describe('leaving', () => {
       expect(screen.queryByText('A longer explanation.')).not.toBeInTheDocument();
     });
     expect(onBack).not.toHaveBeenCalled();
+  });
+});
+
+describe('the graph', () => {
+  /** A branch merged back into a mainline, as the backend would send it. */
+  function merged(): CommitGraph {
+    const four = commits(4);
+    return {
+      state: 'ready',
+      head: { kind: 'branch', name: 'main' },
+      next: null,
+      shallow: false,
+      lanes: 2,
+      collapsed: false,
+      refsTruncated: false,
+      rows: [
+        {
+          commit: four[0]!,
+          parents: [four[1]!.sha, four[2]!.sha],
+          lane: 0,
+          kind: 'merge',
+          refs: [
+            { kind: 'head', name: 'HEAD' },
+            { kind: 'branch', name: 'main' },
+          ],
+          edges: [
+            { to: 0, kind: 'straight' },
+            { to: 1, kind: 'merge' },
+          ],
+          continuing: [0, 1],
+        },
+        {
+          commit: four[1]!,
+          parents: [four[3]!.sha],
+          lane: 0,
+          kind: 'normal',
+          refs: [],
+          edges: [{ to: 0, kind: 'straight' }],
+          continuing: [0, 1],
+        },
+        {
+          commit: four[2]!,
+          parents: [four[3]!.sha],
+          lane: 1,
+          kind: 'normal',
+          refs: [{ kind: 'tag', name: 'v1.0' }],
+          edges: [{ to: 0, kind: 'join' }],
+          continuing: [0],
+        },
+        {
+          commit: four[3]!,
+          parents: [],
+          lane: 0,
+          kind: 'root',
+          refs: [],
+          edges: [],
+          continuing: [],
+        },
+      ],
+    };
+  }
+
+  /** Serve one graph page, whichever command is asked. */
+  function graphBackend(graph: CommitGraph) {
+    invoke.mockImplementation((command: string) => {
+      if (command === 'git_graph') return Promise.resolve(graph);
+      if (command === 'git_history') return Promise.resolve(page());
+      return Promise.resolve(undefined);
+    });
+  }
+
+  it('draws the graph by default', async () => {
+    graphBackend(merged());
+    show();
+
+    await screen.findByRole('list', { name: 'Commits' });
+    expect(screen.getByRole('button', { name: 'Graph' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    expect(invoke.mock.calls.some(([command]) => command === 'git_graph')).toBe(true);
+  });
+
+  it('reads the cheaper command when the graph is turned off', async () => {
+    // The two modes are a difference in cost, not a second surface: List asks
+    // for the commits alone, without parents, lanes or reference labels.
+    graphBackend(merged());
+    show();
+
+    await screen.findByRole('list', { name: 'Commits' });
+    await userEvent.click(screen.getByRole('button', { name: 'Graph' }));
+
+    await waitFor(() => {
+      expect(invoke.mock.calls.some(([command]) => command === 'git_history')).toBe(true);
+    });
+    expect(screen.getByRole('button', { name: 'Graph' })).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    );
+  });
+
+  it('says a merge is a merge in words, not only in the picture', async () => {
+    // `design-system.md` §5: colour and shape always have a text partner. With
+    // the gutter hidden — a narrow window, a screen reader — the row still says
+    // what kind of commit it is.
+    graphBackend(merged());
+    show();
+
+    const list = await screen.findByRole('list', { name: 'Commits' });
+    const rows = within(list).getAllByRole('listitem');
+
+    expect(rows[0]).toHaveTextContent('Merge of 2 parents');
+    expect(rows[3]).toHaveTextContent('First commit');
+    expect(rows[1]).not.toHaveTextContent('Merge');
+  });
+
+  it('labels the rows a branch or a tag points at', async () => {
+    graphBackend(merged());
+    show();
+
+    const list = await screen.findByRole('list', { name: 'Commits' });
+    const rows = within(list).getAllByRole('listitem');
+
+    expect(within(rows[0]!).getByTitle('Branch: main')).toBeInTheDocument();
+    expect(within(rows[0]!).getByTitle('Where HEAD is: HEAD')).toBeInTheDocument();
+    expect(within(rows[2]!).getByTitle('Tag: v1.0')).toBeInTheDocument();
+  });
+
+  it('keeps the picture out of the accessibility tree', async () => {
+    // Everything the gutter draws is written on the row beside it, so announcing
+    // it would be reading out a picture rather than the thing it pictures.
+    graphBackend(merged());
+    const { container } = show();
+
+    await screen.findByRole('list', { name: 'Commits' });
+    const drawings = container.querySelectorAll('svg[aria-hidden="true"]');
+
+    expect(drawings.length).toBeGreaterThan(0);
+    expect(container.querySelectorAll('svg[role="img"]')).toHaveLength(0);
+  });
+
+  it('says when more branches meet than it can draw', async () => {
+    graphBackend({ ...merged(), state: 'ready', lanes: 8, collapsed: true } as CommitGraph);
+    show();
+
+    expect(await screen.findByText(/past the eighth lane/)).toBeInTheDocument();
+    expect(screen.getByText(/Every commit is still listed/)).toBeInTheDocument();
+  });
+
+  it('says when a label may be missing', async () => {
+    graphBackend({ ...merged(), state: 'ready', refsTruncated: true } as CommitGraph);
+    show();
+
+    expect(
+      await screen.findByText(/more references than Mira reads at once/),
+    ).toBeInTheDocument();
+  });
+
+  it('offers nothing that would change the repository', async () => {
+    // The graph is a picture, not a client — and the absence is visible rather
+    // than a set of greyed-out controls promising a later release.
+    graphBackend(merged());
+    show();
+
+    await screen.findByRole('list', { name: 'Commits' });
+
+    for (const write of [
+      /check ?out/i,
+      /^merge$/i,
+      /rebase/i,
+      /reset/i,
+      /cherry.?pick/i,
+      /revert/i,
+      /^push$/i,
+      /^pull$/i,
+      /fetch/i,
+      /stage/i,
+      /new branch/i,
+      /delete branch/i,
+    ]) {
+      expect(screen.queryByRole('button', { name: write })).not.toBeInTheDocument();
+    }
+  });
+
+  it('moves between commits with the arrow keys', async () => {
+    // `information-architecture.md` §7: every list moves with the arrows, and
+    // every destination stays reachable by keyboard.
+    graphBackend(merged());
+    show();
+
+    const list = await screen.findByRole('list', { name: 'Commits' });
+    const rows = within(list)
+      .getAllByRole('button')
+      .filter((button) => button.hasAttribute('data-commit'));
+
+    rows[0]!.focus();
+    expect(rows[0]).toHaveFocus();
+
+    await userEvent.keyboard('{ArrowDown}');
+    expect(rows[1]).toHaveFocus();
+
+    await userEvent.keyboard('{ArrowDown}{ArrowUp}');
+    expect(rows[1]).toHaveFocus();
+  });
+
+  it('does not wander off either end of the list', async () => {
+    graphBackend(merged());
+    show();
+
+    const list = await screen.findByRole('list', { name: 'Commits' });
+    const rows = within(list)
+      .getAllByRole('button')
+      .filter((button) => button.hasAttribute('data-commit'));
+
+    rows[0]!.focus();
+    await userEvent.keyboard('{ArrowUp}');
+    expect(rows[0]).toHaveFocus();
+
+    rows[rows.length - 1]!.focus();
+    await userEvent.keyboard('{ArrowDown}');
+    expect(rows[rows.length - 1]).toHaveFocus();
+  });
+
+  it('opens a commit from the keyboard', async () => {
+    graphBackend({
+      ...merged(),
+      state: 'ready',
+    } as CommitGraph);
+    invoke.mockImplementation((command: string) => {
+      if (command === 'git_graph') return Promise.resolve(merged());
+      if (command === 'git_commit') {
+        return Promise.resolve({
+          state: 'ready',
+          commit: {
+            commit: commits(1)[0]!,
+            body: 'A longer explanation.',
+            authorEmail: 'ganeshh@example.com',
+            parents: 2,
+            changedFiles: null,
+          },
+        } satisfies CommitLookup);
+      }
+      return Promise.resolve(undefined);
+    });
+    show();
+
+    const list = await screen.findByRole('list', { name: 'Commits' });
+    const first = within(list)
+      .getAllByRole('button')
+      .find((button) => button.hasAttribute('data-commit'))!;
+
+    first.focus();
+    await userEvent.keyboard('{Enter}');
+
+    expect(await screen.findByText('A longer explanation.')).toBeInTheDocument();
   });
 });

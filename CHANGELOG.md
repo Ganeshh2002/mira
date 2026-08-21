@@ -10,7 +10,7 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Added
 - Product definition, product scope, PRD, information architecture, and design system
 - Architecture, platform abstraction, data model, and security/privacy documents
-- ADRs 0001–0014 covering the foundational technical decisions
+- ADRs 0001–0015 covering the foundational technical decisions
 - Locked phase plan (0.1 through 0.6+) and the fourteen-slice implementation roadmap
 - Open-source project files (licence, contributing, code of conduct, security policy)
 - **Foundation (slice 0).** Cargo workspace with `mira-core`, `mira-platform`, `mira-db`,
@@ -77,6 +77,25 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   by itself after a restart. Full on macOS; on Windows and Linux the control says why it
   is not available yet and points at the platform's own power settings
   ([ADR-0014](docs/adr/0014-keep-awake.md)).
+- **Git graph (slice 5b, part).** The History surface now draws the shape of a history
+  beside it: lanes and edges connecting each commit to its parents, with branch and tag
+  labels on the rows they point at. A merge says "Merge of 2 parents" in words as well as
+  in the picture, the first commit says so too, and the gutter itself is hidden from
+  screen readers because everything it draws is already written on the row. Turn the graph
+  off and the list stays, asking a cheaper question of the backend; narrow the window and
+  the gutter hides itself. More than eight lanes fold onto the eighth and Mira says it has
+  done so, rather than drawing a thicket.
+
+  It is a **picture, not a Git client** — there is no checkout, merge, rebase, reset,
+  cherry-pick, staging, branch or remote operation anywhere in it, and two guard tests
+  keep it that way.
+
+  The graph reads the same page as the list, through the same walk, so switching between
+  them can never show different commits. It also refuses the ordering every published lane
+  algorithm assumes: asking libgit2 for a topologically sorted walk makes it read the
+  entire history before yielding one commit — 3.4 ms, 34 ms and 426 ms for the same
+  twenty-five rows on repositories of 100, 1,000 and 10,000 commits, against a flat
+  ~0.9 ms. A page costs a page ([ADR-0015](docs/adr/0015-graph-lanes.md)).
 - macOS and Windows ask the platform for its standard window material — Liquid Glass on
   macOS 26, Mica on Windows 11 — rather than drawing an imitation. Linux stays opaque.
 

@@ -67,6 +67,24 @@
   --row-height: 32px;
   --section-gap: 20px;
 
+  /* Git graph lanes — a muted eight-step ramp, never signal hues, because a
+     lane index means "a different line", not "something is wrong"
+     (design-system §8). Lane 7 is neutral: it is also the lane everything past
+     the eighth is folded onto, and a fold should not look like a branch. */
+  --lane-0: #7fa6c4;
+  --lane-1: #a98fc4;
+  --lane-2: #9aae8c;
+  --lane-3: #c49a7f;
+  --lane-4: #7fc4bc;
+  --lane-5: #b58fa6;
+  --lane-6: #8c96c4;
+  --lane-7: #93a3ac;
+
+  /* Git graph geometry. 1px strokes, at most eight lanes. */
+  --graph-row: 48px;
+  --graph-lane: 14px;
+  --graph-node: 3.5px;
+
   /* Shape — nothing is fully rounded; no pill buttons */
   --r-sm: 4px;
   --r-md: 6px;
@@ -108,6 +126,15 @@
   --signal-ok: #0f7a57;
   --signal-warn: #8a6400;
   --signal-danger: #b02b15;
+
+  --lane-0: #3d6c8c;
+  --lane-1: #6f5490;
+  --lane-2: #5c7550;
+  --lane-3: #8c5f3d;
+  --lane-4: #35786f;
+  --lane-5: #7d566c;
+  --lane-6: #525d8c;
+  --lane-7: #5f7381;
 }
 
 @media (prefers-color-scheme: light) {
@@ -131,5 +158,14 @@
     --signal-ok: #0f7a57;
     --signal-warn: #8a6400;
     --signal-danger: #b02b15;
+
+    --lane-0: #3d6c8c;
+    --lane-1: #6f5490;
+    --lane-2: #5c7550;
+    --lane-3: #8c5f3d;
+    --lane-4: #35786f;
+    --lane-5: #7d566c;
+    --lane-6: #525d8c;
+    --lane-7: #5f7381;
   }
 }

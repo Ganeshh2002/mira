@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 
 use git2::{BranchType, ErrorCode, Repository, Status, StatusOptions};
 
+use crate::graph::CommitGraph;
 use crate::history::{CommitId, CommitLookup, CommitPage};
 use crate::model::{Commit, GitOverview, Head, Upstream};
 use crate::provider::GitProvider;
@@ -75,6 +76,14 @@ impl GitProvider for Libgit2 {
             Ok(repo) => walk::commit(&repo, id),
             Err(Absent::NotARepository) => CommitLookup::NotARepository,
             Err(Absent::Unreadable(detail)) => CommitLookup::Unreadable { detail },
+        }
+    }
+
+    fn graph(&self, root: &Path, from: Option<&CommitId>) -> CommitGraph {
+        match open(root) {
+            Ok(repo) => walk::graph(&repo, from),
+            Err(Absent::NotARepository) => CommitGraph::NotARepository,
+            Err(Absent::Unreadable(detail)) => CommitGraph::Unreadable { detail },
         }
     }
 }

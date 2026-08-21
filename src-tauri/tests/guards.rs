@@ -1537,3 +1537,194 @@ fn only_one_clock_exists_even_for_a_deadline() {
         );
     }
 }
+
+// ── The graph is a picture, not a client ─────────────────────────────────────
+
+#[test]
+fn the_git_layer_contains_no_write_operation_at_all() {
+    // Slice 5b draws the shape of a history, which is the moment somebody could
+    // reasonably wonder whether a row might also be *actionable*. It is not, and
+    // the absence is structural rather than a matter of restraint: every libgit2
+    // call that would change a repository is named here, and none of them appears
+    // in this crate's sources.
+    //
+    // `prd.md` FR-3.4 and `security-and-privacy.md` §5. Fixtures are excluded —
+    // `tests/` builds repositories in order to read them back, which is the whole
+    // method of this crate's suite.
+    // Named precisely enough to mean libgit2 and not Rust: `push(` would match
+    // `Vec::push`, `tag(` would match `is_tag()`, and a guard that cries wolf is
+    // a guard somebody deletes. These are receiver-qualified or unambiguous.
+    let forbidden = [
+        "repo.checkout_head",
+        "repo.checkout_tree",
+        "repo.checkout_index",
+        "repo.set_head",
+        "repo.reset",
+        "repo.commit(",
+        "repo.branch(",
+        "repo.branch_remote_name",
+        "repo.tag(",
+        "repo.tag_lightweight",
+        "repo.tag_delete",
+        "repo.remote(",
+        "repo.remote_add",
+        "repo.find_remote",
+        "repo.reference(",
+        "repo.reference_symbolic",
+        "repo.apply(",
+        "repo.cleanup_state",
+        "Repository::init",
+        "Repository::clone",
+        "cherrypick",
+        "rebase",
+        "stash_",
+        "merge_commits",
+        "merge_trees",
+        "RemoteCallbacks",
+        "PushOptions",
+        "FetchOptions",
+        "CheckoutBuilder",
+        "IndexAddOption",
+        ".add_all(",
+        ".write_tree(",
+        ".set_target(",
+        ".remove_all(",
+    ];
+
+    let git = repo_root().join("crates/mira-git/src");
+
+    let mut violations = Vec::new();
+    for (path, text) in sources(&["rs"]) {
+        if !path.starts_with(&git) {
+            continue;
+        }
+        let code = code_only(&text);
+        for needle in forbidden {
+            if code.contains(needle) {
+                violations.push(format!("{}: {needle}", relative(&path)));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "the graph draws a repository; it never changes one: {violations:#?}"
+    );
+}
+
+#[test]
+fn no_command_can_act_on_a_commit() {
+    // The other half of the same promise, at the boundary. A graph row is a
+    // thing you look at. There is no command through which the interface could
+    // ask Mira to do anything *to* one, and a parameter named for such an action
+    // would be the first sign of one appearing.
+    let banned = [
+        "checkout",
+        "merge",
+        "rebase",
+        "reset",
+        "revert",
+        "cherrypick",
+        "stage",
+        "unstage",
+        "branch",
+        "tag",
+        "remote",
+        "push",
+        "pull",
+        "fetch",
+        "ref",
+        "refspec",
+        "message",
+    ];
+
+    let mut violations = Vec::new();
+    for (path, signature) in command_parameters() {
+        for parameter in parameters_of(&signature) {
+            let name = parameter_name(&parameter).to_lowercase();
+            if banned.contains(&name.as_str()) {
+                violations.push(format!("{path}: {parameter}"));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "a command acts on a commit; the graph only draws one: {violations:#?}"
+    );
+}
+
+#[test]
+fn drawing_the_graph_never_asks_for_a_sorted_walk() {
+    // The measured constraint, made structural (ADR-0015). libgit2's sorted
+    // revwalks preprocess the entire reachable history before yielding a single
+    // commit — measured at 3.4 ms, 34 ms and 426 ms for the same twenty-five rows
+    // on repositories of 100, 1,000 and 10,000 commits, against a flat ~0.9 ms
+    // unsorted. A bounded interface over an unbounded traversal is the one thing
+    // this slice must not become.
+    //
+    // `tests/performance.rs` names both sorts, because measuring the thing Mira
+    // refuses is how the refusal stays justified.
+    let git = repo_root().join("crates/mira-git/src");
+
+    let mut violations = Vec::new();
+    for (path, text) in sources(&["rs"]) {
+        if !path.starts_with(&git) {
+            continue;
+        }
+        let code = code_only(&text);
+        for sorting in ["Sort::TOPOLOGICAL", "Sort::TIME", "Sort::REVERSE"] {
+            if code.contains(sorting) {
+                violations.push(format!("{}: {sorting}", relative(&path)));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "a sorted revwalk reads the whole history to draw one page: {violations:#?}"
+    );
+}
+
+#[test]
+fn the_graph_is_laid_out_over_a_window_and_never_a_repository() {
+    // Lane assignment takes a slice of nodes and returns a slice of placements.
+    // It has no repository, no cursor and no way to ask for another commit, which
+    // is what makes "the graph is computed over what is on screen" a fact about
+    // the signature rather than a claim about the caller.
+    let lanes =
+        fs::read_to_string(repo_root().join("crates/mira-git/src/lanes.rs")).expect("lanes.rs");
+    let code = code_only(&lanes);
+
+    assert!(
+        code.contains("pub fn layout(nodes: &[Node]) -> Layout"),
+        "the layout takes a window and nothing else"
+    );
+    for reaching in ["Repository", "git2", "PAGE", "fs::"] {
+        assert!(
+            !code.contains(reaching),
+            "lane assignment must stay pure; `{reaching}` appeared in lanes.rs"
+        );
+    }
+}
+
+#[test]
+fn the_lane_cap_is_a_constant_and_the_interface_is_told_when_it_bites() {
+    // `design-system.md` §8 caps the picture at eight lanes. Folding past that is
+    // honest only if it is *said*: a graph silently drawing two branches on one
+    // line would be a picture of something that is not there.
+    let graph =
+        fs::read_to_string(repo_root().join("crates/mira-git/src/graph.rs")).expect("graph.rs");
+    let code = code_only(&graph);
+
+    assert!(code.contains("pub const MAX_LANES: u32 = 8"));
+    assert!(code.contains("pub const MAX_REFS: usize = 500"));
+    assert!(
+        code.contains("collapsed: bool"),
+        "the interface has to be able to say the picture was folded"
+    );
+    assert!(
+        code.contains("refs_truncated: bool"),
+        "and that a label may be missing"
+    );
+}

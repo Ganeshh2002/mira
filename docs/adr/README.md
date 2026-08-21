@@ -22,6 +22,7 @@ one; the old file stays, marked superseded, because the reasoning is the point.
 | [0012](0012-workspace-semantics.md) | Workspace semantics: stated not observed, a view not an action | Accepted |
 | [0013](0013-launching-applications.md) | Launching applications: a kind, not a command; `NSWorkspace` on macOS | Accepted |
 | [0014](0014-keep-awake.md) | Keep Awake: a power request, never simulated activity | Accepted |
+| [0015](0015-graph-lanes.md) | Graph lanes over a bounded window, without topological ordering | Accepted |
 
 Decisions **not** recorded here because they are reversible in an afternoon: Tailwind,
 TanStack Query, Zustand, Vite, the icon set. Those live in
