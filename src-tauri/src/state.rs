@@ -10,6 +10,7 @@ use mira_git::Libgit2;
 use mira_platform::{Os, Platform, SurfaceTreatment};
 use mira_projects::Projects;
 
+use crate::awake::Awake;
 use crate::live::Live;
 
 /// Everything a command handler may reach.
@@ -38,6 +39,13 @@ pub struct AppState {
     /// What the observers last saw. In memory only — observation is never
     /// written to disk (`data-model.md` §1 rule 2).
     pub live: Live,
+    /// Whether the machine is being kept awake, and until when.
+    ///
+    /// In memory and in one operating-system request owned by this process.
+    /// There is no table for it, so it cannot survive a restart — which is the
+    /// property that matters most for something that changes how a machine
+    /// behaves (ADR-0014).
+    pub awake: Awake,
     /// How many projects exist, for the scheduler's gate to read cheaply.
     ///
     /// Kept beside the database rather than queried from it because the gate is

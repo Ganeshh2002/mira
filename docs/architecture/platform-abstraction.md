@@ -37,10 +37,11 @@ pub enum CapabilityStatus {
 
 pub enum Capability {
     GlobalShortcut, TrayIcon, TrayClickEvents, LaunchApplication,
-    ProcessEnumeration, ProcessTermination, PortEnumeration, PortAttribution,
+    ProcessEnumeration, ProcessWorkingDirectory, ProcessTermination,
+    PortEnumeration, PortAttribution,
     LockDetection, SleepDetection, MediaNowPlaying, MediaControl,
     Notifications, FileWatching, RevealInFileManager, DragOutFiles,
-    AutoStart, BatteryInfo, AutoUpdate,
+    AutoStart, BatteryInfo, AutoUpdate, Clipboard, KeepAwake,
 }
 
 pub trait PlatformCapabilities {
@@ -274,6 +275,65 @@ already listed *Process cwd* as Degraded there.
 Sockets owned by another user are reported without a pid, and are unattributed for
 the same reason. Mira never elevates to see more.
 
+### 4.8c Clipboard
+
+**Implemented in Slice 5a**, for one purpose: copying a commit id.
+
+| OS | Mechanism | Status |
+|---|---|---|
+| macOS | `NSPasteboard` | **Full** |
+| Windows | The Win32 clipboard | **Full** |
+| Linux | The X11 selection | **Degraded** |
+
+Native on all three through `arboard`; nothing here runs `pbcopy`, `clip.exe` or
+`xclip`, and there is no argv in the module at all.
+
+Linux is Degraded for a reason that is a property of X11 rather than of Mira: there
+is no clipboard daemon, so the application that copied something is the one that
+serves it to whatever pastes. A commit id copied from Mira stays available until
+Mira quits, unless a clipboard manager on that desktop keeps its own copy. The UI
+says so.
+
+**The narrower guarantee, and the reason this is a capability rather than a
+helper:** the only thing Mira ever writes to the clipboard is a value Mira itself
+read from a repository. The interface asks to copy *a commit*; the id is resolved
+in Rust before anything is written, and the platform layer refuses anything that is
+not short and single-line. A guard test counts the construction sites, and a second
+one fails the build if a command ever accepts the text itself.
+
+### 4.8d Keep Awake
+
+**Implemented in Slice 5a on macOS.** [ADR-0014](../adr/0014-keep-awake.md) is the
+full argument; this is the mechanism.
+
+| OS | Mechanism | Status |
+|---|---|---|
+| macOS | `NSProcessInfo` activity, `IdleSystemSleepDisabled \| IdleDisplaySleepDisabled` | **Full** |
+| Windows | `SetThreadExecutionState` — not built yet | **Unavailable** |
+| Linux | `org.freedesktop.login1` `Inhibit` — not built yet | **Unavailable** |
+
+Idle sleep of the machine and of the screen. Closing the lid still sleeps the
+machine: that is an instruction rather than idleness, and an application does not
+get to overrule it.
+
+Windows and Linux report `Unavailable` with a true reason and a fallback naming the
+platform's own power settings. They are not hidden and not shown as broken — this
+is §2 rule 4 applied to a feature that could easily have been faked instead.
+
+**What this is never.** Mira does not post keyboard events, move the pointer, or
+manufacture activity of any kind. Synthetic input defeats idle detection
+everywhere at once — the screen lock, the session timer, an away status somebody
+else is reading — and is indistinguishable from what a malicious program does. A
+guard test scans for every API that would do it and a second asserts no crate
+capable of it is in the tree. An idle screen stays idle; Keep Awake stops the
+machine falling asleep and is not a way around a policy.
+
+**Lifecycle.** Off by default. One request at a time. A span with an end is armed
+with a single one-shot timer owned by `mira-scheduler` — not a poll, and not behind
+the observers' gate, because a lock has to end when the person said even if every
+window is hidden. Quitting releases it before anything else. Nothing is written
+down, so a restart starts off.
+
 ### 4.9 Filesystem behaviour
 
 | Concern | macOS | Windows | Linux |
@@ -380,11 +440,14 @@ claim that contradicts it.
 | Autostart | Full | Full | Full | Full |
 | Battery info | Full (laptops) | Full (laptops) | Full (laptops) | Full (laptops) |
 | Auto-update | Full (unsigned warns) | Full (unsigned warns) | AppImage only | AppImage only |
+| Copy to clipboard | Full | Full | Degraded (lasts while Mira runs) | Degraded (lasts while Mira runs) |
+| Keep awake | Full | **Unavailable** (not built yet) | **Unavailable** (not built yet) | **Unavailable** (not built yet) |
 
 Features that **cannot** behave identically on all three, restated for emphasis:
 **global shortcuts (Wayland), tray click events (Linux), now-playing (macOS), lock
 detection (non-logind Linux), reveal-and-select (Linux), process cwd and graceful
-termination (Windows), auto-update (deb/rpm installs).**
+termination (Windows), auto-update (deb/rpm installs), clipboard persistence (X11),
+Keep Awake (Windows and Linux, until their native mechanisms are built).**
 
 ---
 

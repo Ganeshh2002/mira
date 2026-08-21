@@ -348,6 +348,17 @@ One set, 16px, 1.5px stroke, monochrome, inheriting `currentColor`. No filled ic
 brand logos inside the UI (an editor's identity is its name, not its mark), no emoji in
 product chrome — users may pick an emoji as a *project* icon, which is their content.
 
+**Icons are companions to words, not replacements for them.** The rule that keeps the
+set from becoming a puzzle: remove every icon from a surface and it must still read.
+In the History list they mark what a value *is* — branch, commit, author, time — so
+the eye can find the author among three short strings, and that is the one job an
+icon does better than a label. Copy is the single icon that carries an action on its
+own, and it has an accessible name and a tooltip.
+
+As built (slice 5a): `branch`, `commit`, `person`, `clock`, `copy`, `awake`, `back`,
+in `src/components/Icon.tsx`. Status marks stay glyphs (`●`, `○`, `✓`, `◐`) because
+they are text with a shape, not pictures.
+
 ---
 
 ## 9. Voice

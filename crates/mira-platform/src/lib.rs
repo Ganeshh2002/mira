@@ -8,7 +8,10 @@
 #![deny(missing_docs)]
 
 pub mod applications;
+pub mod awake;
+pub mod clipboard;
 pub mod env;
+pub mod inhibit;
 pub mod launch;
 mod macos;
 pub mod platform;
@@ -20,7 +23,10 @@ pub use applications::{
     candidates, first_openable, first_present, AppPresence, AppReport, Applications, Candidate,
     Launch, Probe,
 };
+pub use awake::{Inhibit, KeepAwake, KeepAwakeHost, KeepAwakeSpan, KeepAwakeState};
+pub use clipboard::{is_copyable, Clipboard, ClipboardHost};
 pub use env::{DisplayServer, EnvFacts, LinuxPackaging, Os};
+pub use inhibit::SystemInhibitor;
 pub use launch::{
     plan, Desktop, LaunchHost, LaunchMethod, LaunchPlan, LaunchTarget, Launched, Launcher, Perform,
 };

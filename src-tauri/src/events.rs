@@ -7,3 +7,10 @@
 
 /// Something was observed. The interface re-reads the live snapshot.
 pub const LIVE: &str = "mira://live";
+
+/// Keep Awake changed without anybody pressing anything.
+///
+/// Sent when a span reaches its end. Every other change is the answer to a
+/// command the interface already made, so it already knows — this exists for the
+/// one moment the backend knows something the interface does not.
+pub const KEEP_AWAKE: &str = "mira://keep-awake";

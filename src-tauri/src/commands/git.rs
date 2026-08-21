@@ -1,0 +1,219 @@
+//! `git.*` — what happened in a project's repository.
+//!
+//! Thin by rule (`architecture.md` §5): resolve a project row to a repository,
+//! call the provider, map the result. The reading itself is `mira-git`'s, and
+//! everything here is about the boundary.
+//!
+//! Three things are true of every command in this file.
+//!
+//! **The caller names a project, never a directory.** The repository is resolved
+//! in Rust from a row that could only have been created by a native picker
+//! (`security-and-privacy.md` §5 rule 8).
+//!
+//! **The caller cannot say how much to read.** There is no `limit`, no `count`,
+//! no `all`. A page is [`mira_git::PAGE`] commits, decided in `mira-git`, and the
+//! only lever the interface has is a cursor saying *continue from here*. That is
+//! what makes "Mira never walks a whole repository" a property of the signature.
+//!
+//! **The caller cannot name a Git argument.** A [`CommitId`] is four to forty
+//! hexadecimal characters, checked when it deserialises, so `HEAD`, `--exec=…`,
+//! `../../etc/passwd` and a refspec all fail on the wire. Mira does not run `git`
+//! (ADR-0009), and this is the second wall in case it ever did.
+
+use std::path::PathBuf;
+use std::sync::Arc;
+
+use mira_core::{MiraError, Project, ProjectId, Result};
+use mira_git::{CommitId, CommitLookup, CommitPage, GitProvider, Libgit2};
+use mira_platform::{Clipboard, ClipboardHost};
+use mira_projects::ProjectService;
+use serde::{Deserialize, Serialize};
+use tauri::State;
+use ts_rs::TS;
+
+use crate::state::AppState;
+
+/// Which spelling of a commit id to copy.
+///
+/// Two words, because there are two: the seven characters a person quotes in a
+/// message, and the forty a tool wants. Nothing else can be asked for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum ShaForm {
+    /// The abbreviation Mira shows.
+    Short,
+    /// The whole object id.
+    Full,
+}
+
+/// `git.history` — one page of a project's repository history.
+///
+/// `cursor` is the id the previous page returned as its `next`, and `None` starts
+/// at `HEAD`. Nothing here is polled: history is read when a person opens the
+/// surface, presses Refresh, or asks for more, and the scheduler has no observer
+/// for it (`information-architecture.md` §3, the on-view tier).
+#[tauri::command]
+pub async fn git_history(
+    project_id: ProjectId,
+    cursor: Option<CommitId>,
+    state: State<'_, Arc<AppState>>,
+) -> Result<CommitPage> {
+    let root = repository_of(&state.projects().get(project_id)?);
+
+    // On the blocking pool: a repository read is syscall work and does not belong
+    // on the webview's thread (`architecture.md` §5 rule 3).
+    read(move || Libgit2.history(&root, cursor.as_ref())).await
+}
+
+/// `git.commit` — one commit, in the detail its own view shows.
+///
+/// Read-only, and deliberately less than a diff: 5a says what a commit *is*, and
+/// what it *changed* is 5b's read-only diff view.
+#[tauri::command]
+pub async fn git_commit(
+    project_id: ProjectId,
+    commit: CommitId,
+    state: State<'_, Arc<AppState>>,
+) -> Result<CommitLookup> {
+    let root = repository_of(&state.projects().get(project_id)?);
+
+    read(move || Libgit2.commit(&root, &commit)).await
+}
+
+/// `git.copy_commit` — put a commit id on the clipboard.
+///
+/// The commit is **resolved from the repository first**, and what is copied is
+/// what came back. That is the whole reason this is a command rather than a line
+/// of JavaScript: the interface asks to copy *a commit*, not *a string*, so there
+/// is no path by which a page could use Mira to place text of its own choosing on
+/// the clipboard of the person running it. A commit that is not in the repository
+/// copies nothing and says so.
+///
+/// Returns what was copied, so the interface can confirm it without keeping its
+/// own idea of what the clipboard holds.
+#[tauri::command]
+pub async fn git_copy_commit(
+    project_id: ProjectId,
+    commit: CommitId,
+    form: ShaForm,
+    state: State<'_, Arc<AppState>>,
+) -> Result<String> {
+    let root = repository_of(&state.projects().get(project_id)?);
+    let looked_up = read(move || Libgit2.commit(&root, &commit)).await?;
+
+    let found = match looked_up {
+        CommitLookup::Ready { commit } => commit.commit,
+        CommitLookup::Unknown => {
+            return Err(MiraError::NotFound {
+                what: "That commit".to_owned(),
+            })
+        }
+        CommitLookup::NotARepository => {
+            return Err(MiraError::NotFound {
+                what: "A repository for this project".to_owned(),
+            })
+        }
+        CommitLookup::Unreadable { detail } => {
+            return Err(MiraError::External {
+                source: "Git".to_owned(),
+                detail,
+            })
+        }
+    };
+
+    let value = match form {
+        ShaForm::Short => found.short_sha,
+        ShaForm::Full => found.sha,
+    };
+
+    Clipboard::new(state.platform.clone()).copy(&value)?;
+    Ok(value)
+}
+
+/// The repository a project's history belongs to.
+///
+/// **History belongs to the repository, not to the directory that was added.** A
+/// package inside a monorepo has no history of its own; it shares the one above
+/// it. `git_root` is the worktree root whenever it differs from the project's own
+/// directory, so every package in a monorepo resolves to the same repository and
+/// there is no second, per-package walk to keep in step
+/// ([ADR-0010](../../../docs/adr/0010-monorepo-detection.md)).
+fn repository_of(project: &Project) -> PathBuf {
+    PathBuf::from(
+        project
+            .git_root
+            .as_ref()
+            .unwrap_or(&project.root_path)
+            .as_str(),
+    )
+}
+
+/// Run a repository read off the webview's thread.
+async fn read<T, F>(reading: F) -> Result<T>
+where
+    T: Send + 'static,
+    F: FnOnce() -> T + Send + 'static,
+{
+    tauri::async_runtime::spawn_blocking(reading)
+        .await
+        .map_err(|joined| MiraError::external("Mira", joined))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{repository_of, ShaForm};
+    use mira_core::{Project, ProjectId};
+
+    fn project(root: &str, git_root: Option<&str>) -> Project {
+        Project {
+            id: ProjectId::new(1),
+            name: "web".to_owned(),
+            root_path: root.to_owned(),
+            is_git: true,
+            git_root: git_root.map(ToOwned::to_owned),
+            markers: Vec::new(),
+            last_opened_at: None,
+            created_at: 0,
+            updated_at: 0,
+        }
+    }
+
+    #[test]
+    fn a_standalone_project_reads_its_own_directory() {
+        assert_eq!(
+            repository_of(&project("/home/dev/aviora", None)),
+            std::path::Path::new("/home/dev/aviora")
+        );
+    }
+
+    #[test]
+    fn a_package_reads_the_repository_above_it() {
+        // Two packages in one monorepo resolve to one repository, which is what
+        // stops history being duplicated per package.
+        let web = repository_of(&project(
+            "/home/dev/aviora/apps/web",
+            Some("/home/dev/aviora"),
+        ));
+        let api = repository_of(&project(
+            "/home/dev/aviora/apps/api",
+            Some("/home/dev/aviora"),
+        ));
+
+        assert_eq!(web, api);
+        assert_eq!(web, std::path::Path::new("/home/dev/aviora"));
+    }
+
+    #[test]
+    fn a_sha_can_be_asked_for_in_exactly_two_forms() {
+        for accepted in ["short", "full"] {
+            assert!(serde_json::from_str::<ShaForm>(&format!("\"{accepted}\"")).is_ok());
+        }
+        for refused in ["\"Short\"", "\"whole\"", "0", "null", "\"short; id\""] {
+            assert!(
+                serde_json::from_str::<ShaForm>(refused).is_err(),
+                "{refused} must not deserialise into a form"
+            );
+        }
+    }
+}

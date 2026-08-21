@@ -36,11 +36,15 @@ tauri = { version = "2", features = ["tray-icon"] }
 tauri-plugin-dialog = "2"
 tauri-plugin-global-shortcut = "2"
 tauri-plugin-single-instance = "2"
-# `sync` for the picker's one-shot reply, `time` for the per-repository
-# read timeout. No interval, no ticker: nothing here starts a recurring task.
-tokio = { version = "1", features = ["sync", "time"] }
+# `sync` for the picker's one-shot reply, `time` for the per-repository read
+# timeout, `rt` so Keep Awake can ask which runtime it is on before arming its
+# one deadline. No interval, no ticker: nothing here starts a recurring task.
+tokio = { version = "1", features = ["rt", "sync", "time"] }
 ts-rs = { workspace = true }
 
 [dev-dependencies]
 serde_json = { workspace = true }
+# The keep-awake lifecycle test drives a real `Deadline` against a paused clock,
+# so a half-hour span costs no wall time and no real power setting is touched.
+tokio = { workspace = true, features = ["macros", "rt", "test-util", "time"] }
 toml = { workspace = true }

@@ -21,17 +21,22 @@ fn repo_root() -> PathBuf {
         .to_path_buf()
 }
 
-/// The two files that must quote what everything else may not contain.
+/// The files that must quote what everything else may not contain.
 ///
 /// A guard names the pattern it forbids, and `wire.rs` names the strings an
 /// attacker would send — `/bin/sh`, a `file://` URL, a launch target built from
 /// nothing. Scanning them would make every guard fail on its own evidence.
 ///
-/// This is the one exclusion, and it is narrow on purpose: both are test
-/// binaries with no path into the product, and both exist to *assert* the
-/// absence of what they mention. Adding a third name here would need the same
-/// argument to be true of it.
-const ADVERSARIAL: [&str; 2] = ["guards.rs", "wire.rs"];
+/// The exclusion is narrow on purpose, and each name has to earn it by the same
+/// argument: a test binary with no path into the product, which exists to
+/// *assert* the absence of what it mentions.
+///
+/// `keep_awake.rs` was the third. It asserts that no reason string Mira shows
+/// names `caffeinate`, `powercfg`, `systemd-inhibit` or `xdotool` — Keep Awake is
+/// a native power request, and the product must neither run those programs nor
+/// recommend running them (ADR-0014). Making that assertion requires writing the
+/// names down once.
+const ADVERSARIAL: [&str; 3] = ["guards.rs", "wire.rs", "keep_awake.rs"];
 
 /// Every tracked source file with one of `extensions`, excluding build output,
 /// dependencies, generated bindings, and [`ADVERSARIAL`].
@@ -526,15 +531,31 @@ fn every_command_parameter_is_one_that_has_been_reviewed() {
     // - `kind`, `kinds` — a fixed enum; anything else fails to deserialise.
     //   `kind` is what a launch is asked for by: editor, terminal or browser, and
     //   never a program, a path or an argument (see the guards below).
+    // - `commit`, `cursor` — a `CommitId`: four to forty hexadecimal characters,
+    //   checked as it deserialises. It cannot spell `HEAD`, a refspec, a path or
+    //   a flag, so it names an object in a repository or it does not arrive.
+    //   `cursor` says *continue the history from here*; `commit` says *read this
+    //   one*. Naming a commit that is not there is a state, not access to
+    //   anything (`mira_git::CommitId`, and `wire.rs`).
+    // - `form` — a fixed two-variant enum: the short spelling of a commit id or
+    //   the full one. It selects between two values Mira already read from the
+    //   repository; it does not supply either.
+    // - `span` — a fixed four-variant enum: off, thirty minutes, an hour, until
+    //   turned off. The interface cannot name a duration, so there is no number
+    //   here to bound (ADR-0014).
     // - `app`, `state` — injected by Tauri, not sent by the page.
     let reviewed = [
         "app",
+        "commit",
+        "cursor",
         "description",
+        "form",
         "kind",
         "kinds",
         "name",
         "port",
         "project_id",
+        "span",
         "state",
         "workspace_id",
     ];
@@ -1111,4 +1132,347 @@ fn nothing_in_the_workspace_is_named_after_astra() {
         violations.is_empty(),
         "Astra must not appear in code: {violations:#?}"
     );
+}
+
+// ── Reading history ──────────────────────────────────────────────────────────
+
+#[test]
+fn no_command_lets_the_frontend_choose_how_much_git_to_read() {
+    // The companion to the path rule, for the slice that walks a repository.
+    // History is paged, and the page size belongs to `mira-git` — a parameter
+    // saying *how many* would be a way to ask Mira to walk an entire repository
+    // on demand, which is the one thing this slice must not become. The interface
+    // says *continue from here*, and nothing else.
+    let banned = [
+        "limit", "count", "max", "size", "depth", "page", "all", "since", "until", "n",
+    ];
+
+    let mut violations = Vec::new();
+    for (path, signature) in command_parameters() {
+        for parameter in parameters_of(&signature) {
+            let name = parameter_name(&parameter).to_lowercase();
+            if banned.contains(&name.as_str()) {
+                violations.push(format!("{path}: {parameter}"));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "a command lets the caller choose how much history to read; the page size \
+         is Mira's: {violations:#?}"
+    );
+}
+
+#[test]
+fn history_is_read_on_demand_and_never_on_a_clock() {
+    // `information-architecture.md` §3 puts history in the **on-view** tier: it
+    // is read when a person opens the surface, refreshes, or asks for more. An
+    // observer that walked every project's history every five seconds would be
+    // the most expensive thing in the product, and the gate would not save it —
+    // the gate is open whenever a window is.
+    //
+    // The scheduler's observers are one file. This asserts history is not in it.
+    let observers =
+        fs::read_to_string(repo_root().join("src-tauri/src/observers.rs")).expect("observers");
+    let code = code_only(&observers);
+
+    for reading in ["history(", "commit(", "CommitPage", "CommitId"] {
+        assert!(
+            !code.contains(reading),
+            "the scheduler must not read history; `{reading}` appeared in observers.rs"
+        );
+    }
+}
+
+#[test]
+fn the_page_size_is_a_constant_and_not_a_number_in_a_call() {
+    // A page that is 25 in one place and 100 in another is a page size nobody
+    // owns. `mira-git` declares it once, and the walk is the only thing that
+    // reads it.
+    let history =
+        fs::read_to_string(repo_root().join("crates/mira-git/src/history.rs")).expect("history");
+    assert!(
+        code_only(&history).contains("pub const PAGE: usize"),
+        "the page size must be a named constant in mira-git"
+    );
+
+    let walk = fs::read_to_string(repo_root().join("crates/mira-git/src/walk.rs")).expect("walk");
+    assert!(
+        code_only(&walk).contains("PAGE + 1"),
+        "the walk reads one more than a page to find the next cursor, and no more"
+    );
+}
+
+// ── The clipboard ────────────────────────────────────────────────────────────
+
+#[test]
+fn only_the_platform_layer_touches_the_clipboard() {
+    // Same rule as libgit2 and `Command::new`: the OS-specific call lives in
+    // `mira-platform` and everything above it asks for a capability (ADR-0005).
+    let allowed = repo_root().join("crates/mira-platform");
+
+    let mut violations: Vec<String> = sources(&["rs"])
+        .into_iter()
+        .filter(|(path, text)| !path.starts_with(&allowed) && code_only(text).contains("arboard"))
+        .map(|(path, _)| relative(&path))
+        .collect();
+
+    for entry in fs::read_dir(repo_root().join("crates"))
+        .expect("crates/")
+        .flatten()
+    {
+        if entry.file_name().to_string_lossy() == "mira-platform" {
+            continue;
+        }
+        let manifest = entry.path().join("Cargo.toml");
+        if fs::read_to_string(&manifest).is_ok_and(|text| text.contains("arboard")) {
+            violations.push(relative(&manifest));
+        }
+    }
+
+    let shell = fs::read_to_string(repo_root().join("src-tauri/Cargo.toml")).expect("manifest");
+    if shell.contains("arboard") {
+        violations.push("src-tauri/Cargo.toml".to_owned());
+    }
+
+    assert!(
+        violations.is_empty(),
+        "the clipboard is a platform capability, not a helper: {violations:#?}"
+    );
+}
+
+#[test]
+fn nothing_puts_text_the_frontend_chose_on_the_clipboard() {
+    // The interface asks to copy **a commit**, and Mira resolves that commit in
+    // the repository before writing anything. There is therefore no command
+    // through which a page could place a string of its own choosing on somebody's
+    // clipboard. One construction site is the guard, as with `LaunchTarget`.
+    let built: Vec<String> = sources(&["rs"])
+        .into_iter()
+        .filter(|(path, _)| path.starts_with(repo_root().join("src-tauri")))
+        .flat_map(|(path, text)| {
+            code_only(&text)
+                .lines()
+                .filter(|line| line.contains("Clipboard::new("))
+                .map(|line| format!("{}: {}", relative(&path), line.trim()))
+                .collect::<Vec<_>>()
+        })
+        .collect();
+
+    assert_eq!(
+        built.len(),
+        1,
+        "the clipboard is written in one reviewed place, from a commit Mira read: \
+         {built:#?}"
+    );
+
+    // And no command takes the value itself. A `value`, `text` or `content`
+    // parameter would be exactly the gadget this guard exists to prevent.
+    let banned = ["value", "text", "content", "clipboard", "sha", "id"];
+    let mut violations = Vec::new();
+    for (path, signature) in command_parameters() {
+        for parameter in parameters_of(&signature) {
+            let name = parameter_name(&parameter).to_lowercase();
+            if banned.contains(&name.as_str()) {
+                violations.push(format!("{path}: {parameter}"));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "a command accepts the text to copy; it must name a commit instead: \
+         {violations:#?}"
+    );
+}
+
+// ── Keep Awake ───────────────────────────────────────────────────────────────
+
+#[test]
+fn nothing_simulates_a_keystroke_or_a_pointer_movement() {
+    // ADR-0014, and the line Keep Awake must never cross. Preventing sleep is
+    // asking the operating system a question it has a public answer for.
+    // Manufacturing input is impersonating the person at the keyboard: it defeats
+    // idle detection everywhere, including in tooling somebody else is relying on,
+    // and it is indistinguishable from what a malicious program does.
+    //
+    // Mira does neither, and the absence is a property of the build: there is no
+    // code path to any of these, and no crate in the tree that offers one.
+    let forbidden = [
+        "CGEventPost",
+        "CGEventCreateKeyboardEvent",
+        "CGEventCreateMouseEvent",
+        "CGWarpMouseCursorPosition",
+        "IOHIDPostEvent",
+        "SendInput",
+        "keybd_event",
+        "mouse_event",
+        "SetCursorPos",
+        "XTestFakeKeyEvent",
+        "XTestFakeMotionEvent",
+        "XTestFakeButtonEvent",
+        "uinput",
+        "UI_SET_KEYBIT",
+    ];
+
+    let mut violations = Vec::new();
+    for (path, text) in sources(&["rs", "ts", "tsx"]) {
+        let code = code_only(&text);
+        for needle in forbidden {
+            if code.contains(needle) {
+                violations.push(format!("{}: {needle}", relative(&path)));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "Keep Awake asks the operating system; it never pretends to be the person \
+         at the keyboard: {violations:#?}"
+    );
+}
+
+#[test]
+fn no_crate_that_synthesises_input_is_in_the_tree() {
+    // The source scan above says no code path reaches such an API. This says the
+    // API is not even linked, so one could not be reached by accident.
+    let lock = fs::read_to_string(repo_root().join("Cargo.lock")).expect("Cargo.lock");
+    let packages = fs::read_to_string(repo_root().join("package-lock.json")).expect("npm lock");
+
+    for crate_name in [
+        "\"enigo\"",
+        "\"autopilot\"",
+        "\"inputbot\"",
+        "\"rdev\"",
+        "\"mouse-rs\"",
+        "\"uinput\"",
+    ] {
+        assert!(
+            !lock.contains(&format!("name = {crate_name}")),
+            "{crate_name} synthesises input; nothing in Mira may depend on it"
+        );
+    }
+
+    for package in ["robotjs", "@nut-tree/nut-js", "node-key-sender"] {
+        assert!(
+            !packages.contains(&format!("node_modules/{package}")),
+            "{package} synthesises input; nothing in Mira may depend on it"
+        );
+    }
+}
+
+#[test]
+fn no_power_setting_is_changed_by_running_a_program() {
+    // §5 rule 1 applied to this slice. Every documented way to keep a machine
+    // awake from a shell is named here, because each is what somebody reaches for
+    // when the native API is inconvenient. Keep Awake holds an operating-system
+    // request through a typed binding instead (`mira-platform/src/inhibit.rs`).
+    let forbidden = [
+        "caffeinate",
+        "powercfg",
+        "systemd-inhibit",
+        "gnome-session-inhibit",
+        "pmset",
+        "xset",
+        "SetThreadExecutionState",
+        "xdg-screensaver",
+    ];
+
+    let mut violations = Vec::new();
+    for (path, text) in sources(&["rs", "ts", "tsx", "json"]) {
+        let code = code_only(&text);
+        for needle in forbidden {
+            if code.contains(needle) {
+                violations.push(format!("{}: {needle}", relative(&path)));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "keeping a machine awake is a native request, never a program: {violations:#?}"
+    );
+}
+
+#[test]
+fn nothing_records_that_the_machine_was_kept_awake() {
+    // ADR-0014's lifecycle rule, made structural: a lock cannot survive a restart
+    // because there is nowhere to write it down. `data-model.md` §1 rule 2 draws
+    // the same line — stated things are stored, observed and held things are not.
+    let migrations = repo_root().join("crates/mira-db/migrations");
+    let Ok(entries) = fs::read_dir(&migrations) else {
+        panic!("migrations must exist");
+    };
+
+    for entry in entries.flatten() {
+        let text = fs::read_to_string(entry.path()).unwrap_or_default();
+        let lowered = text.to_lowercase();
+        // Not "sleep": `sessions.cause` records that a session paused because
+        // the machine slept, which is an observation about the past and not a
+        // lock held over the future.
+        for column in ["awake", "inhibit", "caffeine"] {
+            assert!(
+                !lowered.contains(column),
+                "{} mentions {column}; Keep Awake has no table and must not get one",
+                relative(&entry.path())
+            );
+        }
+    }
+}
+
+#[test]
+fn keep_awake_is_released_on_the_way_out() {
+    // The one lifecycle rule a test cannot observe without changing a real power
+    // setting, so it is asserted structurally instead: shutdown releases, and it
+    // does so before anything else that could fail.
+    let shell = fs::read_to_string(repo_root().join("src-tauri/src/lib.rs")).expect("lib.rs");
+    let code = code_only(&shell);
+
+    let shutdown = code
+        .split_once("fn shutdown")
+        .map(|(_, rest)| rest.to_owned())
+        .expect("a shutdown function");
+
+    assert!(
+        shutdown.contains("awake.shutdown()"),
+        "quitting must give the machine back"
+    );
+
+    let release = shutdown.find("awake.shutdown()").expect("release");
+    let checkpoint = shutdown.find("checkpoint()").expect("checkpoint");
+    assert!(
+        release < checkpoint,
+        "the power request is released before the database is checked in, so a \
+         failure there cannot leave a machine pinned awake"
+    );
+}
+
+#[test]
+fn only_one_clock_exists_even_for_a_deadline() {
+    // `only_the_scheduler_owns_a_clock` above bans a timer outside
+    // `mira-scheduler`. Keep Awake needs one — a span that ends has to end — so
+    // the one-shot lives beside the scheduler rather than in the feature that
+    // wanted it. This asserts it is there, and that it is genuinely one-shot.
+    let scheduler = fs::read_to_string(repo_root().join("crates/mira-scheduler/src/lib.rs"))
+        .expect("scheduler");
+    let code = code_only(&scheduler);
+
+    assert!(
+        code.contains("pub struct Deadline"),
+        "a one-shot timer belongs to the crate that owns every clock"
+    );
+
+    let awake = fs::read_to_string(repo_root().join("src-tauri/src/awake.rs")).expect("awake.rs");
+    let awake = code_only(&awake);
+    assert!(
+        awake.contains("Deadline::in_time"),
+        "Keep Awake's timeout is that one-shot"
+    );
+    for loop_shaped in ["loop {", "interval(", "while "] {
+        assert!(
+            !awake.contains(loop_shaped),
+            "Keep Awake must not poll: `{loop_shaped}` appeared in awake.rs"
+        );
+    }
 }

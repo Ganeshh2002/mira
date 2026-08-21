@@ -121,6 +121,32 @@ pub fn resolve(capability: Capability, facts: &EnvFacts) -> CapabilityStatus {
              promise the drop will be accepted.",
         ),
 
+        // The clipboard is written natively — `NSPasteboard`, the Win32 clipboard,
+        // the X11 selection — and never by handing text to a program.
+        Capability::Clipboard if linux => degraded(
+            "A copied value lasts while Mira is running",
+            "X11 has no clipboard daemon: the application that copied something is the one \
+             that serves it to whatever pastes it. A commit id copied from Mira stays \
+             available until Mira quits, unless a clipboard manager on this desktop keeps \
+             its own copy.",
+        ),
+
+        // Keep Awake asks the operating system to stay awake. It never simulates a
+        // keystroke, moves a pointer, or manufactures activity of any kind — see
+        // ADR-0014 — so where there is no public API to ask with, the answer is that
+        // the capability is off, not that Mira found another way.
+        Capability::KeepAwake => match facts.os {
+            Os::MacOs => CapabilityStatus::Full,
+            Os::Windows => unavailable(
+                "Mira does not yet hold the Windows power request that prevents sleep",
+                Some("Settings → System → Power & battery"),
+            ),
+            Os::Linux => unavailable(
+                "Mira does not yet hold a systemd-logind sleep inhibitor",
+                Some("your desktop's power settings"),
+            ),
+        },
+
         Capability::AutoUpdate if linux && facts.packaging != LinuxPackaging::AppImage => degraded(
             "Only AppImage builds can update themselves",
             "Installations from a deb or rpm package are updated by the system package manager. \
@@ -146,7 +172,8 @@ pub fn resolve(capability: Capability, facts: &EnvFacts) -> CapabilityStatus {
         | Capability::DragOutFiles
         | Capability::AutoStart
         | Capability::BatteryInfo
-        | Capability::AutoUpdate => CapabilityStatus::Full,
+        | Capability::AutoUpdate
+        | Capability::Clipboard => CapabilityStatus::Full,
     }
 }
 

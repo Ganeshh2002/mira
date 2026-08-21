@@ -102,3 +102,144 @@ fn the_only_addresses_the_product_can_build_are_loopback() {
         .is_ok());
     }
 }
+
+// ── Naming a commit ──────────────────────────────────────────────────────────
+
+/// The one Git value the interface may speak.
+fn commit(raw: serde_json::Value) -> Result<mira_git::CommitId, serde_json::Error> {
+    serde_json::from_value(raw)
+}
+
+#[test]
+fn a_commit_id_is_hexadecimal_and_nothing_else() {
+    for accepted in [
+        "ad50fc7",
+        "ad50",
+        "AD50FC7",
+        "ad50fc71f70b122469a9772cb772dc86b2c83521",
+    ] {
+        assert!(
+            commit(json!(accepted)).is_ok(),
+            "{accepted} must deserialise"
+        );
+    }
+}
+
+#[test]
+fn nothing_that_git_would_treat_as_an_argument_is_a_commit_id() {
+    // Mira does not run `git` — it links libgit2, and there is no command line
+    // anywhere (ADR-0009). This is the wall that would still hold if it did: a
+    // revision, a path, a flag, a refspec and a metacharacter all fail on the
+    // wire, before any code sees them.
+    for refused in [
+        json!("HEAD"),
+        json!("HEAD~1"),
+        json!("HEAD^{commit}"),
+        json!("main"),
+        json!("refs/heads/main"),
+        json!("@{upstream}"),
+        json!("--all"),
+        json!("--upload-pack=/bin/sh"),
+        json!("-c core.sshCommand=/bin/sh"),
+        json!("--output=/etc/passwd"),
+        json!("../../../etc/passwd"),
+        json!("/Users/dev/.ssh/id_rsa"),
+        json!("ad50fc7; rm -rf ~"),
+        json!("ad50fc7 && id"),
+        json!("$(id)"),
+        json!("`id`"),
+        json!("ad50fc7\n--exec=id"),
+        json!(""),
+        json!("ad5"),
+        json!("ad50fc71f70b122469a9772cb772dc86b2c835211"),
+        json!("zzzzzzz"),
+        json!(0),
+        json!(["ad50fc7"]),
+        json!({ "sha": "ad50fc7" }),
+        json!(null),
+    ] {
+        assert!(
+            commit(refused.clone()).is_err(),
+            "{refused} must not deserialise into a commit id"
+        );
+    }
+}
+
+#[test]
+fn a_commit_id_can_never_be_long_enough_to_carry_a_payload() {
+    // Forty hexadecimal characters is the whole space. There is no length at
+    // which this becomes a channel for something else.
+    for length in [41usize, 100, 4096] {
+        assert!(commit(json!("a".repeat(length))).is_err());
+    }
+}
+
+// ── Naming a span ────────────────────────────────────────────────────────────
+
+fn span(raw: serde_json::Value) -> Result<mira_platform::KeepAwakeSpan, serde_json::Error> {
+    serde_json::from_value(raw)
+}
+
+#[test]
+fn a_keep_awake_span_is_one_of_exactly_four_words() {
+    for accepted in ["off", "thirtyMinutes", "oneHour", "untilTurnedOff"] {
+        assert!(span(json!(accepted)).is_ok(), "{accepted} must deserialise");
+    }
+    assert_eq!(mira_platform::KeepAwakeSpan::ALL.len(), 4);
+}
+
+#[test]
+fn no_duration_can_be_sent_where_a_span_goes() {
+    // The interface cannot ask to be kept awake for a week, because it cannot ask
+    // for a number at all. That is the whole bound on this feature: an hour, and
+    // then a person has to choose again (ADR-0014).
+    for refused in [
+        json!(0),
+        json!(3600),
+        json!(u64::MAX),
+        json!(-1),
+        json!("1h"),
+        json!("forever"),
+        json!("Off"),
+        json!({ "minutes": 999_999 }),
+        json!(["oneHour"]),
+        json!(true),
+        json!(null),
+    ] {
+        assert!(
+            span(refused.clone()).is_err(),
+            "{refused} must not deserialise into a span"
+        );
+    }
+}
+
+// ── What may be copied ───────────────────────────────────────────────────────
+
+#[test]
+fn the_clipboard_never_accepts_anything_but_a_short_single_line_fact() {
+    // The value is resolved from the repository, not sent — but the platform
+    // layer refuses anything of the wrong shape anyway, so a future caller cannot
+    // turn copy-a-commit into copy-a-file.
+    assert!(mira_platform::is_copyable("ad50fc7"));
+    assert!(mira_platform::is_copyable(
+        "ad50fc71f70b122469a9772cb772dc86b2c83521"
+    ));
+
+    for refused in [
+        "",
+        "ad50fc7\nrm -rf ~",
+        "ad50fc7\r\nid",
+        "ad50fc7\u{0}",
+        " ad50fc7",
+    ] {
+        assert!(
+            !mira_platform::is_copyable(refused),
+            "{refused:?} must not be copyable"
+        );
+    }
+
+    assert!(
+        !mira_platform::is_copyable(&"a".repeat(1024)),
+        "a file's worth of text must not be copyable"
+    );
+}

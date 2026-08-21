@@ -177,3 +177,60 @@ async fn run(
         }
     }
 }
+
+/// A single wake-up, at a time decided when it is created.
+///
+/// The scheduler above is for work that repeats. This is for the other shape:
+/// something that should happen **once**, later, and usually never — a Keep Awake
+/// lock reaching the end of its half hour.
+///
+/// It lives here for the same reason the scheduler does. `architecture.md` §6 says
+/// no module starts its own timer, and a one-shot is still a timer: a module that
+/// grew its own `sleep` would be outside the gate, outside shutdown, and outside
+/// the guard test that keeps both true. Putting it beside the scheduler keeps
+/// "every clock in Mira is in this crate" a fact about the build.
+///
+/// It is **not** gated, and that is deliberate: a gate answers *should recurring
+/// work happen now*, and a deadline that stopped counting because the window was
+/// hidden would leave a lock held past the time the person chose. It fires once
+/// and then it is finished.
+///
+/// Dropping it cancels it. So does [`Deadline::cancel`]; the difference is only
+/// that cancelling says so at the call site.
+#[derive(Debug)]
+pub struct Deadline {
+    task: JoinHandle<()>,
+}
+
+impl Deadline {
+    /// Run `when_due` once, `after` from now, unless cancelled first.
+    ///
+    /// # Panics
+    ///
+    /// Must be called from inside a Tokio runtime, because it spawns.
+    #[must_use]
+    pub fn in_time<F>(after: Duration, when_due: F) -> Self
+    where
+        F: FnOnce() + Send + 'static,
+    {
+        let task = tokio::spawn(async move {
+            tokio::time::sleep(after).await;
+            when_due();
+        });
+
+        Self { task }
+    }
+
+    /// Stop it firing.
+    pub fn cancel(self) {
+        drop(self);
+    }
+}
+
+impl Drop for Deadline {
+    fn drop(&mut self) {
+        // Aborting rather than awaiting: a deadline is cancelled from wherever
+        // the person turned the thing off, which is not a place that can wait.
+        self.task.abort();
+    }
+}

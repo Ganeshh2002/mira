@@ -1,0 +1,98 @@
+/**
+ * The icon set.
+ *
+ * One set, 16 px, 1.5 px stroke, monochrome, inheriting `currentColor`. No filled
+ * icons, no brand marks, no emoji in product chrome (`design-system.md` §8).
+ *
+ * Icons here are **companions to words, not replacements for them.** Every row in
+ * the History surface reads correctly with the icons stripped out — they mark
+ * what a value *is* so the eye can find the author among three short strings,
+ * which is the one job an icon does better than a label. The single icon that
+ * carries an action on its own, Copy, has an accessible name and a tooltip
+ * (`design-system.md` §8, Button).
+ */
+
+export type IconName = 'branch' | 'commit' | 'person' | 'clock' | 'copy' | 'awake' | 'back';
+
+/** The path geometry for each icon, on a 16×16 grid. */
+const PATHS: Record<IconName, React.ReactNode> = {
+  // A branch leaving a trunk: the shape Git itself uses.
+  branch: (
+    <>
+      <circle cx="4.5" cy="3.5" r="1.75" />
+      <circle cx="4.5" cy="12.5" r="1.75" />
+      <circle cx="11.5" cy="4.5" r="1.75" />
+      <path d="M4.5 5.25v5.5M11.5 6.25v0.5a3 3 0 0 1-3 3H6" />
+    </>
+  ),
+  // A commit on a line — the row marker in the history list.
+  commit: (
+    <>
+      <circle cx="8" cy="8" r="2.75" />
+      <path d="M1.5 8h3.75M10.75 8h3.75" />
+    </>
+  ),
+  person: (
+    <>
+      <circle cx="8" cy="5.5" r="2.5" />
+      <path d="M3 13.5a5 5 0 0 1 10 0" />
+    </>
+  ),
+  clock: (
+    <>
+      <circle cx="8" cy="8" r="6" />
+      <path d="M8 4.5V8l2.5 1.75" />
+    </>
+  ),
+  copy: (
+    <>
+      <rect x="5.5" y="5.5" width="8" height="8" rx="1.5" />
+      <path d="M10.5 3.5a1.5 1.5 0 0 0-1.5-1.5H4a1.5 1.5 0 0 0-1.5 1.5V9a1.5 1.5 0 0 0 1.5 1.5" />
+    </>
+  ),
+  // Sleep prevented: a sun, because the machine is being asked to stay up.
+  awake: (
+    <>
+      <circle cx="8" cy="8" r="3.25" />
+      <path d="M8 1v1.75M8 13.25V15M15 8h-1.75M2.75 8H1M12.95 3.05l-1.24 1.24M4.29 11.71l-1.24 1.24M12.95 12.95l-1.24-1.24M4.29 4.29L3.05 3.05" />
+    </>
+  ),
+  back: <path d="M10 3L5 8l5 5" />,
+};
+
+/**
+ * One icon.
+ *
+ * `label` gives it an accessible name where it stands alone; without one it is
+ * decoration beside text and is hidden from assistive technology rather than read
+ * out twice.
+ */
+export function Icon({
+  name,
+  label,
+  className = '',
+}: {
+  name: IconName;
+  label?: string | undefined;
+  className?: string;
+}) {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={`shrink-0 ${className}`}
+      role={label ? 'img' : undefined}
+      aria-label={label}
+      aria-hidden={label ? undefined : true}
+      focusable="false"
+    >
+      {PATHS[name]}
+    </svg>
+  );
+}

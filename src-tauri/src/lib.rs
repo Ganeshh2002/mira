@@ -7,6 +7,7 @@
 //! Slice 0 wires the shell and nothing else: a window, a tray, a global shortcut,
 //! a migrated database, and two typed commands that prove the spine works.
 
+pub mod awake;
 pub mod clock;
 pub mod commands;
 pub mod events;
@@ -79,7 +80,25 @@ pub fn run() {
             let shortcut_registered = shortcut::register_default(&handle, &platform, os);
             let surface = windows::apply_surface(&handle, surface_treatment(platform.facts()));
 
-            if let Err(error) = tray::build(&handle, Some(chord_label)) {
+            // Keep Awake tells the interface only when it changes on its own —
+            // every other change is the answer to a command the interface made.
+            // It also puts the tray's check marks back, because a span that ran
+            // out has to un-check itself (`awake.rs`).
+            let awake_announce: Arc<dyn Fn() + Send + Sync> = {
+                let handle = handle.clone();
+                Arc::new(move || {
+                    let _ = handle.emit(events::KEEP_AWAKE, ());
+                    if let Some(state) = handle.try_state::<Arc<AppState>>() {
+                        tray::reflect(&handle, &state.awake.state());
+                    }
+                })
+            };
+            let awake = awake::Awake::new(platform.clone(), awake_announce);
+
+            // Built before the tray, so the menu opens showing the truth: off,
+            // on this and every other launch, because nothing about Keep Awake
+            // survives the process that held it (ADR-0014).
+            if let Err(error) = tray::build(&handle, Some(chord_label), &awake.state()) {
                 // A missing tray is a reduced Mira, not a broken one.
                 eprintln!("Mira could not create its tray icon: {error}");
             }
@@ -96,6 +115,7 @@ pub fn run() {
                 ),
                 surface,
                 live: live::Live::new(),
+                awake,
                 project_count: std::sync::atomic::AtomicUsize::new(0),
             });
 
@@ -172,6 +192,11 @@ pub fn run() {
             commands::live::live_snapshot,
             commands::live::live_refresh,
             commands::live::live_open_service,
+            commands::git::git_history,
+            commands::git::git_commit,
+            commands::git::git_copy_commit,
+            commands::awake::keep_awake_state,
+            commands::awake::keep_awake_set,
             commands::workspaces::workspaces_list,
             commands::workspaces::workspaces_create,
             commands::workspaces::workspaces_rename,
@@ -197,7 +222,7 @@ pub fn run() {
 /// is consumed rather than shared: stopping it takes ownership.
 pub struct Live(Mutex<Option<Scheduler>>);
 
-/// Leave the database as it would be found on a fresh machine.
+/// Leave the machine as it would be found on a fresh start.
 ///
 /// Quitting goes through `app.exit`, which ends the process without running
 /// destructors, so SQLite never gets the checkpoint it would normally perform when
@@ -215,6 +240,12 @@ fn shutdown<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
     let Some(state) = app.try_state::<Arc<AppState>>() else {
         return;
     };
+
+    // Give the machine back before anything else. Quitting must leave the power
+    // settings exactly as Mira found them, whatever else goes wrong on the way
+    // out — which is also why nothing about Keep Awake is written down: there is
+    // no state that could be left behind for the next launch to inherit.
+    state.awake.shutdown();
     if let Err(error) = state.db.checkpoint() {
         eprintln!("Mira could not check its database in on the way out: {error}");
     }
