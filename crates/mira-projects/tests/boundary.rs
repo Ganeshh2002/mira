@@ -12,7 +12,7 @@ use mira_db::{NewProject, ProjectRepo};
 use mira_fs::PathMatching;
 use mira_git::{
     ChangedFiles, CommitGraph, CommitId, CommitLookup, CommitPage, DiffScope, FileDiff,
-    GitOverview, GitProvider,
+    FileHistory, FileSubject, GitOverview, GitProvider,
 };
 use mira_projects::{ProjectService, Projects};
 use tempfile::TempDir;
@@ -67,6 +67,14 @@ impl GitProvider for NoGit {
     }
     fn file_diff(&self, _root: &Path, _scope: &DiffScope, _at: u32) -> FileDiff {
         FileDiff::NotARepository
+    }
+    fn file_history(
+        &self,
+        _root: &Path,
+        _subject: &FileSubject,
+        _from: Option<&CommitId>,
+    ) -> FileHistory {
+        FileHistory::NotARepository
     }
 }
 

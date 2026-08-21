@@ -356,8 +356,8 @@ the eye can find the author among three short strings, and that is the one job a
 icon does better than a label. Copy is the single icon that carries an action on its
 own, and it has an accessible name and a tooltip.
 
-As built (slices 5a–5c): `branch`, `commit`, `merge`, `tag`, `graph`, `rename`,
-`binary`, `person`, `clock`, `copy`, `awake`, `back`, in
+As built (slices 5a–5d): `branch`, `commit`, `merge`, `tag`, `graph`, `rename`,
+`binary`, `trace`, `person`, `clock`, `copy`, `awake`, `back`, in
 `src/components/Icon.tsx`. Status marks stay glyphs (`●`, `○`, `✓`, `◐`) because
 they are text with a shape, not pictures — and so do the change letters `A`, `D`,
 `M`, `R`, `C`, `T`, which always appear beside the word they abbreviate.

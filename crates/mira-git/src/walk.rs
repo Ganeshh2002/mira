@@ -156,7 +156,7 @@ fn resolve(repo: &Repository, id: &CommitId) -> Option<Oid> {
 }
 
 /// The parts of a commit every surface shows.
-fn summarise(commit: &git2::Commit<'_>) -> Commit {
+pub(crate) fn summarise(commit: &git2::Commit<'_>) -> Commit {
     let sha = commit.id().to_string();
     let author = commit.author();
 

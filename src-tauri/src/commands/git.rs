@@ -26,7 +26,7 @@ use std::sync::Arc;
 use mira_core::{MiraError, Project, ProjectId, Result};
 use mira_git::{
     ChangedFiles, CommitGraph, CommitId, CommitLookup, CommitPage, DiffScope, FileDiff,
-    GitProvider, Libgit2,
+    FileHistory, FileSubject, GitProvider, Libgit2,
 };
 use mira_platform::{Clipboard, ClipboardHost};
 use mira_projects::ProjectService;
@@ -198,6 +198,32 @@ pub async fn git_file_diff(
     let root = repository_of(&state.projects().get(project_id)?);
 
     read(move || Libgit2.file_diff(&root, &scope, at)).await
+}
+
+/// `git.file_history` — the commits that touched one file.
+///
+/// **The file is named by a `subject`, never by a path.** A subject is a change
+/// set Mira produced, a position in it, and which side of that change to take the
+/// name from. The interface receives one — in a change list, or in the cursor of
+/// a previous page — and hands it back. It has no way to build a different one,
+/// which is what lets a walk that follows a file across renames keep
+/// `security-and-privacy.md` §5 rule 8 intact.
+///
+/// **Bounded by commits examined**, because looking is the cost: file history is
+/// inherently O(repository history), and `mira_git::MAX_SCAN` is where one
+/// request stops. A page that ran out of budget says how far it got and offers a
+/// cursor, so partial is never lost and never mistaken for empty
+/// ([ADR-0017](../../../docs/adr/0017-file-history.md)).
+#[tauri::command]
+pub async fn git_file_history(
+    project_id: ProjectId,
+    subject: FileSubject,
+    cursor: Option<CommitId>,
+    state: State<'_, Arc<AppState>>,
+) -> Result<FileHistory> {
+    let root = repository_of(&state.projects().get(project_id)?);
+
+    read(move || Libgit2.file_history(&root, &subject, cursor.as_ref())).await
 }
 
 /// The repository a project's history belongs to.

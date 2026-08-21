@@ -58,6 +58,19 @@ function show(scope: 'commit' | 'workingTree' = 'commit') {
   );
 }
 
+/**
+ * The row buttons, without the per-row File history control beside them.
+ *
+ * A row carries two disclosures now — the patch and the file's history — so
+ * "the button" is ambiguous. The patch one is the row itself, and it is the one
+ * that knows its ordinal.
+ */
+function rows(list: HTMLElement) {
+  return within(list)
+    .getAllByRole('button')
+    .filter((button) => button.hasAttribute('data-change'));
+}
+
 beforeEach(() => {
   invoke.mockReset();
 });
@@ -196,10 +209,8 @@ describe('opening a file', () => {
     });
     show();
 
-    const rows = within(
-      await screen.findByRole('list', { name: 'Changed files' }),
-    ).getAllByRole('button');
-    await userEvent.click(rows[1]!);
+    const found = rows(await screen.findByRole('list', { name: 'Changed files' }));
+    await userEvent.click(found[1]!);
 
     await waitFor(() => {
       const asked = invoke.mock.calls.find(([command]) => command === 'git_file_diff');
@@ -221,9 +232,7 @@ describe('opening a file', () => {
     backend(listed([change()]), { 0: patch });
     show();
 
-    await userEvent.click(
-      within(await screen.findByRole('list', { name: 'Changed files' })).getByRole('button'),
-    );
+    await userEvent.click(rows(await screen.findByRole('list', { name: 'Changed files' }))[0]!);
 
     const table = await screen.findByRole('table', { name: /Changes to src\/app\.ts/ });
     expect(within(table).getByText('@@ -1,3 +1,3 @@')).toBeInTheDocument();
@@ -236,9 +245,7 @@ describe('opening a file', () => {
     backend(listed([change()]), { 0: patch });
     show();
 
-    await userEvent.click(
-      within(await screen.findByRole('list', { name: 'Changed files' })).getByRole('button'),
-    );
+    await userEvent.click(rows(await screen.findByRole('list', { name: 'Changed files' }))[0]!);
 
     expect(await screen.findByText('Added line 2:')).toBeInTheDocument();
     expect(screen.getByText('Removed line 2:')).toBeInTheDocument();
@@ -248,9 +255,7 @@ describe('opening a file', () => {
     backend(listed([change()]), { 0: patch });
     show();
 
-    const row = within(await screen.findByRole('list', { name: 'Changed files' })).getByRole(
-      'button',
-    );
+    const row = rows(await screen.findByRole('list', { name: 'Changed files' }))[0]!;
     await userEvent.click(row);
     await screen.findByRole('table');
 
@@ -263,9 +268,7 @@ describe('a patch that cannot be shown whole', () => {
   async function open(diff: FileDiff) {
     backend(listed([change()]), { 0: diff });
     show();
-    await userEvent.click(
-      within(await screen.findByRole('list', { name: 'Changed files' })).getByRole('button'),
-    );
+    await userEvent.click(rows(await screen.findByRole('list', { name: 'Changed files' }))[0]!);
   }
 
   it('identifies a binary file rather than decoding it', async () => {
@@ -378,9 +381,7 @@ describe('what a diff never offers', () => {
     });
     show();
 
-    await userEvent.click(
-      within(await screen.findByRole('list', { name: 'Changed files' })).getByRole('button'),
-    );
+    await userEvent.click(rows(await screen.findByRole('list', { name: 'Changed files' }))[0]!);
     await screen.findByRole('table');
 
     // Absent, not disabled: a greyed-out Stage would promise a later release
@@ -399,5 +400,95 @@ describe('what a diff never offers', () => {
       expect(screen.queryByRole('button', { name: write })).not.toBeInTheDocument();
     }
     expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
+  });
+});
+
+describe('reaching a file’s history', () => {
+  it('offers it on every row, named for the file', async () => {
+    backend(listed([change({ path: 'src/app.ts' })]));
+    show();
+
+    expect(
+      await screen.findByRole('button', { name: 'File history of src/app.ts' }),
+    ).toBeInTheDocument();
+  });
+
+  it('names the file by its ordinal in this list, never by its path', async () => {
+    // The same contract as the patch, for the same reason: the row already knows
+    // where it sits, so nothing has to describe where the file lives.
+    invoke.mockImplementation((command: string) => {
+      if (command === 'git_changes') return Promise.resolve(listed([change({ at: 4 })]));
+      if (command === 'git_file_history') {
+        return Promise.resolve({
+          state: 'ready',
+          path: 'src/app.ts',
+          commits: [],
+          next: null,
+          scanned: 3,
+          stopped: { state: 'no' },
+          shallow: false,
+        });
+      }
+      return Promise.resolve(undefined);
+    });
+    show();
+
+    await userEvent.click(
+      await screen.findByRole('button', { name: 'File history of src/app.ts' }),
+    );
+
+    await waitFor(() => {
+      const asked = invoke.mock.calls.find(([command]) => command === 'git_file_history');
+      expect(asked?.[1]).toEqual({
+        projectId: 1,
+        subject: { scope: { kind: 'commit', commit: 'ad50fc7' }, at: 4, before: false },
+        cursor: null,
+      });
+    });
+
+    const sent = JSON.stringify(
+      invoke.mock.calls.find(([command]) => command === 'git_file_history')?.[1],
+    );
+    expect(sent).not.toContain('src/app.ts');
+  });
+
+  it('does not read a file’s history until somebody asks for it', async () => {
+    backend(listed([change()]));
+    show();
+
+    await screen.findByRole('list', { name: 'Changed files' });
+    expect(
+      invoke.mock.calls.filter(([command]) => command === 'git_file_history'),
+    ).toHaveLength(0);
+  });
+
+  it('closes again when the control is pressed a second time', async () => {
+    invoke.mockImplementation((command: string) => {
+      if (command === 'git_changes') return Promise.resolve(listed([change()]));
+      if (command === 'git_file_history') {
+        return Promise.resolve({
+          state: 'ready',
+          path: 'src/app.ts',
+          commits: [],
+          next: null,
+          scanned: 3,
+          stopped: { state: 'no' },
+          shallow: false,
+        });
+      }
+      return Promise.resolve(undefined);
+    });
+    show();
+
+    const control = await screen.findByRole('button', {
+      name: 'File history of src/app.ts',
+    });
+    await userEvent.click(control);
+    expect(await screen.findByText('No commit has touched this file.')).toBeInTheDocument();
+
+    await userEvent.click(control);
+    await waitFor(() =>
+      expect(screen.queryByText('No commit has touched this file.')).not.toBeInTheDocument(),
+    );
   });
 });

@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 
 import type { Workspace } from '../bindings/Workspace';
 
+import type { CommitId } from '../bindings/CommitId';
 import type { Project } from '../bindings/Project';
 import { Button } from '../components/Button';
 import { Chip } from '../components/Chip';
@@ -42,6 +43,9 @@ export function ProjectDetail({
   // Which sub-view is showing. `information-architecture.md` §6 caps depth at
   // three: rail → project → sub-view, and History is that third level.
   const [viewing, setViewing] = useState<'project' | 'history' | 'workingTree'>('project');
+  // A commit reached from a file's history in the working tree, opened in
+  // History's existing detail rather than in a second one.
+  const [openCommit, setOpenCommit] = useState<CommitId | null>(null);
 
   const live = useLive();
   const observation = observationOf(live.data, project.id);
@@ -90,12 +94,22 @@ export function ProjectDetail({
         project={project}
         layout={observation?.layout ?? null}
         onBack={() => setViewing('project')}
+        initialCommit={openCommit}
       />
     );
   }
 
   if (viewing === 'workingTree') {
-    return <WorkingTree project={project} onBack={() => setViewing('project')} />;
+    return (
+      <WorkingTree
+        project={project}
+        onBack={() => setViewing('project')}
+        onOpenCommit={(commit) => {
+          setOpenCommit(commit);
+          setViewing('history');
+        }}
+      />
+    );
   }
 
   return (
@@ -166,7 +180,14 @@ export function ProjectDetail({
               <GitPanel git={observation.git} labelled={false} />
               {observation.git.state === 'ready' ? (
                 <div className="flex flex-wrap gap-[var(--space-3)]">
-                  <Button onClick={() => setViewing('history')}>Git history</Button>
+                  <Button
+                    onClick={() => {
+                      setOpenCommit(null);
+                      setViewing('history');
+                    }}
+                  >
+                    Git history
+                  </Button>
                   {/*
                     Offered only when there is something to show. A button that
                     opens an empty list is worse than no button

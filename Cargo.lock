@@ -2326,6 +2326,7 @@ dependencies = [
  "git2",
  "mira-core",
  "serde",
+ "serde_json",
  "tempfile",
  "ts-rs",
 ]

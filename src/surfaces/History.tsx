@@ -41,12 +41,19 @@ export function History({
   project,
   layout,
   onBack,
+  initialCommit = null,
 }: {
   project: Project;
   layout: RepositoryLayout | null;
   onBack: () => void;
+  /**
+   * A commit to open on arrival — how the working tree's file history hands a
+   * reader back to the existing commit detail surface rather than growing one
+   * of its own.
+   */
+  initialCommit?: CommitId | null;
 }) {
-  const [opened, setOpened] = useState<CommitId | null>(null);
+  const [opened, setOpened] = useState<CommitId | null>(initialCommit);
   const [drawing, setDrawing] = useState(true);
 
   // `Esc` goes back one level, everywhere (`information-architecture.md` §6
@@ -119,7 +126,12 @@ export function History({
       </header>
 
       {opened ? (
-        <CommitDetailPanel project={project} commit={opened} onClose={() => setOpened(null)} />
+        <CommitDetailPanel
+          project={project}
+          commit={opened}
+          onClose={() => setOpened(null)}
+          onOpenCommit={setOpened}
+        />
       ) : null}
 
       {history.isPending ? (
@@ -531,10 +543,13 @@ function CommitDetailPanel({
   project,
   commit,
   onClose,
+  onOpenCommit,
 }: {
   project: Project;
   commit: CommitId;
   onClose: () => void;
+  /** Follow a file's history to another commit, which opens here. */
+  onOpenCommit: (commit: CommitId) => void;
 }) {
   const detail = useQuery({
     queryKey: ['git', 'commit', project.id, commit],
@@ -652,6 +667,7 @@ function CommitDetailPanel({
         projectId={project.id}
         scope={{ kind: 'commit', commit }}
         label="Changed files"
+        onOpenCommit={onOpenCommit}
       />
     </section>
   );

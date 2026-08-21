@@ -6,6 +6,7 @@ use crate::diff::{ChangedFiles, DiffScope, FileDiff};
 use crate::graph::CommitGraph;
 use crate::history::{CommitId, CommitLookup, CommitPage};
 use crate::model::GitOverview;
+use crate::trace::{FileHistory, FileSubject};
 
 /// Read-only Git, as the rest of Mira sees it.
 ///
@@ -58,4 +59,21 @@ pub trait GitProvider {
     /// already decided to offer. Bounded by the five limits in `diff`, each of
     /// which reports itself rather than truncating silently.
     fn file_diff(&self, root: &Path, scope: &DiffScope, at: u32) -> FileDiff;
+
+    /// The commits that touched one file, newest first.
+    ///
+    /// The file is named by a [`FileSubject`] — a change set Mira produced and a
+    /// position in it — so no path crosses the boundary even though the trace
+    /// follows one across renames.
+    ///
+    /// Bounded by **commits examined** rather than by anything about the file,
+    /// because looking is the cost: file history is inherently O(repository
+    /// history), and `crate::trace::MAX_SCAN` is where that stops
+    /// ([ADR-0017](../../../docs/adr/0017-file-history.md)).
+    fn file_history(
+        &self,
+        root: &Path,
+        subject: &FileSubject,
+        from: Option<&CommitId>,
+    ) -> FileHistory;
 }

@@ -20,6 +20,7 @@ export type IconName =
   | 'graph'
   | 'rename'
   | 'binary'
+  | 'trace'
   | 'person'
   | 'clock'
   | 'copy'
@@ -82,6 +83,14 @@ const PATHS: Record<IconName, React.ReactNode> = {
       <path d="M3.5 2.5h6l3 3v8a0.5 0.5 0 0 1-0.5 0.5H3.5a0.5 0.5 0 0 1-0.5-0.5v-11a0.5 0.5 0 0 1 0.5-0.5z" />
       <path d="M9.25 2.5v3.25h3.25" />
       <path d="M5.5 9.5h1.5v2.5H5.5zM9 9.5h1.5v2.5H9z" />
+    </>
+  ),
+  // A file with a line of history running back from it.
+  trace: (
+    <>
+      <path d="M9.5 2.5H4.5a1 1 0 0 0-1 1v9a1 1 0 0 0 1 1h7a1 1 0 0 0 1-1V5.5z" />
+      <path d="M9.25 2.5v3.25h3.25" />
+      <path d="M5.75 8.25h4.5M5.75 10.75h3" />
     </>
   ),
   person: (

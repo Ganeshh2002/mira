@@ -353,6 +353,27 @@ diff that looked complete would be the worst thing this surface could do
 **Still read-only.** No staging, discarding, checkout, revert or apply — and no
 greyed-out control implying that one is coming.
 
+**As built (slice 5d) — file history.** Every changed-file row carries a second
+disclosure beside the patch one: **History**, which lists the commits that touched
+that file. It opens *in the row*, so the path stays `Commit → Changed files → File
+history` — three things to read and one place to be, like the patch beside it.
+
+Each row shows the subject, the author, how long ago, and the short id — the same
+four facts every commit row in Mira shows, so the surfaces read alike. A rename
+says *"Renamed from src/old.ts"* in words, with the icon as a companion.
+
+**Clicking a commit opens that commit**, in the detail surface that already
+exists. From the working tree that means leaving for History with the commit
+already open, rather than growing a second commit view.
+
+**A trace that stopped early says so, and says it differently from finding
+nothing.** *"Nothing in the last 2,000 commits. There may be more further back"* is
+not *"No commit has touched this file"*, and **Look further back** continues. That
+distinction is the whole reason the bound is visible rather than silent
+([ADR-0017](../adr/0017-file-history.md)).
+
+`↑` and `↓` move between commits here too.
+
 ### Ports view (machine-scoped)
 All listening ports, grouped: *this project*, *other projects*, *unattributed*. Same row
 actions as the project section. This is the one place Mira shows machine-wide data

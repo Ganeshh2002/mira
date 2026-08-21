@@ -14,7 +14,7 @@ use mira_db::{Db, ProjectRepo};
 use mira_fs::PathMatching;
 use mira_git::{
     ChangedFiles, CommitGraph, CommitId, CommitLookup, CommitPage, DiffScope, FileDiff,
-    GitOverview, GitProvider, Head,
+    FileHistory, FileSubject, GitOverview, GitProvider, Head,
 };
 use mira_projects::{ProjectService, Projects};
 use tempfile::TempDir;
@@ -79,6 +79,15 @@ impl GitProvider for FakeGit {
 
     fn file_diff(&self, _root: &Path, _scope: &DiffScope, _at: u32) -> FileDiff {
         panic!("the project service must not read a diff");
+    }
+
+    fn file_history(
+        &self,
+        _root: &Path,
+        _subject: &FileSubject,
+        _from: Option<&CommitId>,
+    ) -> FileHistory {
+        panic!("the project service must not trace a file");
     }
 }
 
