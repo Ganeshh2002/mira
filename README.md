@@ -108,7 +108,7 @@ surface is a list of named commands with validated arguments. Details in
 | **Product** | [Definition](docs/product/product-definition.md) · [Scope & phases](docs/product/product-scope.md) · [PRD](docs/product/prd.md) |
 | **UX** | [Information architecture](docs/ux/information-architecture.md) · [Design system](docs/ux/design-system.md) |
 | **Architecture** | [Overview](docs/architecture/architecture.md) · [Platform abstraction](docs/architecture/platform-abstraction.md) · [Data model](docs/architecture/data-model.md) · [Security & privacy](docs/architecture/security-and-privacy.md) · [Review](docs/architecture/architecture-review.md) |
-| **Decisions** | [ADRs 0001–0014](docs/adr/) |
+| **Decisions** | [ADRs 0001–0015](docs/adr/) |
 | **Building it** | [Roadmap](docs/implementation/roadmap.md) · [Git strategy](docs/development/git-strategy.md) |
 
 ## Project status
@@ -125,6 +125,7 @@ block the first release.
 | Live context | Scheduler, live Git, listening ports, process attribution | 2 (part) | 🟡 In progress |
 | Workspace context | Workspaces per project, application context, discovery | 4 (part) | 🟡 In progress |
 | Git history | Paged commit walk, commit detail, copy SHA; plus Keep Awake | 5a | ✅ Complete |
+| Git graph | Lanes, edges and ref labels over the visible page | 5b (part) | 🟡 In progress |
 | **0.1 — Core Companion** | Projects, Git status and history, ports, processes, editor/terminal/browser, tray, global shortcut | 1–3, 5a | 🟡 In progress |
 | 0.2 — Workspace | Workspace model, app groups, restoration, Git graph and diff | 4, 5b, 11 | 🟡 In progress |
 | 0.3 — Shelf | Drag-drop, temporary storage, Quick Peek | 6–7 | ⬜ Not started |

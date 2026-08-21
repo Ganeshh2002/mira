@@ -2,6 +2,7 @@
 
 use std::path::{Path, PathBuf};
 
+use crate::graph::CommitGraph;
 use crate::history::{CommitId, CommitLookup, CommitPage};
 use crate::model::GitOverview;
 
@@ -34,4 +35,12 @@ pub trait GitProvider {
 
     /// One commit, in the detail its own view shows.
     fn commit(&self, root: &Path, id: &CommitId) -> CommitLookup;
+
+    /// The same page as [`GitProvider::history`], with the shape of it.
+    ///
+    /// Parent ids, lanes and reference labels, computed over that page and
+    /// nothing else. There is no second traversal here and no second history:
+    /// the graph *is* the history, with the relationships kept
+    /// ([ADR-0015](../../../docs/adr/0015-graph-lanes.md)).
+    fn graph(&self, root: &Path, from: Option<&CommitId>) -> CommitGraph;
 }

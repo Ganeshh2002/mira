@@ -4,6 +4,7 @@ import type { FoundationStatus } from '../bindings/FoundationStatus';
 import type { MiraError } from '../bindings/MiraError';
 import type { AppKind } from '../bindings/AppKind';
 import type { AppReport } from '../bindings/AppReport';
+import type { CommitGraph } from '../bindings/CommitGraph';
 import type { CommitId } from '../bindings/CommitId';
 import type { CommitLookup } from '../bindings/CommitLookup';
 import type { CommitPage } from '../bindings/CommitPage';
@@ -142,6 +143,19 @@ export const commands = {
    */
   gitHistory: (projectId: number, cursor: CommitId | null): Promise<CommitPage> =>
     call('git_history', { projectId, cursor }),
+
+  /**
+   * `git.graph` — the same page as `git.history`, with the shape of it.
+   *
+   * Parents, lanes and reference labels, computed over that page and nothing
+   * else. The same cursor and the same bound: still no way to say how much to
+   * read, so a page costs a page whatever the repository behind it.
+   *
+   * A **picture**. Nothing reachable from here checks out, merges, rebases,
+   * resets, cherry-picks or touches a remote.
+   */
+  gitGraph: (projectId: number, cursor: CommitId | null): Promise<CommitGraph> =>
+    call('git_graph', { projectId, cursor }),
 
   /** `git.commit` — one commit, in the detail its own view shows. Read-only. */
   gitCommit: (projectId: number, commit: CommitId): Promise<CommitLookup> =>

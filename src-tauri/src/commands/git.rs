@@ -24,7 +24,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use mira_core::{MiraError, Project, ProjectId, Result};
-use mira_git::{CommitId, CommitLookup, CommitPage, GitProvider, Libgit2};
+use mira_git::{CommitGraph, CommitId, CommitLookup, CommitPage, GitProvider, Libgit2};
 use mira_platform::{Clipboard, ClipboardHost};
 use mira_projects::ProjectService;
 use serde::{Deserialize, Serialize};
@@ -64,6 +64,27 @@ pub async fn git_history(
     // On the blocking pool: a repository read is syscall work and does not belong
     // on the webview's thread (`architecture.md` §5 rule 3).
     read(move || Libgit2.history(&root, cursor.as_ref())).await
+}
+
+/// `git.graph` — the same page as `git.history`, with the shape of it.
+///
+/// Parents, lanes and reference labels, computed over that page and nothing else.
+/// The same cursor, the same page size, the same bound: there is no second
+/// traversal here and no way to ask for one, because there is still no parameter
+/// that says how much to read.
+///
+/// It is a **picture**. Nothing reachable from this command checks anything out,
+/// merges, rebases, resets, cherry-picks, creates a commit, stages a path, or
+/// touches a remote ([ADR-0015](../../../docs/adr/0015-graph-lanes.md)).
+#[tauri::command]
+pub async fn git_graph(
+    project_id: ProjectId,
+    cursor: Option<CommitId>,
+    state: State<'_, Arc<AppState>>,
+) -> Result<CommitGraph> {
+    let root = repository_of(&state.projects().get(project_id)?);
+
+    read(move || Libgit2.graph(&root, cursor.as_ref())).await
 }
 
 /// `git.commit` — one commit, in the detail its own view shows.

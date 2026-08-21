@@ -211,6 +211,33 @@ inside it.
     X11 selection. No `pbcopy`, no `clip.exe`, no `xclip` — rule 1 applies here as
     everywhere.
 
+### Drawing a repository
+
+Slice 5b adds a picture of a history, which is the moment somebody could
+reasonably wonder whether a row might also be *actionable*. It is not.
+
+23. **The Git layer contains no write operation at all.** Every libgit2 call that
+    would change a repository — checkout, reset, commit, branch, tag, remote,
+    reference, cherry-pick, rebase, stash, `add_all`, `write_tree` — is named in a
+    guard test and none appears in `mira-git/src`. The guard is proven able to
+    fail by injection, not merely asserted.
+
+24. **No command acts on a commit.** There is no parameter named `checkout`,
+    `merge`, `rebase`, `reset`, `revert`, `cherrypick`, `branch`, `tag`, `push`,
+    `pull` or `fetch` on any command. A graph row is something you look at.
+
+25. **The graph reads the same bounded page as the history.** Same walk, same
+    cursor, same page size. Parent ids come from the commit objects already
+    loaded; reference labelling is capped at `MAX_REFS` and says when the cap was
+    reached. There is still no parameter that says how much to read.
+
+26. **No sorted revwalk, ever.** A guard test forbids `Sort::TOPOLOGICAL`,
+    `Sort::TIME` and `Sort::REVERSE` in `mira-git/src`. This is a bound rather
+    than a preference: a sorted walk preprocesses the whole reachable history
+    before yielding its first commit, which is O(history) work to render O(page)
+    and would make a large repository a way to make Mira stall
+    ([ADR-0015](../adr/0015-graph-lanes.md)).
+
 ### Keeping a machine awake
 
 19. **Keep Awake holds an operating-system power request and nothing else.** Mira
@@ -379,3 +406,7 @@ after the people who wrote it move on.
 | No synthetic keyboard or pointer input | Source scan + dependency-tree scan |
 | No power command executed | Source scan for `caffeinate`, `powercfg`, `systemd-inhibit`, … |
 | Keep Awake never persists | No migration mentions it; shutdown releases before checkpoint |
+| Git layer performs no write | Source scan for every libgit2 write API, proven by injection |
+| No command acts on a commit | Command-signature scan for checkout/merge/rebase/reset/… |
+| No unbounded topological walk | Source scan for `Sort::*` in `mira-git/src` |
+| Lane layout cannot reach a repository | `lanes.rs` mentions no `Repository`, `git2`, `PAGE` or `fs::` |

@@ -12,7 +12,17 @@
  * (`design-system.md` §8, Button).
  */
 
-export type IconName = 'branch' | 'commit' | 'person' | 'clock' | 'copy' | 'awake' | 'back';
+export type IconName =
+  | 'branch'
+  | 'commit'
+  | 'merge'
+  | 'tag'
+  | 'graph'
+  | 'person'
+  | 'clock'
+  | 'copy'
+  | 'awake'
+  | 'back';
 
 /** The path geometry for each icon, on a 16×16 grid. */
 const PATHS: Record<IconName, React.ReactNode> = {
@@ -30,6 +40,30 @@ const PATHS: Record<IconName, React.ReactNode> = {
     <>
       <circle cx="8" cy="8" r="2.75" />
       <path d="M1.5 8h3.75M10.75 8h3.75" />
+    </>
+  ),
+  // Two lines becoming one: what a merge commit is.
+  merge: (
+    <>
+      <circle cx="4" cy="3.5" r="1.75" />
+      <circle cx="12" cy="3.5" r="1.75" />
+      <circle cx="8" cy="12.5" r="1.75" />
+      <path d="M4 5.25v1.25a3 3 0 0 0 3 3h0.4M12 5.25v1.25a3 3 0 0 1-3 3h-0.4" />
+    </>
+  ),
+  tag: (
+    <>
+      <path d="M2.5 7.5V3a0.5 0.5 0 0 1 0.5-0.5h4.5l6 6a1 1 0 0 1 0 1.4l-3.6 3.6a1 1 0 0 1-1.4 0l-6-6z" />
+      <circle cx="5.25" cy="5.25" r="0.9" />
+    </>
+  ),
+  // Lanes: what the gutter draws, as a control for showing it.
+  graph: (
+    <>
+      <path d="M4 2.5v11M11 5.5v8" />
+      <circle cx="4" cy="6" r="1.5" />
+      <circle cx="11" cy="10.5" r="1.5" />
+      <path d="M5.5 6h1.5a3 3 0 0 1 3 3v0.6" />
     </>
   ),
   person: (

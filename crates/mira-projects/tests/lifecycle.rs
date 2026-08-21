@@ -12,7 +12,7 @@ use std::path::{Path, PathBuf};
 use mira_core::MiraError;
 use mira_db::{Db, ProjectRepo};
 use mira_fs::PathMatching;
-use mira_git::{CommitId, CommitLookup, CommitPage, GitOverview, GitProvider, Head};
+use mira_git::{CommitGraph, CommitId, CommitLookup, CommitPage, GitOverview, GitProvider, Head};
 use mira_projects::{ProjectService, Projects};
 use tempfile::TempDir;
 
@@ -64,6 +64,10 @@ impl GitProvider for FakeGit {
 
     fn commit(&self, _root: &Path, _id: &CommitId) -> CommitLookup {
         panic!("the project service must not read a commit");
+    }
+
+    fn graph(&self, _root: &Path, _from: Option<&CommitId>) -> CommitGraph {
+        panic!("the project service must not draw a graph");
     }
 }
 

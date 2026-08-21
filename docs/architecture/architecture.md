@@ -21,6 +21,7 @@ the map, the ADRs are the reasoning.
 | Recurring work | One gated scheduler, blocking observers | [0011](../adr/0011-one-scheduler.md) |
 | Workspaces | Stated, not observed; opening is a view change | [0012](../adr/0012-workspace-semantics.md) |
 | Keep Awake | A native power request; never simulated input | [0014](../adr/0014-keep-awake.md) |
+| Git graph | Lanes over the visible window; no sorted revwalk | [0015](../adr/0015-graph-lanes.md) |
 
 Chosen because the constraints in
 [product-definition.md](../product/product-definition.md) — ≤ 30 MB installer, ≤ 150 MB
@@ -130,7 +131,7 @@ depend on* — and nothing outside it may reach past its interface.
 | **projects** | Project lifecycle, directory probing, type markers | `ProjectService` | core, db, fs |
 | **workspaces** | Workspace CRUD, application context | `WorkspaceService` | core, db |
 | **sessions** | Session start/pause/resume/close from lock+focus events | `SessionService` | core, db, platform |
-| **git** | Status, HEAD, branches, ahead/behind, paged commit walk, commit detail; lane layout later | `GitProvider` trait | core |
+| **git** | Status, HEAD, branches, ahead/behind, paged commit walk, commit detail, lane layout | `GitProvider` trait, pure `lanes::layout` | core |
 | **monorepo** | Workspace manifests → tools and package boundaries, read-only | `detect(selected, git_root)` | core |
 | **scheduler** | The only clock: intervals, gate, cancellation, isolation | `Observation`, `Gate`, `Scheduler` | core |
 | **ports** | Listening sockets → (port, pid, process) + attribution | `PortScanner` | core, processes |
@@ -182,6 +183,7 @@ workspaces.applications()             → AppReport[]
 workspaces.openable()                 → AppReport[]
 workspaces.launch({ workspaceId, kind }) → Launched
 git.history({ projectId, cursor })     → CommitPage
+git.graph({ projectId, cursor })       → CommitGraph
 git.commit({ projectId, commit })      → CommitLookup
 git.copy_commit({ projectId, commit, form }) → String
 keep_awake.state()                    → KeepAwakeState
@@ -219,11 +221,13 @@ Rules:
    string that means anything on disk. Four guard tests keep it that way, each proven
    able to fail by injection.
 
-7. **No command says how much to read.** `git.history` takes a project and a
-   *cursor*; the page size is `mira-git`'s (`PAGE`), so there is no argument
-   through which the interface could ask Mira to walk an entire repository. A
-   guard test fails the build if a `limit`, `count`, `depth` or `all` parameter
-   appears on any command.
+7. **No command says how much to read.** `git.history` and `git.graph` take a
+   project and a *cursor*; the page size is `mira-git`'s (`PAGE`), so there is no
+   argument through which the interface could ask Mira to walk an entire
+   repository. A guard test fails the build if a `limit`, `count`, `depth` or
+   `all` parameter appears on any command. `git.graph` draws the **same page** as
+   `git.history` — same commits, same order, same cursor — so the picture beside
+   the list cannot label a different row.
 
 8. **A commit id is a type, not a string.** `CommitId` is four to forty
    hexadecimal characters, checked as it deserialises, so `HEAD`, a refspec, a
@@ -234,6 +238,13 @@ Rules:
 9. **Keep Awake is one word out of four.** `keep_awake.set` takes `off`,
    `thirtyMinutes`, `oneHour` or `untilTurnedOff`. There is no number of minutes
    to send and nothing downstream to bound ([ADR-0014](../adr/0014-keep-awake.md)).
+
+10. **No command acts on a commit.** The graph is a picture. There is no
+    parameter named `checkout`, `merge`, `rebase`, `reset`, `revert`,
+    `cherrypick`, `branch`, `tag`, `push`, `pull` or `fetch` on any command, and
+    a guard test fails the build if one appears — as does a second guard that
+    keeps every libgit2 *write* API out of `mira-git` entirely
+    ([ADR-0015](../adr/0015-graph-lanes.md)).
 
 ### Events (backend tells)
 
@@ -359,6 +370,18 @@ the security model in §7 (any XSS becomes full database access) and dissolves t
 repository boundary, since queries would spread through React. Mira instead uses
 `rusqlite` inside `mira-db` behind repository traits, exposed only as typed commands.
 See [ADR-0004](../adr/0004-sqlite-local-first.md).
+
+**The graph is drawn over the visible window, never the repository.** The lane
+algorithm is a pure function of the twenty-five rows on screen and their parent
+ids — it holds no repository handle and cannot ask for another commit. That is a
+deliberate refusal of the textbook approach: every published lane algorithm wants
+a *topologically ordered* commit stream, and asking libgit2 for one makes it
+preprocess the whole reachable history before yielding anything. Measured on the
+same fixtures, one page cost 3.4 ms, 34 ms and 426 ms on repositories of 100,
+1,000 and 10,000 commits, against a flat ~0.9 ms unsorted — O(history) to render
+O(page). The cost of refusing is that a repository whose commit dates disagree
+with its topology can place a parent above its child; that relationship is
+reported and no line is drawn for it ([ADR-0015](../adr/0015-graph-lanes.md)).
 
 **History is paged, and the page belongs to `mira-git`.** A repository's log is the
 one read in the product whose cost is unbounded by nature, so the boundary is where

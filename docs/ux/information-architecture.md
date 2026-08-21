@@ -292,6 +292,36 @@ Copy is the one icon-only action, with a name and a tooltip: the short id from a
 row, the full id from the detail. The **Changes** tab is still to come — Slice 5a
 built History only.
 
+**As built (slice 5b) — the graph.** The lanes sit in a gutter to the *left of the
+same rows*, so the picture and the list are one thing rather than two views to keep
+in step. A **Graph** toggle in the header turns the gutter off; that is not
+cosmetic, because List asks a cheaper question of the backend (commits alone, no
+parents, lanes or reference labels).
+
+Four rules keep it a picture rather than a puzzle:
+
+1. **Every fact it draws is also written.** A merge says "Merge of 2 parents" in
+   words; a root says "First commit"; branches and tags are labelled chips with
+   their kind in the tooltip. The gutter is `aria-hidden` — announcing it would
+   read the row out twice — and hiding it loses width, never content.
+2. **Shape before colour.** A ring is an ordinary commit, a ring with a filled
+   centre is a merge, a filled disc is the first commit. Lane colour comes from a
+   muted eight-step ramp and carries no meaning beyond "a different line".
+3. **The bounds are said out loud.** More than eight lanes folds onto the eighth
+   and the surface says so; more references than Mira reads at once, and it says a
+   label may be missing; a shallow clone still says where the copy stops.
+4. **Nothing is actionable.** No checkout, merge, rebase, reset, cherry-pick or
+   revert — and no disabled control implying one later
+   ([ADR-0015](../adr/0015-graph-lanes.md)).
+
+**Keyboard.** `↑` and `↓` move between commits, `⏎` opens one, `Esc` closes it and
+then leaves the surface. Tab still reaches every row; the arrows are the faster
+path rather than the only one (§7).
+
+**Narrow windows.** The gutter is hidden below the small breakpoint rather than
+reflowed, and the ref chips wrap. That is the degradation rule in one line: drop
+the decoration, keep the content.
+
 ### Ports view (machine-scoped)
 All listening ports, grouped: *this project*, *other projects*, *unattributed*. Same row
 actions as the project section. This is the one place Mira shows machine-wide data

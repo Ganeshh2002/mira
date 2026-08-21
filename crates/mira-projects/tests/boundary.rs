@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 use mira_core::{MiraError, Project, ProjectId, Result};
 use mira_db::{NewProject, ProjectRepo};
 use mira_fs::PathMatching;
-use mira_git::{CommitId, CommitLookup, CommitPage, GitOverview, GitProvider};
+use mira_git::{CommitGraph, CommitId, CommitLookup, CommitPage, GitOverview, GitProvider};
 use mira_projects::{ProjectService, Projects};
 use tempfile::TempDir;
 
@@ -55,6 +55,9 @@ impl GitProvider for NoGit {
     }
     fn commit(&self, _root: &Path, _id: &CommitId) -> CommitLookup {
         CommitLookup::NotARepository
+    }
+    fn graph(&self, _root: &Path, _from: Option<&CommitId>) -> CommitGraph {
+        CommitGraph::NotARepository
     }
 }
 
