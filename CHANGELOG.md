@@ -10,7 +10,7 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Added
 - Product definition, product scope, PRD, information architecture, and design system
 - Architecture, platform abstraction, data model, and security/privacy documents
-- ADRs 0001–0018 covering the foundational technical decisions
+- ADRs 0001–0019 covering the foundational technical decisions
 - Locked phase plan (0.1 through 0.6+) and the fourteen-slice implementation roadmap
 - Open-source project files (licence, contributing, code of conduct, security policy)
 - **Foundation (slice 0).** Cargo workspace with `mira-core`, `mira-platform`, `mira-db`,
@@ -150,6 +150,28 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   looking**, which is a different sentence from "No matching commits". A broad filter is
   flat across a hundred-fold repository; a narrow one plateaus at the budget instead of
   climbing ([ADR-0018](docs/adr/0018-history-filters.md)).
+- **Application preferences (slice 4b, part).** A workspace can now choose which editor,
+  terminal and browser it opens with, from the applications Mira knows how to look for.
+  Each is marked *installed*, *not installed* or *cannot open a folder*, and **Automatic**
+  — the behaviour every workspace had before — stays the default and says what it does
+  today. Choosing is per workspace: two workspaces on one project can use different
+  editors.
+
+  You pick from a list; you never type a path. A choice is stored as Mira's own name for
+  an application — `vscode`, `iterm` — which resolves to a row in a table compiled into
+  the binary and to nothing else. There is no setting that points Mira at a program, and
+  no column in the database where one could be written.
+
+  If a chosen application is uninstalled, Mira says which one and opens **nothing**:
+  *"Zed is not on this machine. Nothing else will be opened — choose another."* Quietly
+  starting a different editor would mean never finding out. The same choice travels
+  between machines — `vscode` is `vscode` on all three platforms — and one that a
+  platform has never heard of says so rather than silently resetting
+  ([ADR-0019](docs/adr/0019-application-preferences.md)).
+
+  Looking for applications also got faster on the way past: the `PATH` probe now asks
+  only about spellings the platform actually uses, which is 2.7× less work on macOS and
+  3.3× less on Linux.
 - macOS and Windows ask the platform for its standard window material — Liquid Glass on
   macOS 26, Mica on Windows 11 — rather than drawing an imitation. Linux stays opaque.
 

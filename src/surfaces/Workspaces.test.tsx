@@ -35,6 +35,7 @@ function workspace(overrides: Partial<Workspace> = {}): Workspace {
     name: 'Web Development',
     description: null,
     applications: [],
+    preferences: [],
     lastOpenedAt: null,
     createdAt: NOW,
     updatedAt: NOW,
@@ -348,7 +349,9 @@ describe('application context', () => {
     await userEvent.click(await screen.findByRole('button', { name: /Web Development/ }));
 
     const context = await screen.findByRole('list', { name: /context/i });
-    expect(within(context).getByText(/editor/i)).toBeInTheDocument();
+    // The row's own label, not the chooser's — the chooser beside it is named
+    // "Editor application" and would match a looser pattern.
+    expect(within(context).getByText('Editor')).toBeInTheDocument();
     expect(within(context).getByText(/not installed/i)).toBeInTheDocument();
   });
 

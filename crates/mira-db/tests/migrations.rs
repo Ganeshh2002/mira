@@ -34,8 +34,8 @@ fn a_fresh_database_reports_the_latest_version() {
     assert_eq!(db.schema_version(), mira_db::target_version());
     assert_eq!(
         db.schema_version(),
-        2,
-        "0001_init, then 0002_workspace_context"
+        3,
+        "0001_init, 0002_workspace_context, then 0003_application_preferences"
     );
 }
 
@@ -63,13 +63,16 @@ fn the_schema_creates_every_table_in_the_data_model() {
         // 0002: which kinds of application a workspace works with. Intent; the
         // application itself is discovered on the machine, never stored.
         "workspace_applications",
+        // 0003: which application, as a catalogue id. `applications` and
+        // `app_preferences` above stay empty — see the migration for why.
+        "workspace_app_preferences",
     ] {
         assert!(
             tables.iter().any(|t| t == expected),
             "table {expected} is missing; tables were {tables:?}"
         );
     }
-    assert_eq!(tables.len(), 16, "16 tables, no more: {tables:?}");
+    assert_eq!(tables.len(), 17, "17 tables, no more: {tables:?}");
 }
 
 #[test]

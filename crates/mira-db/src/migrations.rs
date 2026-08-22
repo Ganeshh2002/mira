@@ -26,6 +26,11 @@ pub const MIGRATIONS: &[Migration] = &[
         name: "workspace_context",
         sql: include_str!("../migrations/0002_workspace_context.sql"),
     },
+    Migration {
+        version: 3,
+        name: "application_preferences",
+        sql: include_str!("../migrations/0003_application_preferences.sql"),
+    },
 ];
 
 /// The version a fully migrated database reports.

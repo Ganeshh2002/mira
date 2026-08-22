@@ -226,6 +226,32 @@ CREATE TABLE commands (
 `args` is a JSON **array**, not a string, at the schema level. The data model itself
 forbids "just put the whole command line in here", which is how shell injection gets in.
 
+**As built (slice 4b): `applications` and `app_preferences` above are created and
+stay empty.** They were designed for a mutable registry of detected-or-user-added
+programs, and `applications.program` is a place for an executable path to live.
+The boundary that shipped in slice 4 is narrower: a program is a row in a table
+compiled into the binary, and nothing outside it can be started. So a workspace's
+choice of application is stored as a **catalogue slug** instead —
+
+```sql
+CREATE TABLE workspace_app_preferences (
+  workspace_id   INTEGER NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  kind           TEXT    NOT NULL CHECK (kind IN ('editor','terminal','browser')),
+  application_id TEXT    NOT NULL CHECK (length(...) BETWEEN 1 AND 32
+                                         AND application_id GLOB '[a-z0-9-]*'
+                                         AND application_id NOT GLOB '*[^a-z0-9-]*'),
+  chosen_at      INTEGER NOT NULL,
+  PRIMARY KEY (workspace_id, kind)
+);
+```
+
+— `'vscode'`, `'iterm'`, `'ghostty'`: meaningless to anything but Mira, resolving
+to nothing if the compiled catalogue does not know it, and the same slug on every
+platform so a choice survives moving machines. The primary key is what makes "per
+workspace" a property of the schema rather than of the code above it, and a guard
+test asserts no code reads or writes the two empty tables
+([ADR-0019](../adr/0019-application-preferences.md)).
+
 ### 3.5 Ports
 
 Only *expected* ports are stored — a statement of intent. Live ports are never persisted.

@@ -25,6 +25,7 @@ the map, the ADRs are the reasoning.
 | Git diff | Five declared limits; a file chosen by ordinal | [0016](../adr/0016-bounded-diffs.md) |
 | File history | Bounded by commits examined; named by a subject, not a path | [0017](../adr/0017-file-history.md) |
 | History filters | One scan budget; a branch is a tip, never a name | [0018](../adr/0018-history-filters.md) |
+| Application choice | A catalogue id per workspace; obeyed or refused, never substituted | [0019](../adr/0019-application-preferences.md) |
 
 Chosen because the constraints in
 [product-definition.md](../product/product-definition.md) — ≤ 30 MB installer, ≤ 150 MB
@@ -275,6 +276,15 @@ Rules:
     generalised: *anything picked from a list Mira produced goes back as the
     identity Mira gave it, never as the label that was read*
     ([ADR-0018](../adr/0018-history-filters.md)).
+
+14. **An application is chosen by catalogue id.** `workspaces.prefer` takes an
+    `AppId` — a slug naming a row in the table compiled into the binary — and
+    **refuses one that names no row before storing it**, so the database can only
+    hold identities Mira itself offered. There is no path, program name, argv or
+    command in a preference, and no column one could be written into: the
+    baseline's `applications.program` stays empty and a guard asserts no code
+    touches it. A chosen application that is gone is refused **by name**, never
+    replaced with another ([ADR-0019](../adr/0019-application-preferences.md)).
 
 ### Events (backend tells)
 

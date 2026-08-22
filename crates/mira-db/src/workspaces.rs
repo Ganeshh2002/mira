@@ -10,7 +10,9 @@
 //! observed; the project and its workspaces are stated, and both stay
 //! (`prd.md` FR-1.5).
 
-use mira_core::{AppKind, MiraError, ProjectId, Result, Workspace, WorkspaceId};
+use mira_core::{
+    AppId, AppKind, AppPreference, MiraError, ProjectId, Result, Workspace, WorkspaceId,
+};
 use rusqlite::{params, Connection, Row};
 
 use crate::db::Db;
@@ -64,6 +66,18 @@ pub trait WorkspaceRepo {
         kinds: &[AppKind],
         now: i64,
     ) -> Result<()>;
+
+    /// Choose which application this workspace uses for one kind.
+    ///
+    /// `None` clears the choice, which puts that kind back on automatic. Keyed
+    /// by workspace, so this changes exactly one workspace and no other.
+    fn set_workspace_preference(
+        &self,
+        id: WorkspaceId,
+        kind: AppKind,
+        application: Option<&AppId>,
+        now: i64,
+    ) -> Result<()>;
 }
 
 impl WorkspaceRepo for Db {
@@ -86,6 +100,7 @@ impl WorkspaceRepo for Db {
             for workspace in rows {
                 let mut workspace = workspace?;
                 workspace.applications = applications(conn, workspace.id)?;
+                workspace.preferences = preferences(conn, workspace.id)?;
                 workspaces.push(workspace);
             }
             Ok(workspaces)
@@ -101,6 +116,7 @@ impl WorkspaceRepo for Db {
                 Err(error) => return Err(error),
             };
             workspace.applications = applications(conn, id)?;
+            workspace.preferences = preferences(conn, id)?;
             Ok(Some(workspace))
         })?;
 
@@ -183,6 +199,53 @@ impl WorkspaceRepo for Db {
             Ok(())
         })
     }
+
+    fn set_workspace_preference(
+        &self,
+        id: WorkspaceId,
+        kind: AppKind,
+        application: Option<&AppId>,
+        now: i64,
+    ) -> Result<()> {
+        // The workspace is read first so choosing for one that is gone is that
+        // sentence, rather than a silently-inserted row with no parent.
+        self.get_workspace(id)?;
+
+        self.with_connection(|conn| {
+            match application {
+                Some(chosen) => conn.execute(
+                    "INSERT INTO workspace_app_preferences \
+                     (workspace_id, kind, application_id, chosen_at) VALUES (?1, ?2, ?3, ?4) \
+                     ON CONFLICT (workspace_id, kind) \
+                     DO UPDATE SET application_id = ?3, chosen_at = ?4",
+                    params![id.get(), kind.as_str(), chosen.as_str(), now],
+                )?,
+                // Clearing is a delete rather than a sentinel row: automatic is
+                // the absence of a choice, and storing "no choice" as a value
+                // would give it two spellings.
+                None => conn.execute(
+                    "DELETE FROM workspace_app_preferences WHERE workspace_id = ?1 AND kind = ?2",
+                    params![id.get(), kind.as_str()],
+                )?,
+            };
+            Ok(())
+        })?;
+
+        self.touch_updated(id, now)
+    }
+}
+
+impl Db {
+    /// Say a workspace's stored state changed, without changing what it is.
+    fn touch_updated(&self, id: WorkspaceId, now: i64) -> Result<()> {
+        self.with_connection(|conn| {
+            conn.execute(
+                "UPDATE workspaces SET updated_at = ?2 WHERE id = ?1",
+                params![id.get(), now],
+            )
+        })?;
+        Ok(())
+    }
 }
 
 fn missing_is_not_found(affected: usize) -> Result<()> {
@@ -210,6 +273,33 @@ fn applications(conn: &Connection, id: WorkspaceId) -> rusqlite::Result<Vec<AppK
         .collect())
 }
 
+/// The applications a workspace has chosen, in [`AppKind::ALL`] order.
+///
+/// A row whose `kind` or `application_id` no longer parses is skipped rather than
+/// failing the read: a database written by a later version of Mira should make an
+/// older one show less, not refuse to open.
+fn preferences(conn: &Connection, id: WorkspaceId) -> rusqlite::Result<Vec<AppPreference>> {
+    let mut statement = conn.prepare(
+        "SELECT kind, application_id FROM workspace_app_preferences WHERE workspace_id = ?1",
+    )?;
+    let rows = statement.query_map(params![id.get()], |row| {
+        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+    })?;
+
+    let stored: Vec<(String, String)> = rows.collect::<rusqlite::Result<_>>()?;
+
+    Ok(AppKind::ALL
+        .into_iter()
+        .filter_map(|kind| {
+            let (_, application) = stored.iter().find(|(row, _)| row == kind.as_str())?;
+            Some(AppPreference {
+                kind,
+                application: application.clone().try_into().ok()?,
+            })
+        })
+        .collect())
+}
+
 fn row_to_workspace(row: &Row<'_>) -> rusqlite::Result<Workspace> {
     Ok(Workspace {
         id: WorkspaceId::new(row.get(0)?),
@@ -217,6 +307,7 @@ fn row_to_workspace(row: &Row<'_>) -> rusqlite::Result<Workspace> {
         name: row.get(2)?,
         description: row.get(3)?,
         applications: Vec::new(),
+        preferences: Vec::new(),
         last_opened_at: row.get(4)?,
         created_at: row.get(5)?,
         updated_at: row.get(6)?,
@@ -259,5 +350,14 @@ impl<T: WorkspaceRepo + ?Sized> WorkspaceRepo for &T {
         now: i64,
     ) -> Result<()> {
         (**self).set_workspace_applications(id, kinds, now)
+    }
+    fn set_workspace_preference(
+        &self,
+        id: WorkspaceId,
+        kind: AppKind,
+        application: Option<&AppId>,
+        now: i64,
+    ) -> Result<()> {
+        (**self).set_workspace_preference(id, kind, application, now)
     }
 }

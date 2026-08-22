@@ -75,6 +75,7 @@ fn an_address_that_is_not_a_web_address_is_refused_before_anything_opens() {
         let attempt = plan(
             Os::MacOs,
             AppKind::Browser,
+            None,
             LaunchTarget::WebAddress(refused.to_owned()),
             |_| true,
         );
@@ -96,6 +97,7 @@ fn the_only_addresses_the_product_can_build_are_loopback() {
         assert!(plan(
             Os::MacOs,
             AppKind::Browser,
+            None,
             LaunchTarget::WebAddress(built),
             |_| true
         )
@@ -471,4 +473,93 @@ fn the_search_budget_is_the_only_thing_that_decides_how_far_it_looks() {
     assert_eq!(mira_git::MAX_FILTER_SCAN, 2_000);
     assert_eq!(mira_git::MAX_AUTHORS, 100);
     assert_eq!(mira_git::LONGEST_TERM, 200);
+}
+
+// ── Naming an application ────────────────────────────────────────────────────
+
+fn app_id(raw: serde_json::Value) -> Result<mira_core::AppId, serde_json::Error> {
+    serde_json::from_value(raw)
+}
+
+#[test]
+fn an_application_id_is_a_slug_and_nothing_else() {
+    for accepted in ["vscode", "iterm", "sublime-text", "zed", "xterm", "wezterm"] {
+        assert!(
+            app_id(json!(accepted)).is_ok(),
+            "{accepted} must deserialise"
+        );
+    }
+}
+
+#[test]
+fn nothing_that_could_be_run_deserialises_as_an_application_id() {
+    // Defence in depth. The wall is that an id only becomes an application by
+    // being found in the catalogue compiled into the binary — but a type that
+    // cannot hold a path is a type nobody has to check for one.
+    for refused in [
+        json!("/usr/bin/code"),
+        json!("/Applications/Cursor.app"),
+        json!("C:\\Windows\\System32\\cmd.exe"),
+        json!("code --wait"),
+        json!("code;rm -rf ~"),
+        json!("../../etc/passwd"),
+        json!("Visual Studio Code"),
+        json!("VSCode"),
+        json!("code\nzed"),
+        json!("vscode "),
+        json!(""),
+        json!("x".repeat(33)),
+        json!(0),
+        json!(true),
+        json!(null),
+        json!(["vscode"]),
+        json!({ "program": "code" }),
+    ] {
+        assert!(
+            app_id(refused.clone()).is_err(),
+            "{refused} must not deserialise into an application id"
+        );
+    }
+}
+
+#[test]
+fn a_well_formed_id_for_an_application_mira_does_not_know_resolves_to_nothing() {
+    // The half validation cannot do. `code` and `sh` are perfectly good slugs;
+    // they name no row, so they become nothing at all.
+    for unknown in ["code", "sh", "env", "bash", "some-editor"] {
+        let parsed: mira_core::AppId = unknown.parse().expect("a well-formed id");
+
+        for kind in mira_core::AppKind::ALL {
+            for os in [
+                mira_platform::Os::MacOs,
+                mira_platform::Os::Windows,
+                mira_platform::Os::Linux,
+            ] {
+                assert!(
+                    mira_platform::find(os, kind, &parsed).is_none(),
+                    "{unknown} resolved to a {kind:?} on {os:?}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn a_preference_carries_no_program_and_no_path() {
+    let preference: mira_core::AppPreference = serde_json::from_value(json!({
+        "kind": "editor",
+        "application": "zed",
+        "program": "/usr/bin/zed",
+        "args": ["--wait"],
+        "path": "/home/dev"
+    }))
+    .expect("a preference");
+
+    assert_eq!(preference.kind, mira_core::AppKind::Editor);
+    assert_eq!(preference.application.as_str(), "zed");
+
+    let written = serde_json::to_string(&preference).expect("serialise");
+    assert!(!written.contains("/usr/bin"), "got: {written}");
+    assert!(!written.contains("--wait"), "got: {written}");
+    assert!(!written.contains("/home/dev"), "got: {written}");
 }
