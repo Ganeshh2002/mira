@@ -60,7 +60,11 @@ export function ServicesPanel({
             ) : null}
             <ul className="m-0 flex list-none flex-col p-0">
               {inGroup.map((service) => (
-                <ServiceRow key={rowKey(service)} service={service} />
+                <ServiceRow
+                  key={rowKey(service)}
+                  service={service}
+                  at={observation.services.indexOf(service)}
+                />
               ))}
             </ul>
           </li>
@@ -73,7 +77,11 @@ export function ServicesPanel({
             </p>
             <ul className="m-0 flex list-none flex-col p-0">
               {unplaced.map((service) => (
-                <ServiceRow key={rowKey(service)} service={service} />
+                <ServiceRow
+                  key={rowKey(service)}
+                  service={service}
+                  at={observation.services.indexOf(service)}
+                />
               ))}
             </ul>
           </li>
@@ -101,9 +109,17 @@ function rowKey(service: Service): string {
   return `${service.listener.port}:${service.listener.pid ?? 'none'}`;
 }
 
-function ServiceRow({ service }: { service: Service }) {
+/**
+ * One observed service.
+ *
+ * `at` is this row's position in the snapshot's own list, and it is what Open
+ * sends. The port beside it is a **reading being displayed**; the position is
+ * the only thing that travels back, so there is no number of the caller's
+ * choosing on the wire (ADR-0020).
+ */
+function ServiceRow({ service, at }: { service: Service; at: number }) {
   const open = useMutation({
-    mutationFn: () => commands.openService(service.listener.port),
+    mutationFn: () => commands.openService(at),
   });
   const copy = useMutation({ mutationFn: (text: string) => write(text) });
 

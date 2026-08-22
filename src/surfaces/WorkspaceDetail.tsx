@@ -3,9 +3,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { AppKind } from '../bindings/AppKind';
 import type { Project } from '../bindings/Project';
 import type { ProjectObservation } from '../bindings/ProjectObservation';
-import type { Service } from '../bindings/Service';
-import type { ServiceObservation } from '../bindings/ServiceObservation';
 import type { Workspace } from '../bindings/Workspace';
+import { ActionsPanel } from '../components/ActionsPanel';
 import { ContextPanel } from '../components/ContextPanel';
 import { Freshness } from '../components/Freshness';
 import { GitPanel } from '../components/GitPanel';
@@ -13,7 +12,7 @@ import { MissingFolder } from '../components/MissingFolder';
 import { OpenWith } from '../components/OpenWith';
 import { Row } from '../components/Row';
 import { Section } from '../components/Section';
-import { ServicesPanel } from '../components/ServicesPanel';
+import { WorkspaceServices } from '../components/WorkspaceServices';
 import { commands, describeUnknown } from '../lib/ipc';
 import { workspaceKeys } from '../lib/workspaces';
 
@@ -30,21 +29,26 @@ import { workspaceKeys } from '../lib/workspaces';
  * the scheduler, and are read by every workspace on that project — so two
  * workspaces never disagree, and switching between them costs no observation
  * (slice brief §12).
+ *
+ * What a workspace does have is a **view**. The Services section shows only the
+ * ones this workspace said were the work, so a monorepo running twelve servers
+ * does not put twelve rows on a surface about two of them. The project's whole
+ * list is still one click away on the project surface, unchanged
+ * ([ADR-0020](../../docs/adr/0020-workspace-services.md)).
+ *
+ * The order is Project → Packages → Services → Git → Context: what this is,
+ * what it is made of, what is running, where the code stands, and what opens
+ * it. Everything above the Context row is a reading; the Context row is the only
+ * place a person states something.
  */
 export function WorkspaceDetail({
   workspace,
   project,
   observation,
-  services,
-  unplaced,
-  serviceObservation,
 }: {
   workspace: Workspace;
   project: Project;
   observation: ProjectObservation | undefined;
-  services: Service[];
-  unplaced: Service[];
-  serviceObservation: ServiceObservation;
 }) {
   const client = useQueryClient();
 
@@ -111,6 +115,8 @@ export function WorkspaceDetail({
             </section>
           ) : null}
 
+          <WorkspaceServices workspaceId={workspace.id} />
+
           {observation?.git ? (
             <>
               <div className="flex items-baseline justify-between gap-[var(--space-3)]">
@@ -121,11 +127,7 @@ export function WorkspaceDetail({
             </>
           ) : null}
 
-          <ServicesPanel
-            observation={serviceObservation}
-            services={services}
-            unplaced={unplaced}
-          />
+          <ActionsPanel workspaceId={workspace.id} />
 
           {openable.data ? (
             <OpenWith

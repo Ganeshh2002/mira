@@ -141,8 +141,10 @@ Launching applications is Mira's most dangerous capability, so the rules are abs
 5. **URLs are allowlisted** to `http` and `https`. `file:`, `javascript:`, `data:`, and
    custom schemes are refused. (`file` was in the original list and was dropped when
    the rule was implemented: it would open a local path, which is the thing rule 8
-   exists to prevent.) No command accepts a URL at all — the interface names a
-   **port**, and Mira builds `http://localhost:<port>` in Rust.
+   exists to prevent.) No command accepts a URL at all. **Since slice 4c no command
+   accepts a port either** — the interface names a *position* in a list Mira produced,
+   or a row id Mira issued, and Mira builds `http://localhost:<port>` in Rust from its
+   own observation ([ADR-0020](../adr/0020-workspace-services.md), rules 41–44).
 6. **No auto-run.** Mira never executes anything at startup, on project add, on
    detection, or on any event. Every launch is a user action. This is why automation is
    Future work with a trust model attached rather than a quick win.
@@ -365,6 +367,105 @@ Slice 5e is the feature made of the four strings other tools pass straight to
     match yet — nothing matched in the 2 000 commits examined"* rather than as
     "No results" ([ADR-0018](../adr/0018-history-filters.md)).
 
+### Watching a service
+
+Slice 4c lets a workspace say which of its project's services are the work. It is
+the feature whose defining input is, everywhere else, a port number.
+
+41. **No command accepts a port, an address, a host, a URL, a pid or a process
+    name.** A service is added by `at` — a position in the list
+    `workspaces.service_offers` returned — and is opened or forgotten by
+    `service_id`, the row id Mira issued when it was added. `live.open_service`
+    took `port: u16` before this slice and takes `at: u32` after it; the check
+    against the observed list was real, but the parameter was still a number of
+    the caller's choosing. A guard test enumerates every banned parameter name.
+
+    The direction is deliberate. A port travels *outward* on every reading — the
+    Services panel says `:5173`, and hiding it would make the panel unreadable.
+    Outbound values are information; inbound values are instructions.
+
+42. **A watched service is stored as a port and nothing else.**
+    `workspace_services` has four columns and no label, process name, pid,
+    address, scheme, path or command. Everything except the port is observation,
+    belongs to the project, and is read live — so a service that has stopped is
+    shown as its port rather than as a memory of what used to be there. A guard
+    asserts the column list positively and negatively, and a second asserts that
+    no `workspace*` table anywhere carries `executable`, `working_directory`,
+    `cmdline` or `pid`.
+
+43. **A workspace's configuration is unreachable from another workspace.** Every
+    statement touching `workspace_services` names `workspace_id`, so a sibling's
+    row id resolves to nothing rather than to a row — including on the path that
+    turns a row id into a port to open. A guard scans the SQL and fails on any
+    statement that does not say whose.
+
+44. **A service that is not this project's is never reported as running.** A
+    watched port resolves to `Running` only when the listener on it is attributed
+    to this workspace's project; anything else — including a listener Mira could
+    not attribute at all — is a distinct `Taken` state with no Open button. This
+    is [ADR-0013](../adr/0013-launching-applications.md)'s no-substitution rule,
+    one layer over. `NotRunning` is likewise a claim Mira may only make after
+    looking: before the first scan and after a failed one the row says so instead.
+
+45. **Nothing here can stop anything.** Open is the only action on a watched
+    service, and it goes through the same launcher an editor does. Beyond the
+    existing "nothing in this codebase can terminate a process" guard, a second
+    now asserts that no command is *named* or *parameterised* for stopping,
+    killing, terminating, restarting or starting — the shapes somebody would
+    reach for first. Termination arrives with its own confirmation and refusal
+    design or it does not arrive.
+
+### Doing something in a workspace
+
+Slice 4d gives a workspace a list of things it can be asked to do. It is the
+feature that, built the usual way, would be a table of shell commands.
+
+46. **An action is a row in a catalogue compiled into the binary.**
+    `mira_core::action::CATALOGUE` is a `const` array of six `&'static str`-bearing
+    rows. There is no way to add one except to write it and compile it — not from
+    the interface, not from the database, not from a project directory, not from a
+    settings file. Those paths do not exist rather than being validated
+    ([ADR-0021](../adr/0021-workspace-actions.md)).
+
+47. **No program, no argv, no shell string, anywhere in the feature.** No field,
+    column, parameter or wire type holds an executable, a path to one, an
+    argument list, a template or a placeholder. An `ActionId` is
+    `[a-z0-9-]{1,32}`, so `;`, `&&`, `|`, backticks, `$(`, quotes, spaces,
+    slashes and newlines are characters it cannot contain. Wire tests assert that
+    `npm run dev`, `pnpm -w build`, `cargo run --release`, `/bin/sh`,
+    `open-editor; rm -rf ~` and a dozen others fail to deserialise.
+
+48. **The effect enum is the whole privilege surface, and it is pinned.** Five
+    variants — open the project root in an application, reveal it, open this
+    workspace's running service, mark the workspace opened, take the scheduler's
+    reading now. Every one was already reachable from a button before this slice,
+    so **actions add no new way for Mira to affect the machine.** A guard asserts
+    the variant list *exactly*, so a sixth fails the build until somebody adds it
+    on purpose, and a second guard asserts the dispatch reaches for no process,
+    no filesystem write and no address of its own.
+
+49. **The construction sites did not multiply.** Opening in an application goes
+    through `workspaces.launch`'s own body and opening a service through
+    `workspaces.open_service`'s, so there is still exactly one
+    `LaunchTarget::Directory` site and one address site in the application shell.
+    The guards that count them pass unchanged, which is the point: reuse is what
+    keeps them true.
+
+50. **An unknown identity is a state, never a substitution.** A stored id this
+    build has no row for stays on the list, is shown by its id, offers removal
+    and not performance, and is never matched to the nearest row. A guard asserts
+    the unknown arm reaches for no fallback.
+
+51. **An ambiguous action is impossible rather than disabled.** "Open the running
+    service" is available only when exactly one of this workspace's services is
+    running; two or more is unavailable *with the count* and a sentence pointing
+    at the Services list. Opening the first of three would have been convenient,
+    silent and wrong.
+
+52. **`commands` stays empty.** The table from `0001_init.sql` has
+    `program TEXT NOT NULL`; a guard fails the build if any code issues `FROM`,
+    `INTO`, `UPDATE` or `JOIN` against it.
+
 ### Keeping a machine awake
 
 19. **Keep Awake holds an operating-system power request and nothing else.** Mira
@@ -558,3 +659,17 @@ after the people who wrote it move on.
 | The interface never writes a catalogue id down | No frontend source holds one as a string literal |
 | Discovery remembers nothing between requests | No cache, lock or `OnceLock` in `applications.rs` |
 | A power request says who made it and why | `REASON` names Mira; only the two idle-sleep flags are asked for |
+| No command takes a port, address, URL, pid or process | Command-signature scan; proven by injection |
+| A watched service stores a port and nothing else | Column list asserted positively and negatively |
+| No observation is written down as something to run | No `workspace*` table carries `executable`, `cmdline`, `pid` |
+| The URL-shaped table is unreachable | No code reads or writes `expected_ports` |
+| A workspace cannot reach another's configuration | Every `workspace_services` statement names `workspace_id` |
+| No command stops a service | Command name **and** parameter scan for stop/kill/terminate/… |
+| Watching a service starts no observer or clock | No `Instant`, `interval`, `sleep`, `OnceLock` in the resolver |
+| An action is a catalogue identity | Command-signature scan: the parameter's type is `ActionId` |
+| No action names something to run | The catalogue row has no `program`, `args`, `cwd`, `exec`, … |
+| The effects an action can have are pinned | The `Effect` variant list is asserted exactly |
+| The table with a program column is unreachable | No code reads or writes `commands` |
+| An action Mira no longer has never becomes another | The unknown arm reaches for no fallback |
+| An action belongs to the workspace given it | Every `workspace_actions` statement names `workspace_id` |
+| Performing an action reaches no new seam | The dispatch shares the one launch and one address site |

@@ -11,6 +11,7 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Product definition, product scope, PRD, information architecture, and design system
 - Architecture, platform abstraction, data model, and security/privacy documents
 - ADRs 0001–0019 covering the foundational technical decisions
+- ADRs 0001–0021 covering the foundational technical decisions
 - Locked phase plan (0.1 through 0.6+) and the fourteen-slice implementation roadmap
 - Open-source project files (licence, contributing, code of conduct, security policy)
 - **Foundation (slice 0).** Cargo workspace with `mira-core`, `mira-platform`, `mira-db`,
@@ -172,6 +173,59 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   Looking for applications also got faster on the way past: the `PATH` probe now asks
   only about spellings the platform actually uses, which is 2.7× less work on macOS and
   3.3× less on Linux.
+- **Workspace services (slice 4c, part).** A workspace now says which of its project's
+  services are the work. The workspace surface reads **Project → Packages → Services →
+  Git → Context**, and the Services section shows what this workspace watches rather than
+  everything the project happens to be running — so a monorepo with five servers puts two
+  rows on a workspace about two of them. Add one from a menu of what Mira observed, and
+  remove it from a button that names the port it removes. Two workspaces on one project
+  keep separate lists, and neither can see or change the other's.
+
+  You cannot type a port anywhere, and after this slice **no command accepts a port, an
+  address, a URL, a process name or a pid at all** — `live.open_service` used to take the
+  port and now takes a position in the list Mira produced. A service is added by naming
+  where it sat in that list and opened or forgotten by the row id Mira issued; the port
+  lives on Mira's side of the boundary in both directions.
+
+  A row says what Mira actually knows. **Running** and **Not running** are different
+  states, and so are **Port taken** — something else is on the number, and Mira will not
+  open it in place of yours — **Never observed** and **Cannot tell**, because an
+  interface that renders "Mira could not look" as "your server is down" is claiming
+  something Mira has not established. Nothing here starts or stops a process.
+
+  Measuring reversed the design: indexing the observed listeners in a map is the obvious
+  answer and loses everywhere a real machine lives, because the map is built over every
+  socket whether a workspace watches one service or twenty. A linear scan is three to
+  five times cheaper below twenty services and five hundred sockets, and fifty workspaces
+  resolving against four thousand sockets cost 1.9 ms in total — so there is no cache and
+  no new clock ([ADR-0020](docs/adr/0020-workspace-services.md)).
+- **Workspace actions (slice 4d, part).** A workspace now has an **Actions** section: the
+  few things it is actually asked to do. Pick from a catalogue of six — open in the
+  editor, open a terminal here, open the running service, show the project folder, mark
+  as opened, read everything again — and each row says **what it will do** before you
+  press it.
+
+  It is deliberately not a command list. There is no field to type into, no program, no
+  argument list, no shell string and no template: the catalogue is a `const` array
+  compiled into Mira, and a workspace stores only the identity of the rows it picked.
+  `npm run dev`, `pnpm -w build`, `cargo run` and `/bin/sh` are not values any part of
+  this feature can hold — the wire tests assert each one fails at the boundary. Every
+  effect was already reachable from a button somewhere, so the set of things Mira can do
+  is exactly what it was; only the ways to ask for them grew.
+
+  An action that cannot be done is a sentence rather than a greyed-out button, and that
+  includes the ambiguous one: with two of this workspace's services running, "open the
+  running service" says so and points at the Services list instead of opening the first.
+  An identity Mira no longer has says exactly that and offers removal — it is never
+  quietly matched to the nearest action. Nothing here starts a server or stops a process.
+
+  Measuring picked the shape: deciding all six actions costs 0.65 µs, while asking the
+  machine what it can open costs 7.0 µs — so the machine is asked once per request rather
+  than once per action, which is 8.0 µs instead of 47.9. At that price nothing is cached
+  and no clock is added ([ADR-0021](docs/adr/0021-workspace-actions.md)).
+
+  The `commands` table from the original schema — the one with `program TEXT NOT NULL` —
+  is now permanently empty, with a guard enforcing it.
 - macOS and Windows ask the platform for its standard window material — Liquid Glass on
   macOS 26, Mica on Windows 11 — rather than drawing an imitation. Linux stays opaque.
 

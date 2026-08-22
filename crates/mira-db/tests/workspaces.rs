@@ -6,7 +6,8 @@
 //! workspaces go with it — deliberately, because a way of working on a project
 //! that no longer exists is not a thing a person can be given back.
 
-use mira_core::{AppKind, MiraError, ProjectId, WorkspaceId};
+use mira_core::service::Port;
+use mira_core::{AppKind, MiraError, ProjectId, WorkspaceId, WorkspaceServiceId};
 use mira_db::{Db, NewProject, NewWorkspace, ProjectRepo, WorkspaceRepo};
 
 fn project(db: &Db, name: &str, root: &str) -> ProjectId {
@@ -611,6 +612,573 @@ fn the_column_cannot_hold_anything_shaped_like_a_program() {
         assert!(
             written.is_err(),
             "the schema accepted {smuggled:?} as an application id"
+        );
+    }
+}
+
+// ── Watched services ─────────────────────────────────────────────────────────
+
+fn p(raw: u16) -> Port {
+    Port::try_from(raw).expect("a port")
+}
+
+#[test]
+fn a_workspace_starts_watching_nothing() {
+    let db = Db::open_in_memory().expect("open");
+    let aviora = project(&db, "Aviora", "/home/dev/aviora");
+    let web = db
+        .create(&new(aviora, "Web"), 1_800_000_000)
+        .expect("create");
+
+    assert!(db.workspace_services(web.id).expect("services").is_empty());
+}
+
+#[test]
+fn a_watched_service_comes_back_with_what_was_stored() {
+    let db = Db::open_in_memory().expect("open");
+    let aviora = project(&db, "Aviora", "/home/dev/aviora");
+    let web = db
+        .create(&new(aviora, "Web"), 1_800_000_000)
+        .expect("create");
+
+    let added = db
+        .watch_service(web.id, p(5_173), 1_800_000_100)
+        .expect("watch");
+
+    assert_eq!(added.workspace_id, web.id);
+    assert_eq!(added.port, p(5_173));
+    assert_eq!(added.added_at, 1_800_000_100);
+    assert_eq!(db.workspace_services(web.id).expect("services"), [added]);
+}
+
+#[test]
+fn watched_services_come_back_in_port_order() {
+    // By port rather than by when it was added, so the list reads the same every
+    // time and removing one does not reshuffle the rest.
+    let db = Db::open_in_memory().expect("open");
+    let aviora = project(&db, "Aviora", "/home/dev/aviora");
+    let web = db
+        .create(&new(aviora, "Web"), 1_800_000_000)
+        .expect("create");
+
+    for (port, at) in [(8_080, 1), (3_000, 2), (5_173, 3)] {
+        db.watch_service(web.id, p(port), 1_800_000_000 + at)
+            .expect("watch");
+    }
+
+    let ports: Vec<u16> = db
+        .workspace_services(web.id)
+        .expect("services")
+        .iter()
+        .map(|service| service.port.get())
+        .collect();
+    assert_eq!(ports, [3_000, 5_173, 8_080]);
+}
+
+#[test]
+fn watching_the_same_port_twice_is_refused_by_name() {
+    let db = Db::open_in_memory().expect("open");
+    let aviora = project(&db, "Aviora", "/home/dev/aviora");
+    let web = db
+        .create(&new(aviora, "Web"), 1_800_000_000)
+        .expect("create");
+
+    db.watch_service(web.id, p(5_173), 1_800_000_100)
+        .expect("watch");
+
+    let again = db.watch_service(web.id, p(5_173), 1_800_000_200);
+    assert!(
+        matches!(again, Err(MiraError::Invalid { ref detail, .. }) if detail.contains("5173")),
+        "got {again:?}"
+    );
+    assert_eq!(db.workspace_services(web.id).expect("services").len(), 1);
+}
+
+#[test]
+fn two_workspaces_on_one_project_watch_different_services() {
+    // The point of the feature. Same project, same observations, two different
+    // views of which of them matter.
+    let db = Db::open_in_memory().expect("open");
+    let aviora = project(&db, "Aviora", "/home/dev/aviora");
+    let web = db
+        .create(&new(aviora, "Web"), 1_800_000_000)
+        .expect("create");
+    let api = db
+        .create(&new(aviora, "API"), 1_800_000_000)
+        .expect("create");
+
+    db.watch_service(web.id, p(5_173), 1_800_000_100)
+        .expect("watch");
+    db.watch_service(api.id, p(8_080), 1_800_000_100)
+        .expect("watch");
+
+    let of = |id: WorkspaceId| -> Vec<u16> {
+        db.workspace_services(id)
+            .expect("services")
+            .iter()
+            .map(|service| service.port.get())
+            .collect()
+    };
+
+    assert_eq!(of(web.id), [5_173]);
+    assert_eq!(of(api.id), [8_080]);
+}
+
+#[test]
+fn two_workspaces_may_watch_the_same_port() {
+    // A shared dev server is one service two people are working against, not a
+    // conflict. Uniqueness is per workspace, which is what the primary key says.
+    let db = Db::open_in_memory().expect("open");
+    let aviora = project(&db, "Aviora", "/home/dev/aviora");
+    let web = db
+        .create(&new(aviora, "Web"), 1_800_000_000)
+        .expect("create");
+    let api = db
+        .create(&new(aviora, "API"), 1_800_000_000)
+        .expect("create");
+
+    db.watch_service(web.id, p(5_173), 1_800_000_100)
+        .expect("watch");
+    db.watch_service(api.id, p(5_173), 1_800_000_100)
+        .expect("also watch");
+
+    assert_eq!(db.workspace_services(web.id).expect("services").len(), 1);
+    assert_eq!(db.workspace_services(api.id).expect("services").len(), 1);
+}
+
+#[test]
+fn a_service_id_from_another_workspace_reaches_nothing() {
+    // Isolation, at the layer that enforces it. A sibling's row id is not merely
+    // hidden — the delete and the read are keyed by both, so it matches nothing.
+    let db = Db::open_in_memory().expect("open");
+    let aviora = project(&db, "Aviora", "/home/dev/aviora");
+    let web = db
+        .create(&new(aviora, "Web"), 1_800_000_000)
+        .expect("create");
+    let api = db
+        .create(&new(aviora, "API"), 1_800_000_000)
+        .expect("create");
+
+    let theirs = db
+        .watch_service(api.id, p(8_080), 1_800_000_100)
+        .expect("watch");
+
+    assert!(matches!(
+        db.workspace_service(web.id, theirs.id),
+        Err(MiraError::NotFound { .. })
+    ));
+    assert!(matches!(
+        db.forget_service(web.id, theirs.id),
+        Err(MiraError::NotFound { .. })
+    ));
+    assert_eq!(
+        db.workspace_services(api.id).expect("services"),
+        [theirs],
+        "and the sibling still has it"
+    );
+}
+
+#[test]
+fn forgetting_a_service_removes_that_one_and_no_others() {
+    let db = Db::open_in_memory().expect("open");
+    let aviora = project(&db, "Aviora", "/home/dev/aviora");
+    let web = db
+        .create(&new(aviora, "Web"), 1_800_000_000)
+        .expect("create");
+
+    let vite = db
+        .watch_service(web.id, p(5_173), 1_800_000_100)
+        .expect("watch");
+    db.watch_service(web.id, p(8_080), 1_800_000_100)
+        .expect("watch");
+
+    db.forget_service(web.id, vite.id).expect("forget");
+
+    let ports: Vec<u16> = db
+        .workspace_services(web.id)
+        .expect("services")
+        .iter()
+        .map(|service| service.port.get())
+        .collect();
+    assert_eq!(ports, [8_080]);
+}
+
+#[test]
+fn forgetting_a_service_that_is_not_there_says_so() {
+    let db = Db::open_in_memory().expect("open");
+    let aviora = project(&db, "Aviora", "/home/dev/aviora");
+    let web = db
+        .create(&new(aviora, "Web"), 1_800_000_000)
+        .expect("create");
+
+    assert!(matches!(
+        db.forget_service(web.id, WorkspaceServiceId::new(404)),
+        Err(MiraError::NotFound { .. })
+    ));
+}
+
+#[test]
+fn a_removed_workspace_takes_its_watched_services_with_it() {
+    // Deletion policy, stated and tested. A workspace's services describe that
+    // workspace, so without it there is nothing left for them to describe.
+    let db = Db::open_in_memory().expect("open");
+    let aviora = project(&db, "Aviora", "/home/dev/aviora");
+    let web = db
+        .create(&new(aviora, "Web"), 1_800_000_000)
+        .expect("create");
+    db.watch_service(web.id, p(5_173), 1_800_000_100)
+        .expect("watch");
+
+    db.remove_workspace(web.id).expect("remove");
+
+    let rows: i64 = db
+        .with_connection(|conn| {
+            conn.query_row("SELECT count(*) FROM workspace_services", [], |row| {
+                row.get(0)
+            })
+        })
+        .expect("count");
+    assert_eq!(rows, 0, "the cascade is the schema's, not the caller's");
+}
+
+#[test]
+fn a_removed_project_takes_every_workspaces_services_with_it() {
+    let db = Db::open_in_memory().expect("open");
+    let aviora = project(&db, "Aviora", "/home/dev/aviora");
+    let web = db
+        .create(&new(aviora, "Web"), 1_800_000_000)
+        .expect("create");
+    let api = db
+        .create(&new(aviora, "API"), 1_800_000_000)
+        .expect("create");
+    db.watch_service(web.id, p(5_173), 1_800_000_100)
+        .expect("watch");
+    db.watch_service(api.id, p(8_080), 1_800_000_100)
+        .expect("watch");
+
+    db.remove(aviora).expect("remove project");
+
+    let rows: i64 = db
+        .with_connection(|conn| {
+            conn.query_row("SELECT count(*) FROM workspace_services", [], |row| {
+                row.get(0)
+            })
+        })
+        .expect("count");
+    assert_eq!(rows, 0, "two cascades deep, and both are the schema's");
+}
+
+#[test]
+fn the_stored_row_is_a_port_and_three_numbers() {
+    // The absences, checked against the table rather than against the migration
+    // file. A `label`, a `process` or a `path` column here would be observation
+    // written down, or a URL waiting to be concatenated.
+    let db = Db::open_in_memory().expect("open");
+
+    let columns: Vec<String> = db
+        .with_connection(|conn| {
+            let mut statement =
+                conn.prepare("SELECT name FROM pragma_table_info('workspace_services')")?;
+            let rows = statement.query_map([], |row| row.get::<_, String>(0))?;
+            rows.collect()
+        })
+        .expect("columns");
+
+    assert_eq!(columns, ["id", "workspace_id", "port", "added_at"]);
+}
+
+#[test]
+fn the_database_refuses_a_port_that_is_not_a_port() {
+    // The `CHECK` constraint, tested directly. Mira's own path cannot produce
+    // one — `Port` refused it long before — so this is the wall behind the wall.
+    let db = Db::open_in_memory().expect("open");
+    let aviora = project(&db, "Aviora", "/home/dev/aviora");
+    let web = db
+        .create(&new(aviora, "Web"), 1_800_000_000)
+        .expect("create");
+
+    for refused in [0_i64, -1, 65_536, 1_000_000] {
+        let written = db.with_connection(|conn| {
+            conn.execute(
+                "INSERT INTO workspace_services (workspace_id, port, added_at) VALUES (?1, ?2, ?3)",
+                rusqlite::params![web.id.get(), refused, 1_800_000_100],
+            )
+        });
+        assert!(written.is_err(), "{refused} was accepted");
+    }
+}
+
+// ── Actions ──────────────────────────────────────────────────────────────────
+
+fn act(raw: &str) -> mira_core::ActionId {
+    raw.parse().expect("a catalogue id")
+}
+
+#[test]
+fn a_workspace_starts_with_no_actions() {
+    let db = Db::open_in_memory().expect("open");
+    let aviora = project(&db, "Aviora", "/home/dev/aviora");
+    let web = db
+        .create(&new(aviora, "Web"), 1_800_000_000)
+        .expect("create");
+
+    assert!(db.workspace_actions(web.id).expect("actions").is_empty());
+}
+
+#[test]
+fn an_action_given_to_a_workspace_comes_back() {
+    let db = Db::open_in_memory().expect("open");
+    let aviora = project(&db, "Aviora", "/home/dev/aviora");
+    let web = db
+        .create(&new(aviora, "Web"), 1_800_000_000)
+        .expect("create");
+
+    db.set_workspace_action(web.id, &act("open-editor"), true, 1_800_000_100)
+        .expect("give");
+
+    assert_eq!(
+        db.workspace_actions(web.id).expect("actions"),
+        [act("open-editor")]
+    );
+}
+
+#[test]
+fn actions_come_back_in_catalogue_order_however_they_were_added() {
+    // Ordered by the catalogue rather than by insertion, so the list reads the
+    // same every time and removing one does not reshuffle the rest.
+    let db = Db::open_in_memory().expect("open");
+    let aviora = project(&db, "Aviora", "/home/dev/aviora");
+    let web = db
+        .create(&new(aviora, "Web"), 1_800_000_000)
+        .expect("create");
+
+    for id in ["refresh", "open-editor", "reveal-project"] {
+        db.set_workspace_action(web.id, &act(id), true, 1_800_000_100)
+            .expect("give");
+    }
+
+    let order: Vec<String> = db
+        .workspace_actions(web.id)
+        .expect("actions")
+        .iter()
+        .map(|id| id.as_str().to_owned())
+        .collect();
+    assert_eq!(order, ["open-editor", "reveal-project", "refresh"]);
+}
+
+#[test]
+fn giving_the_same_action_twice_changes_nothing() {
+    let db = Db::open_in_memory().expect("open");
+    let aviora = project(&db, "Aviora", "/home/dev/aviora");
+    let web = db
+        .create(&new(aviora, "Web"), 1_800_000_000)
+        .expect("create");
+
+    db.set_workspace_action(web.id, &act("refresh"), true, 1_800_000_100)
+        .expect("give");
+    db.set_workspace_action(web.id, &act("refresh"), true, 1_800_000_200)
+        .expect("give again");
+
+    assert_eq!(db.workspace_actions(web.id).expect("actions").len(), 1);
+}
+
+#[test]
+fn taking_an_action_away_removes_that_one_and_no_others() {
+    let db = Db::open_in_memory().expect("open");
+    let aviora = project(&db, "Aviora", "/home/dev/aviora");
+    let web = db
+        .create(&new(aviora, "Web"), 1_800_000_000)
+        .expect("create");
+
+    for id in ["open-editor", "refresh"] {
+        db.set_workspace_action(web.id, &act(id), true, 1_800_000_100)
+            .expect("give");
+    }
+    db.set_workspace_action(web.id, &act("open-editor"), false, 1_800_000_200)
+        .expect("take away");
+
+    assert_eq!(
+        db.workspace_actions(web.id).expect("actions"),
+        [act("refresh")]
+    );
+}
+
+#[test]
+fn taking_away_an_action_a_workspace_never_had_is_not_an_error() {
+    let db = Db::open_in_memory().expect("open");
+    let aviora = project(&db, "Aviora", "/home/dev/aviora");
+    let web = db
+        .create(&new(aviora, "Web"), 1_800_000_000)
+        .expect("create");
+
+    assert!(db
+        .set_workspace_action(web.id, &act("refresh"), false, 1_800_000_100)
+        .is_ok());
+}
+
+#[test]
+fn a_stored_id_the_catalogue_no_longer_has_comes_back_last_rather_than_vanishing() {
+    // The upgrade case: an action a later Mira removed. It must still be
+    // returned, because a person needs to be told it is there and offered a way
+    // to clear it — dropping it silently would leave a row nobody can see.
+    let db = Db::open_in_memory().expect("open");
+    let aviora = project(&db, "Aviora", "/home/dev/aviora");
+    let web = db
+        .create(&new(aviora, "Web"), 1_800_000_000)
+        .expect("create");
+
+    db.set_workspace_action(web.id, &act("open-editor"), true, 1_800_000_100)
+        .expect("give");
+    db.with_connection(|conn| {
+        conn.execute(
+            "INSERT INTO workspace_actions (workspace_id, action, added_at) \
+             VALUES (?1, 'an-action-from-the-future', ?2)",
+            rusqlite::params![web.id.get(), 1_800_000_100],
+        )
+    })
+    .expect("seed a stale row");
+
+    let ids: Vec<String> = db
+        .workspace_actions(web.id)
+        .expect("actions")
+        .iter()
+        .map(|id| id.as_str().to_owned())
+        .collect();
+    assert_eq!(ids, ["open-editor", "an-action-from-the-future"]);
+}
+
+#[test]
+fn two_workspaces_on_one_project_keep_separate_actions() {
+    let db = Db::open_in_memory().expect("open");
+    let aviora = project(&db, "Aviora", "/home/dev/aviora");
+    let web = db
+        .create(&new(aviora, "Web"), 1_800_000_000)
+        .expect("create");
+    let api = db
+        .create(&new(aviora, "API"), 1_800_000_000)
+        .expect("create");
+
+    db.set_workspace_action(web.id, &act("open-editor"), true, 1_800_000_100)
+        .expect("give");
+    db.set_workspace_action(api.id, &act("refresh"), true, 1_800_000_100)
+        .expect("give");
+
+    assert_eq!(
+        db.workspace_actions(web.id).expect("actions"),
+        [act("open-editor")]
+    );
+    assert_eq!(
+        db.workspace_actions(api.id).expect("actions"),
+        [act("refresh")]
+    );
+
+    // And removing from one leaves the other alone.
+    db.set_workspace_action(web.id, &act("open-editor"), false, 1_800_000_200)
+        .expect("take away");
+    assert!(db.workspace_actions(web.id).expect("actions").is_empty());
+    assert_eq!(
+        db.workspace_actions(api.id).expect("actions"),
+        [act("refresh")]
+    );
+}
+
+#[test]
+fn a_removed_workspace_takes_its_actions_with_it() {
+    let db = Db::open_in_memory().expect("open");
+    let aviora = project(&db, "Aviora", "/home/dev/aviora");
+    let web = db
+        .create(&new(aviora, "Web"), 1_800_000_000)
+        .expect("create");
+    db.set_workspace_action(web.id, &act("refresh"), true, 1_800_000_100)
+        .expect("give");
+
+    db.remove_workspace(web.id).expect("remove");
+
+    let rows: i64 = db
+        .with_connection(|conn| {
+            conn.query_row("SELECT count(*) FROM workspace_actions", [], |row| {
+                row.get(0)
+            })
+        })
+        .expect("count");
+    assert_eq!(rows, 0, "the cascade is the schema's, not the caller's");
+}
+
+#[test]
+fn a_removed_project_takes_every_workspaces_actions_with_it() {
+    let db = Db::open_in_memory().expect("open");
+    let aviora = project(&db, "Aviora", "/home/dev/aviora");
+    for name in ["Web", "API"] {
+        let workspace = db
+            .create(&new(aviora, name), 1_800_000_000)
+            .expect("create");
+        db.set_workspace_action(workspace.id, &act("refresh"), true, 1_800_000_100)
+            .expect("give");
+    }
+
+    db.remove(aviora).expect("remove project");
+
+    let rows: i64 = db
+        .with_connection(|conn| {
+            conn.query_row("SELECT count(*) FROM workspace_actions", [], |row| {
+                row.get(0)
+            })
+        })
+        .expect("count");
+    assert_eq!(rows, 0, "two cascades deep, and both are the schema's");
+}
+
+#[test]
+fn the_stored_action_row_is_an_identity_and_two_numbers() {
+    let db = Db::open_in_memory().expect("open");
+
+    let columns: Vec<String> = db
+        .with_connection(|conn| {
+            let mut statement =
+                conn.prepare("SELECT name FROM pragma_table_info('workspace_actions')")?;
+            let rows = statement.query_map([], |row| row.get::<_, String>(0))?;
+            rows.collect()
+        })
+        .expect("columns");
+
+    assert_eq!(columns, ["workspace_id", "action", "added_at"]);
+}
+
+#[test]
+fn the_action_column_cannot_hold_anything_shaped_like_a_command() {
+    // Defence in depth: the wall is that an id only becomes an action by being
+    // found in the compiled catalogue. But a column that cannot hold a slash, a
+    // space, a semicolon or a quote is a column nobody has to wonder about.
+    let db = Db::open_in_memory().expect("open");
+    let aviora = project(&db, "Aviora", "/home/dev/aviora");
+    let web = db
+        .create(&new(aviora, "Web"), 1_800_000_000)
+        .expect("create");
+
+    for smuggled in [
+        "npm run dev",
+        "pnpm -w build",
+        "cargo run",
+        "/usr/local/bin/node",
+        "zsh -lc 'rm -rf ~'",
+        "open-editor; rm -rf ~",
+        "open-editor && curl evil",
+        "../../etc/passwd",
+        "Open-Editor",
+        "",
+        &"x".repeat(33),
+    ] {
+        let written = db.with_connection(|conn| {
+            conn.execute(
+                "INSERT INTO workspace_actions (workspace_id, action, added_at) \
+                 VALUES (?1, ?2, 1)",
+                rusqlite::params![web.id.get(), smuggled],
+            )
+        });
+
+        assert!(
+            written.is_err(),
+            "the schema accepted {smuggled:?} as an action"
         );
     }
 }

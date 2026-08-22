@@ -10,8 +10,11 @@
 //! observed; the project and its workspaces are stated, and both stay
 //! (`prd.md` FR-1.5).
 
+use mira_core::action::ActionId;
+use mira_core::service::{Port, WatchedService};
 use mira_core::{
     AppId, AppKind, AppPreference, MiraError, ProjectId, Result, Workspace, WorkspaceId,
+    WorkspaceServiceId,
 };
 use rusqlite::{params, Connection, Row};
 
@@ -76,6 +79,55 @@ pub trait WorkspaceRepo {
         id: WorkspaceId,
         kind: AppKind,
         application: Option<&AppId>,
+        now: i64,
+    ) -> Result<()>;
+    /// Every service this workspace watches, in port order.
+    ///
+    /// Ordered by port rather than by when it was added, so the list reads the
+    /// same every time and removing one does not reshuffle the rest.
+    fn workspace_services(&self, id: WorkspaceId) -> Result<Vec<WatchedService>>;
+
+    /// Start watching one port for this workspace.
+    ///
+    /// The port is Mira's own reading of a socket it observed, never a number
+    /// the interface sent. Refuses a duplicate by naming it, because "added"
+    /// that silently did nothing is worse than a sentence.
+    fn watch_service(&self, id: WorkspaceId, port: Port, now: i64) -> Result<WatchedService>;
+
+    /// Stop watching one service.
+    ///
+    /// Keyed by **both** the row and the workspace, so a row id belonging to a
+    /// sibling workspace is `NotFound` rather than a deletion.
+    fn forget_service(&self, id: WorkspaceId, service: WorkspaceServiceId) -> Result<()>;
+
+    /// One watched service, if this workspace watches it.
+    ///
+    /// Keyed by both for the same reason as [`Self::forget_service`]: this is
+    /// what a workspace's own row id resolves through before it becomes a port.
+    fn workspace_service(
+        &self,
+        id: WorkspaceId,
+        service: WorkspaceServiceId,
+    ) -> Result<WatchedService>;
+
+    /// The actions this workspace has, in catalogue order.
+    ///
+    /// Ordered by the catalogue rather than by when each was added, so the list
+    /// reads the same every time and removing one does not reshuffle the rest —
+    /// the same rule the application kinds follow.
+    fn workspace_actions(&self, id: WorkspaceId) -> Result<Vec<ActionId>>;
+
+    /// Give this workspace one action, or take it away.
+    ///
+    /// `wanted` is whether the workspace should have it afterwards, so adding
+    /// twice and removing twice are both no-ops rather than errors. The id is a
+    /// catalogue identity the command layer has already resolved against the
+    /// compiled catalogue; this layer does not know a catalogue exists.
+    fn set_workspace_action(
+        &self,
+        id: WorkspaceId,
+        action: &ActionId,
+        wanted: bool,
         now: i64,
     ) -> Result<()>;
 }
@@ -233,6 +285,120 @@ impl WorkspaceRepo for Db {
 
         self.touch_updated(id, now)
     }
+
+    fn workspace_services(&self, id: WorkspaceId) -> Result<Vec<WatchedService>> {
+        self.with_connection(|conn| services_of(conn, id))
+    }
+
+    fn watch_service(&self, id: WorkspaceId, port: Port, now: i64) -> Result<WatchedService> {
+        let added = self.with_connection(|conn| {
+            let taken = match conn.query_row(
+                "SELECT id FROM workspace_services WHERE workspace_id = ?1 AND port = ?2",
+                params![id.get(), i64::from(port.get())],
+                |row| row.get::<_, i64>(0),
+            ) {
+                Ok(_) => true,
+                Err(rusqlite::Error::QueryReturnedNoRows) => false,
+                Err(error) => return Err(error),
+            };
+            if taken {
+                return Ok(None);
+            }
+
+            conn.execute(
+                "INSERT INTO workspace_services (workspace_id, port, added_at) \
+                 VALUES (?1, ?2, ?3)",
+                params![id.get(), i64::from(port.get()), now],
+            )?;
+
+            Ok(Some(WatchedService {
+                id: WorkspaceServiceId::new(conn.last_insert_rowid()),
+                workspace_id: id,
+                port,
+                added_at: now,
+            }))
+        })?;
+
+        added.ok_or_else(|| {
+            MiraError::invalid(
+                "service",
+                format!("This workspace is already watching port {port}."),
+            )
+        })
+    }
+
+    fn forget_service(&self, id: WorkspaceId, service: WorkspaceServiceId) -> Result<()> {
+        // Both keys in the WHERE clause. A row id belonging to a sibling
+        // workspace matches nothing, so "not this workspace's" and "not there"
+        // are the same answer — which is what keeps one workspace's
+        // configuration unreachable from another (ADR-0020).
+        let affected = self.with_connection(|conn| {
+            conn.execute(
+                "DELETE FROM workspace_services WHERE id = ?1 AND workspace_id = ?2",
+                params![service.get(), id.get()],
+            )
+        })?;
+
+        if affected == 0 {
+            return Err(MiraError::NotFound {
+                what: "That service".to_owned(),
+            });
+        }
+        Ok(())
+    }
+
+    fn workspace_service(
+        &self,
+        id: WorkspaceId,
+        service: WorkspaceServiceId,
+    ) -> Result<WatchedService> {
+        let found = self.with_connection(|conn| {
+            match conn.query_row(
+                "SELECT id, workspace_id, port, added_at FROM workspace_services \
+                 WHERE id = ?1 AND workspace_id = ?2",
+                params![service.get(), id.get()],
+                row_to_service,
+            ) {
+                Ok(found) => Ok(found),
+                Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+                Err(error) => Err(error),
+            }
+        })?;
+
+        found.ok_or_else(|| MiraError::NotFound {
+            what: "That service".to_owned(),
+        })
+    }
+
+    fn workspace_actions(&self, id: WorkspaceId) -> Result<Vec<ActionId>> {
+        self.with_connection(|conn| actions_of(conn, id))
+    }
+
+    fn set_workspace_action(
+        &self,
+        id: WorkspaceId,
+        action: &ActionId,
+        wanted: bool,
+        now: i64,
+    ) -> Result<()> {
+        self.with_connection(|conn| {
+            if wanted {
+                conn.execute(
+                    "INSERT OR IGNORE INTO workspace_actions (workspace_id, action, added_at) \
+                     VALUES (?1, ?2, ?3)",
+                    params![id.get(), action.as_str(), now],
+                )?;
+            } else {
+                conn.execute(
+                    "DELETE FROM workspace_actions WHERE workspace_id = ?1 AND action = ?2",
+                    params![id.get(), action.as_str()],
+                )?;
+            }
+            Ok(())
+        })?;
+
+        self.touch_updated(id, now)
+    }
 }
 
 impl Db {
@@ -300,6 +466,74 @@ fn preferences(conn: &Connection, id: WorkspaceId) -> rusqlite::Result<Vec<AppPr
         .collect())
 }
 
+/// The services a workspace watches, in port order.
+///
+/// A row whose port is not a port is skipped rather than failing the read. The
+/// `CHECK` constraint makes that unreachable through Mira; skipping is what a
+/// hand-edited database file gets, and losing one row is better than losing the
+/// workspace.
+fn services_of(conn: &Connection, id: WorkspaceId) -> rusqlite::Result<Vec<WatchedService>> {
+    let mut statement = conn.prepare(
+        "SELECT id, workspace_id, port, added_at FROM workspace_services \
+         WHERE workspace_id = ?1 ORDER BY port",
+    )?;
+    let rows = statement.query_map(params![id.get()], row_to_service)?;
+
+    Ok(rows
+        .collect::<rusqlite::Result<Vec<_>>>()?
+        .into_iter()
+        .flatten()
+        .collect())
+}
+
+/// The actions a workspace has, in [`mira_core::CATALOGUE`] order.
+///
+/// Ordered by the catalogue rather than by insertion, and filtered by it too: a
+/// stored id with no row is not returned here. That is deliberate and it is why
+/// the *command* layer reads the stored ids directly instead — an id Mira no
+/// longer has is a state a person should be told about and offered a way to
+/// clear, not a row that silently vanishes (ADR-0021).
+fn actions_of(conn: &Connection, id: WorkspaceId) -> rusqlite::Result<Vec<ActionId>> {
+    let mut statement =
+        conn.prepare("SELECT action FROM workspace_actions WHERE workspace_id = ?1")?;
+    let rows = statement.query_map(params![id.get()], |row| row.get::<_, String>(0))?;
+    let stored: Vec<String> = rows.collect::<rusqlite::Result<_>>()?;
+
+    // Catalogue order first, then anything stored that the catalogue no longer
+    // has — so a stale id is last and visible rather than dropped.
+    let mut ordered: Vec<ActionId> = mira_core::CATALOGUE
+        .iter()
+        .filter(|action| stored.iter().any(|row| row == action.id))
+        .filter_map(|action| action.id.parse().ok())
+        .collect();
+
+    ordered.extend(
+        stored
+            .iter()
+            .filter(|row| {
+                !mira_core::CATALOGUE
+                    .iter()
+                    .any(|action| action.id == row.as_str())
+            })
+            .filter_map(|row| row.parse().ok()),
+    );
+
+    Ok(ordered)
+}
+
+/// One stored service, or `None` where the port column is not a port.
+fn row_to_service(row: &Row<'_>) -> rusqlite::Result<Option<WatchedService>> {
+    let Ok(port) = Port::try_from(row.get::<_, i64>(2)?) else {
+        return Ok(None);
+    };
+    Ok(Some(WatchedService {
+        id: WorkspaceServiceId::new(row.get(0)?),
+        workspace_id: WorkspaceId::new(row.get(1)?),
+        port,
+        added_at: row.get(3)?,
+    }))
+}
+
 fn row_to_workspace(row: &Row<'_>) -> rusqlite::Result<Workspace> {
     Ok(Workspace {
         id: WorkspaceId::new(row.get(0)?),
@@ -359,5 +593,33 @@ impl<T: WorkspaceRepo + ?Sized> WorkspaceRepo for &T {
         now: i64,
     ) -> Result<()> {
         (**self).set_workspace_preference(id, kind, application, now)
+    }
+    fn workspace_services(&self, id: WorkspaceId) -> Result<Vec<WatchedService>> {
+        (**self).workspace_services(id)
+    }
+    fn watch_service(&self, id: WorkspaceId, port: Port, now: i64) -> Result<WatchedService> {
+        (**self).watch_service(id, port, now)
+    }
+    fn forget_service(&self, id: WorkspaceId, service: WorkspaceServiceId) -> Result<()> {
+        (**self).forget_service(id, service)
+    }
+    fn workspace_service(
+        &self,
+        id: WorkspaceId,
+        service: WorkspaceServiceId,
+    ) -> Result<WatchedService> {
+        (**self).workspace_service(id, service)
+    }
+    fn workspace_actions(&self, id: WorkspaceId) -> Result<Vec<ActionId>> {
+        (**self).workspace_actions(id)
+    }
+    fn set_workspace_action(
+        &self,
+        id: WorkspaceId,
+        action: &ActionId,
+        wanted: bool,
+        now: i64,
+    ) -> Result<()> {
+        (**self).set_workspace_action(id, action, wanted, now)
     }
 }

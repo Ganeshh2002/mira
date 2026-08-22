@@ -13,6 +13,7 @@
 use std::collections::HashMap;
 use std::sync::RwLock;
 
+use mira_core::service::{Listening, Observed, Port};
 use mira_core::{MiraError, Project, ProjectId};
 use mira_git::GitOverview;
 use mira_monorepo::RepositoryLayout;
@@ -70,6 +71,52 @@ pub struct ServiceObservation {
     /// When this was read; `None` means it has not been read yet.
     #[ts(type = "number | null")]
     pub observed_at: Option<i64>,
+}
+
+impl ServiceObservation {
+    /// The listeners, reduced to what resolving a workspace's services needs.
+    ///
+    /// Built on each request rather than kept: this is a projection of a reading
+    /// the scheduler already took, so it costs a walk of a list that is tens of
+    /// entries long and creates nothing that would need invalidating (ADR-0011).
+    ///
+    /// A listener on port 0 is dropped. Port 0 means "give me any port" and is a
+    /// request rather than an address, so it is not a thing a workspace could
+    /// watch; `mira_core::Port` refuses it and this is where that refusal is
+    /// spent.
+    #[must_use]
+    pub fn listening(&self) -> Vec<Listening> {
+        self.services
+            .iter()
+            .filter_map(|service| {
+                Some(Listening {
+                    port: Port::try_from(service.listener.port).ok()?,
+                    project_id: match service.attribution {
+                        Attribution::Project { project_id, .. } => Some(project_id),
+                        Attribution::Unattributed { .. } => None,
+                    },
+                    address: service.listener.local_address.clone(),
+                    process: service.process.as_ref().map(|facts| facts.name.clone()),
+                    pid: service.listener.pid,
+                })
+            })
+            .collect()
+    }
+
+    /// Whether this reading can be used to resolve anything, and why not.
+    ///
+    /// Three states rather than two. "Never read" is not "nothing is running",
+    /// and neither is "the read failed" — an interface that cannot tell them
+    /// apart tells somebody their server is down when the truth is that Mira
+    /// could not look (`information-architecture.md` §5).
+    #[must_use]
+    pub fn observed<'a>(&'a self, listening: &'a [Listening]) -> Observed<'a> {
+        match (&self.error, self.observed_at) {
+            (Some(reason), _) => Observed::Failed(reason),
+            (None, None) => Observed::NotYet,
+            (None, Some(_)) => Observed::Seen(listening),
+        }
+    }
 }
 
 /// Everything observed, as one message to the interface.

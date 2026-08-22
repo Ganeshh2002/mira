@@ -92,3 +92,44 @@ fn the_whole_catalogue_at_once_is_what_the_chooser_asks_for() {
         started.elapsed().as_secs_f64() * 1000.0 / 50.0
     );
 }
+
+#[test]
+#[ignore = "measurement, not an assertion"]
+fn what_gathering_support_for_a_workspaces_actions_costs() {
+    // Slice 4d's design question. Resolving six actions costs 0.65 µs once the
+    // machine's answers are in hand (`mira-core`'s benchmark). What those
+    // answers cost is the number that decides whether they are gathered once per
+    // request or once per action.
+    use std::time::Instant;
+
+    let os = mira_platform::env::EnvFacts::detect().os;
+    let apps = mira_platform::Applications::for_os(os);
+    let here = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+
+    const ROUNDS: u32 = 500;
+
+    let started = Instant::now();
+    for _ in 0..ROUNDS {
+        std::hint::black_box(apps.openable());
+    }
+    let openable = started.elapsed() / ROUNDS;
+
+    let started = Instant::now();
+    for _ in 0..ROUNDS {
+        std::hint::black_box(here.is_dir());
+    }
+    let stat = started.elapsed() / ROUNDS;
+
+    println!();
+    println!("  openable() — which kinds can open a folder   {openable:?}");
+    println!("  is_dir()   — is the project folder there      {stat:?}");
+    println!(
+        "  gathered once per request                     {:?}",
+        openable + stat
+    );
+    println!(
+        "  asked once per action, six actions            {:?}",
+        (openable + stat) * 6
+    );
+    println!();
+}

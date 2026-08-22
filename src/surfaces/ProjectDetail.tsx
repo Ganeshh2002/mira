@@ -145,14 +145,7 @@ export function ProjectDetail({
       {workspace ? (
         <>
           <Button onClick={() => setOpenedId(null)}>Back to the project</Button>
-          <WorkspaceDetail
-            workspace={workspace}
-            project={project}
-            observation={observation}
-            services={servicesOf(live.data, project.id)}
-            unplaced={unplacedServices(live.data)}
-            serviceObservation={serviceObservation}
-          />
+          <WorkspaceDetail workspace={workspace} project={project} observation={observation} />
         </>
       ) : live.isPending && !observation ? (
         <p className="t-ui text-ink-1">Reading…</p>
