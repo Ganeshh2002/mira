@@ -115,6 +115,7 @@ pub fn run() {
                 ),
                 surface,
                 live: live::Live::new(),
+                processes: mira_processes::Processes::new(),
                 awake,
                 project_count: std::sync::atomic::AtomicUsize::new(0),
             });
@@ -192,6 +193,7 @@ pub fn run() {
             commands::live::live_snapshot,
             commands::live::live_refresh,
             commands::live::live_open_service,
+            commands::ports::live_ports,
             commands::git::git_history,
             commands::git::git_graph,
             commands::git::git_changes,

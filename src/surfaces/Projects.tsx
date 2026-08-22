@@ -7,6 +7,8 @@ import { Button } from '../components/Button';
 import { DirtyMark } from '../components/DirtyMark';
 import { commands, describeUnknown } from '../lib/ipc';
 import { liveKey, observationOf, useLive } from '../lib/live';
+import { Icon } from '../components/Icon';
+import { Ports } from './Ports';
 import { ProjectDetail } from './ProjectDetail';
 
 /**
@@ -19,7 +21,10 @@ import { ProjectDetail } from './ProjectDetail';
  */
 export function Projects() {
   const client = useQueryClient();
-  const [selected, setSelected] = useState<number | null>(null);
+  // `'ports'` is the machine-wide view: a sibling of the projects rather than
+  // one of them, because it answers a question asked without a project in mind
+  // (`information-architecture.md` §5).
+  const [selected, setSelected] = useState<number | 'ports' | null>(null);
 
   const projects = useQuery({
     queryKey: ['projects'],
@@ -55,7 +60,10 @@ export function Projects() {
   }
 
   const list = projects.data;
-  const current = list.find((project) => project.id === selected) ?? list[0];
+  const showingPorts = selected === 'ports';
+  const current = showingPorts
+    ? undefined
+    : (list.find((project) => project.id === selected) ?? list[0]);
 
   function choose(project: Project) {
     // A refusal from the last add is about a folder, not about this project. It
@@ -97,6 +105,26 @@ export function Projects() {
           Add Project
         </Button>
 
+        {/*
+          Below the projects and visibly apart from them. A machine-wide view
+          filed among the projects would read as one, which is the confusion this
+          separation exists to prevent.
+        */}
+        <div className="mt-[var(--space-2)] border-t border-line pt-[var(--space-3)]">
+          <button
+            type="button"
+            aria-current={showingPorts ? 'page' : undefined}
+            onClick={() => setSelected('ports')}
+            className={`t-ui flex w-full cursor-default items-center gap-[var(--space-2)] rounded-sm px-[var(--space-2)] py-[var(--space-1)] text-left transition-colors duration-[var(--motion-instant)] ${
+              showingPorts ? 'bg-ground-2 text-ink-0' : 'text-ink-1 hover:bg-ground-2'
+            }`}
+          >
+            <Icon name="ports" />
+            Ports
+            <span className="t-micro ml-auto text-ink-1">this machine</span>
+          </button>
+        </div>
+
         {add.error ? (
           <p role="alert" className="t-ui m-0 text-signal-danger">
             {describeUnknown(add.error)}
@@ -105,7 +133,9 @@ export function Projects() {
       </nav>
 
       <div className="min-w-0 flex-1">
-        {current ? (
+        {showingPorts ? (
+          <Ports />
+        ) : current ? (
           // Keyed by project, so switching remounts the detail view. Without it
           // the previous project's failed action and its half-finished removal
           // prompt would still be on screen, attached to a different project.

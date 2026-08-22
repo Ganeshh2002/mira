@@ -86,3 +86,6 @@ export function unplacedServices(live: LiveSnapshot | undefined) {
       service.attribution.reason !== 'outsideEveryProject',
   );
 }
+
+/** Query key for the machine-wide Ports view. */
+export const portsKey = ['live', 'ports'] as const;

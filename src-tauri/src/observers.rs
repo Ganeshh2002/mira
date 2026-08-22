@@ -18,7 +18,7 @@ use mira_monorepo::RepositoryLayout;
 use mira_ports::{
     attribute, Attribution, PackageBoundary, PortScanner, Ports, ProjectRoot, Unattributed,
 };
-use mira_processes::{ProcessProvider, Processes};
+use mira_processes::ProcessProvider;
 use mira_projects::ProjectService;
 use mira_scheduler::Observation;
 
@@ -162,7 +162,10 @@ impl Observation for ServiceObserver {
             .iter()
             .filter_map(|listener| listener.pid)
             .collect();
-        let facts = Processes::new().facts_for(&pids);
+        // The state's kept reader, not a fresh one. CPU share is a rate, and a
+        // rate needs the previous sample — building a provider here would throw
+        // it away every tick and report zero forever (ADR-0022).
+        let facts = self.state.processes.facts_for(&pids);
         let roots = self.roots()?;
 
         let services = listeners

@@ -51,6 +51,9 @@ fn listening(port: u16, project: Option<ProjectId>) -> Listening {
         address: "127.0.0.1".to_owned(),
         process: Some("node".to_owned()),
         pid: Some(4_242),
+        cpu_share: Some(2.5),
+        memory_bytes: Some(188_743_680),
+        uptime_seconds: Some(3_600),
     }
 }
 

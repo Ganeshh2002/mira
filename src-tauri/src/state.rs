@@ -8,6 +8,7 @@ use mira_db::Db;
 use mira_fs::PathMatching;
 use mira_git::Libgit2;
 use mira_platform::{Os, Platform, SurfaceTreatment};
+use mira_processes::Processes;
 use mira_projects::Projects;
 
 use crate::awake::Awake;
@@ -39,6 +40,15 @@ pub struct AppState {
     /// What the observers last saw. In memory only — observation is never
     /// written to disk (`data-model.md` §1 rule 2).
     pub live: Live,
+    /// The process reader, kept for the life of the process.
+    ///
+    /// Kept rather than built per tick because CPU share is a *rate*: `sysinfo`
+    /// computes it from the delta between two refreshes of the same reading, so
+    /// a fresh one each time could only ever report zero. It holds no timer and
+    /// schedules nothing — it is refreshed by the scheduler's own ticks, which
+    /// are five seconds apart and therefore also the steadiest window available
+    /// ([ADR-0022](../../docs/adr/0022-process-detail.md), ADR-0011).
+    pub processes: Processes,
     /// Whether the machine is being kept awake, and until when.
     ///
     /// In memory and in one operating-system request owned by this process.

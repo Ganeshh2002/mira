@@ -31,4 +31,26 @@ parent: number | null,
  * for another process, which is why attribution there is Degraded and says
  * so instead of guessing (`platform-abstraction.md` §5).
  */
-workingDirectory: string | null, };
+workingDirectory: string | null, 
+/**
+ * Share of one CPU, as a percentage, averaged over the interval between the
+ * last two readings.
+ *
+ * `None` until there have been two. A share is a *rate*, and a rate needs
+ * two samples — the first reading of a process has nothing to subtract, so
+ * reporting `0.0` there would say "idle" about a process that might be
+ * burning a core. Measured: a process spinning a full core reads `0.00%` on
+ * a first sample and its true figure on the second
+ * ([ADR-0022](../../../docs/adr/0022-process-detail.md)).
+ *
+ * Can exceed 100 on a multi-core machine: two busy threads read ~200.
+ */
+cpuShare: number | null, 
+/**
+ * Resident memory in bytes, where the platform reports it.
+ */
+memoryBytes: number | null, 
+/**
+ * How long the process has been running, in seconds.
+ */
+uptimeSeconds: number | null, };

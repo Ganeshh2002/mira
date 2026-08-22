@@ -35,7 +35,10 @@ export type IconName =
   | 'editor'
   | 'terminal'
   | 'folder'
-  | 'refresh';
+  | 'refresh'
+  | 'cpu'
+  | 'memory'
+  | 'ports';
 
 /** The path geometry for each icon, on a 16×16 grid. */
 const PATHS: Record<IconName, React.ReactNode> = {
@@ -174,6 +177,27 @@ const PATHS: Record<IconName, React.ReactNode> = {
   folder: (
     <>
       <path d="M2 4.5a1 1 0 0 1 1-1h3l1.5 2H13a1 1 0 0 1 1 1v5.5a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1z" />
+    </>
+  ),
+  // A processor die with its pins: what a share of the CPU is a share of.
+  cpu: (
+    <>
+      <rect x="4.5" y="4.5" width="7" height="7" rx="1" />
+      <path d="M6.5 2v2.5M9.5 2v2.5M6.5 11.5V14M9.5 11.5V14M2 6.5h2.5M2 9.5h2.5M11.5 6.5H14M11.5 9.5H14" />
+    </>
+  ),
+  // Stacked banks: memory held.
+  memory: (
+    <>
+      <rect x="2.5" y="5" width="11" height="6" rx="1" />
+      <path d="M5 7.5v1M8 7.5v1M11 7.5v1" />
+    </>
+  ),
+  // A socket accepting connections: the machine-wide listener view.
+  ports: (
+    <>
+      <circle cx="8" cy="8" r="2" />
+      <path d="M8 2v3.5M8 10.5V14M2 8h3.5M10.5 8H14" />
     </>
   ),
   // Read it again: a cycle, not a loop that runs on its own.

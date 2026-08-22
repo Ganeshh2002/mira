@@ -485,8 +485,20 @@ All listening ports, grouped: *this project*, *other projects*, *unattributed*. 
 actions as the project section. This is the one place Mira shows machine-wide data
 prominently, because "what has :3000" is asked without a project in mind.
 
-**Not built, and deliberately not.** The machine-wide view is its own surface with its
-own questions; slice 4c narrowed downward instead, to what one workspace watches.
+**As built (slice 2b).** Filed below the projects in the nav and visibly apart from them,
+labelled _this machine_, and opening with the sentence _"Everything listening on this
+computer — not just your projects, and not what a workspace watches."_ The separation is
+the point: a machine-wide list of servers sitting beside a workspace's Services list is a
+confusion waiting to happen.
+
+Each row carries its process's CPU share, memory and uptime inline. **No command line** —
+argv routinely carries credentials, and Mira does not read it
+([ADR-0022](../adr/0022-process-detail.md)). A share that has not been measured twice yet
+says _"not measured yet"_ rather than _"0%"_, because calling a process idle is a claim.
+
+Open is the only action, and it sends a position in the list rather than a port. There is
+no Stop and no Kill: termination is a later slice with its own confirmation design, and
+its absence is deliberate rather than pending.
 
 **A project's Services section is not that place.** It answers "what is running in *this*
 project", so a listener Mira positively determined is outside every project stays out of

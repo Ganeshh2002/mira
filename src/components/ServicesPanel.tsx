@@ -7,6 +7,7 @@ import type { Unattributed } from '../bindings/Unattributed';
 import { commands, describeUnknown } from '../lib/ipc';
 import { Button } from './Button';
 import { Freshness } from './Freshness';
+import { ProcessDetail } from './ProcessDetail';
 
 /**
  * What is listening, grouped by the package it runs from.
@@ -148,6 +149,8 @@ function ServiceRow({ service, at }: { service: Service; at: number }) {
           )}
         </span>
       </div>
+
+      <ProcessDetail process={service.process} />
 
       {service.attribution.kind === 'unattributed' ? (
         <p className="t-ui m-0 text-ink-1">{explain(service.attribution.reason)}</p>

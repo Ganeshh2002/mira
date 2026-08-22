@@ -22,7 +22,22 @@ process: string | null,
 /**
  * The owning process id, where the platform says.
  */
-pid: number | null, } | { "kind": "notRunning" } | { "kind": "taken", 
+pid: number | null, 
+/**
+ * Share of one CPU, averaged over the interval between the last two
+ * readings. `None` until there have been two — a share is a rate, and
+ * "not measured yet" is not the same claim as "idle"
+ * ([ADR-0022](../../../docs/adr/0022-process-detail.md)).
+ */
+cpuShare: number | null, 
+/**
+ * Resident memory in bytes, where the platform reports it.
+ */
+memoryBytes: number | null, 
+/**
+ * How long the process has been running, in seconds.
+ */
+uptimeSeconds: number | null, } | { "kind": "notRunning" } | { "kind": "taken", 
 /**
  * What the owning process is called, where the platform says.
  */

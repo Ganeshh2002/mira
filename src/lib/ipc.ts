@@ -30,6 +30,7 @@ import type { ServiceOffer } from '../bindings/ServiceOffer';
 import type { ActionId } from '../bindings/ActionId';
 import type { ActionOffer } from '../bindings/ActionOffer';
 import type { Performed } from '../bindings/Performed';
+import type { PortsView } from '../bindings/PortsView';
 import type { Workspace } from '../bindings/Workspace';
 import type { WorkspaceAction } from '../bindings/WorkspaceAction';
 import type { WorkspaceService } from '../bindings/WorkspaceService';
@@ -152,6 +153,18 @@ export const commands = {
    * (`security-and-privacy.md` §5 rule 5).
    */
   openService: (at: number): Promise<void> => call('live_open_service', { at }),
+
+  /**
+   * `live.ports` — every listening socket on this machine, grouped.
+   *
+   * Machine-scoped, and the only place Mira shows machine-wide data. A read of
+   * the observation the scheduler already took, arranged — it starts no observer
+   * and takes no reading of its own.
+   *
+   * Rows carry a port so they can be recognised; opening one still goes through
+   * `openService(at)`, a position in the list, so no port travels inward.
+   */
+  ports: (): Promise<PortsView> => call('live_ports'),
 
   /**
    * `git.history` — one page of a project's repository history.

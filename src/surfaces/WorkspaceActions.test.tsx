@@ -91,6 +91,9 @@ function snapshot({
           executable: null,
           parent: null,
           workingDirectory: '/home/dev/aviora',
+          cpuShare: null,
+          memoryBytes: null,
+          uptimeSeconds: null,
         },
         attribution: { kind: 'project', projectId: 1, package: null },
       })),
@@ -114,7 +117,15 @@ const openable: AppReport[] = [
 /** One service a workspace watches, in whatever state the test needs. */
 function watched(
   port: number,
-  state: ServiceState = { kind: 'running', address: '127.0.0.1', process: 'node', pid: 18234 },
+  state: ServiceState = {
+    kind: 'running',
+    address: '127.0.0.1',
+    process: 'node',
+    pid: 18234,
+    cpuShare: 2.4,
+    memoryBytes: 188_743_680,
+    uptimeSeconds: 3_600,
+  },
   workspaceId = 1,
 ): WorkspaceService {
   return {

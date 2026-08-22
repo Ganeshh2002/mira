@@ -11,7 +11,7 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Product definition, product scope, PRD, information architecture, and design system
 - Architecture, platform abstraction, data model, and security/privacy documents
 - ADRs 0001–0019 covering the foundational technical decisions
-- ADRs 0001–0021 covering the foundational technical decisions
+- ADRs 0001–0022 covering the foundational technical decisions
 - Locked phase plan (0.1 through 0.6+) and the fourteen-slice implementation roadmap
 - Open-source project files (licence, contributing, code of conduct, security policy)
 - **Foundation (slice 0).** Cargo workspace with `mira-core`, `mira-platform`, `mira-db`,
@@ -226,6 +226,37 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
   The `commands` table from the original schema — the one with `program TEXT NOT NULL` —
   is now permanently empty, with a guard enforcing it.
+- **Process detail and the Ports view (slice 2b, part).** Every listener now shows what is
+  behind it: **CPU share, memory and how long it has been running**, inline on the row
+  rather than behind a modal. And a machine-wide **Ports** surface answers "what has
+  :3000" without a project in mind, grouping every listening socket as this project's,
+  another project's, or not in any project. It sits below the projects in the nav,
+  labelled _this machine_, and says in its first sentence that it is not what a workspace
+  watches.
+
+  **Mira does not read your command lines.** The roadmap listed argv under process
+  detail; this slice declines it. A process's arguments routinely carry credentials —
+  `--password=`, `PGPASSWORD=`, a token inside a `DATABASE_URL` — and Mira sits open all
+  day beside the work, which is the worst place for one to be permanently legible.
+  Redaction was considered and rejected: it means a blocklist, and
+  `--db=postgres://user:hunter2@host` contains none of the obvious words. There is no
+  field for it, nothing reads it, and a guard fails the build if anything starts to.
+
+  A CPU share says **"not measured yet"** rather than "0%" until it has been measured
+  twice. `sysinfo` computes a share from the delta between two readings and returns zero
+  for both an idle process and an unmeasured one; calling a process idle when it might be
+  saturating a core is a claim Mira has not established.
+
+  Measuring settled the rest. A share needs two samples, and the obvious fix — two
+  readings 200 ms apart inside one request — is both a hidden timer and a noisier answer:
+  the same busy process read 238% over 200 ms and 100.3% over five seconds. So it rides
+  the scheduler's existing tick, which turned out to be the steadiest window available as
+  well as the free one. Grouping the Ports view costs 0.003 ms against the 3.5 ms read it
+  arranges. Nothing is stored, so there is no migration
+  ([ADR-0022](docs/adr/0022-process-detail.md)).
+
+  Still no way to stop anything: termination keeps its own slice and its own confirmation
+  design, and there is no greyed-out control hinting at one.
 - macOS and Windows ask the platform for its standard window material — Liquid Glass on
   macOS 26, Mica on Windows 11 — rather than drawing an imitation. Linux stays opaque.
 
