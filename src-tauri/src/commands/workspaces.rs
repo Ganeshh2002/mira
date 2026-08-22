@@ -202,8 +202,26 @@ pub fn workspaces_launch(
     kind: AppKind,
     state: State<'_, Arc<AppState>>,
 ) -> Result<Launched> {
-    let root = workspaces(&state).working_directory(workspace_id)?;
-    let preferred = preference(&state, workspace_id, kind)?;
+    launch_at_root(&state, workspace_id, kind)
+}
+
+/// Open a workspace's project root in an application of `kind`.
+///
+/// The body of the command above, shared with the action catalogue's "open in
+/// the editor" and "open a terminal here" so that both take the same path.
+///
+/// **This is the only place in the application shell that builds a
+/// `LaunchTarget::Directory`**, and a guard test counts the construction sites.
+/// A second one is where a path from somewhere other than a project row would
+/// enter, so sharing this is not tidiness — it is the guard staying true
+/// (`security-and-privacy.md` §5 rule 11).
+pub fn launch_at_root(
+    state: &AppState,
+    workspace_id: WorkspaceId,
+    kind: AppKind,
+) -> Result<Launched> {
+    let root = workspaces(state).working_directory(workspace_id)?;
+    let preferred = preference(state, workspace_id, kind)?;
 
     Launcher::new(state.os, state.platform.clone()).launch(
         kind,

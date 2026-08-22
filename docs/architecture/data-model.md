@@ -143,10 +143,12 @@ a branch, a port, a process. A workspace has no runtime state of its own — Git
 services belong to the project underneath it, are observed once, and are read by every
 workspace on that project, so two workspaces can never disagree about one repository.
 
-**Migration 0004** adds `workspace_services` (§3.5). It is not a counter-example: what is
-stored is *which of the project's services this workspace cares about*, which is intent,
-and the state of each one is resolved live on every read
-([ADR-0020](../adr/0020-workspace-services.md)).
+**Migration 0004** adds `workspace_services` (§3.5) and **0005** adds `workspace_actions`
+(§3.4). Neither is a counter-example: what is stored is *which of the project's services
+this workspace cares about* and *which of Mira's actions belong to it*, both of which are
+intent. The state of each is resolved live on every read
+([ADR-0020](../adr/0020-workspace-services.md),
+[ADR-0021](../adr/0021-workspace-actions.md)).
 
 `subpath` is from `0001` and is still unused. A workspace is deliberately *not* a place;
 if the column is still unused at the end of 0.2 it should be dropped by a migration
@@ -230,6 +232,36 @@ CREATE TABLE commands (
 
 `args` is a JSON **array**, not a string, at the schema level. The data model itself
 forbids "just put the whole command line in here", which is how shell injection gets in.
+
+**`commands` stays empty, permanently.** The array was the right instinct at the wrong
+altitude: a table with `program TEXT NOT NULL` in it is still a table where the answer to
+*what may Mira start?* is "whatever is written here", which makes everything that writes
+there security-critical. **Migration 0005** stores workspace actions as catalogue
+identities instead, and a guard test fails the build if any code reads or writes this
+table ([ADR-0021](../adr/0021-workspace-actions.md)).
+
+```sql
+-- Which of Mira's actions belong to this workspace. An identity in a catalogue
+-- compiled into the binary — no program, no args, no cwd, no run_in, and no text
+-- of any kind that gets executed.
+CREATE TABLE workspace_actions (
+  workspace_id INTEGER NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  action       TEXT    NOT NULL
+               CHECK (length(action) BETWEEN 1 AND 32
+                      AND action GLOB '[a-z0-9-]*'
+                      AND action NOT GLOB '*[^a-z0-9-]*'),
+  added_at     INTEGER NOT NULL,
+  PRIMARY KEY (workspace_id, action)
+);
+```
+
+The `CHECK` is defence in depth rather than the wall. The wall is that
+`mira_core::action::find` is the only thing that turns an id into an effect, and the
+command layer refuses one that finds nothing *before* storing it. The constraint makes
+the column additionally unable to hold a slash, a space, a quote or a semicolon.
+
+**Deletion policy.** A workspace's actions go with the workspace, which goes with the
+project — two `ON DELETE CASCADE` hops, both tested.
 
 **As built (slice 4b): `applications` and `app_preferences` above are created and
 stay empty.** They were designed for a mutable registry of detected-or-user-added

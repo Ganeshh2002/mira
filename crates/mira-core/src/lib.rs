@@ -9,6 +9,7 @@
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
 
+pub mod action;
 pub mod capability;
 pub mod error;
 pub mod ids;
@@ -16,6 +17,10 @@ pub mod project;
 pub mod service;
 pub mod workspace;
 
+pub use action::{
+    Action, ActionId, ActionState, Effect, MalformedActionId, Support, WorkspaceAction, CATALOGUE,
+    LONGEST_ACTION_ID,
+};
 pub use capability::{Capability, CapabilityReport, CapabilityStatus};
 pub use error::MiraError;
 pub use ids::{ProjectId, WorkspaceId, WorkspaceServiceId};

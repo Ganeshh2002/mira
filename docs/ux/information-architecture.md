@@ -244,12 +244,19 @@ Settings holds only global defaults.
 Name, root subdirectory, expected ports, commands (label + program + args + cwd),
 preferred apps, and a session list. Editing here changes configuration only.
 
-**As built (Slices 3–4c).** Name and description; the project underneath, with its
-packages; the **services this workspace watches**; Git; **Open with**; and the
-application context as a set of kinds. Commands and sessions are not built.
+**The "commands" line above is superseded.** `label + program + args + cwd` is a stored
+command, which is the shape [ADR-0021](../adr/0021-workspace-actions.md) refuses. What
+was built instead is a catalogue of actions Mira compiles in, of which a workspace picks
+some; there is no program and no argument list anywhere in it.
 
-The order is **Project → Packages → Services → Git → Context**: what this is, what it is
-made of, what is running, where the code stands, and what opens it.
+**As built (Slices 3–4d).** Name and description; the project underneath, with its
+packages; the **services this workspace watches**; Git; the **actions this workspace
+does**; **Open with**; and the application context as a set of kinds. Sessions are not
+built. User-defined commands are not built and will not be — see below.
+
+The order is **Project → Packages → Services → Git → Actions → Context**: what this is,
+what it is made of, what is running, where the code stands, what it does, and what opens
+it.
 
 **Services here are the workspace's, not the project's.** A monorepo running five
 servers puts five rows on the project surface and, on a workspace whose work is two of
@@ -273,8 +280,25 @@ could not look" as "your server is down" is telling somebody something Mira has 
 established. And nothing on this surface starts or stops anything — Open is the only
 action, and there is no disabled Stop button hinting at one.
 
-Open with sits under Git, because that is the order the questions come in: where does
-this stand, then get me into it. It offers **Editor** and **Terminal** — each
+**Actions** sit under Services: the few things this workspace is actually asked to do,
+chosen from a catalogue of six Mira compiles in. There is no field to type into, because
+there is nothing to type — an action is picked from a menu and stored as the identity
+Mira gave it. Every row carries a sentence saying **what it will do** before it is
+pressed, which is the safety story made visible: a list of actions you can read is not a
+list of surprises ([ADR-0021](../adr/0021-workspace-actions.md)).
+
+An action that cannot be done now is a sentence, not a greyed-out button — §5's rule
+again. That includes the *ambiguous* case: two of this workspace's services running, and
+no way to know which one "open the running service" meant. Mira says so and points at the
+Services list, because opening the first of three would be choosing on somebody's behalf.
+An identity Mira no longer has says exactly that and offers removal; it is never quietly
+matched to the nearest action.
+
+Nothing here starts a server, runs a script, or stops a process, and there is no disabled
+control hinting that one is coming.
+
+Open with sits under Actions, because that is the order the questions come in: where does
+this stand, what does this workspace do, then get me into it. It offers **Editor** and **Terminal** — each
 naming the application that will actually open, so the button never claims something
 the machine was not asked to confirm. A browser is not there: a browser opens a
 *service*, so its action lives on the service row and disappears with the service.

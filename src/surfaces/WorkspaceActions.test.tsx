@@ -6,9 +6,12 @@ import type { AppReport } from '../bindings/AppReport';
 import type { ChosenApp } from '../bindings/ChosenApp';
 import type { LiveSnapshot } from '../bindings/LiveSnapshot';
 import type { Project } from '../bindings/Project';
+import type { ActionOffer } from '../bindings/ActionOffer';
+import type { ActionState } from '../bindings/ActionState';
 import type { ServiceOffer } from '../bindings/ServiceOffer';
 import type { ServiceState } from '../bindings/ServiceState';
 import type { Workspace } from '../bindings/Workspace';
+import type { WorkspaceAction } from '../bindings/WorkspaceAction';
 import type { WorkspaceService } from '../bindings/WorkspaceService';
 import { App } from '../App';
 import { renderApp } from '../test/render';
@@ -120,6 +123,47 @@ function watched(
   };
 }
 
+/** The catalogue, as the backend would describe it. */
+const CATALOGUE: ActionOffer[] = [
+  {
+    id: 'open-editor',
+    label: 'Open in the editor',
+    describes: "Opens this project's folder in the editor this workspace uses.",
+    icon: 'editor',
+    chosen: false,
+  },
+  {
+    id: 'open-service',
+    label: 'Open the running service',
+    describes: "Opens this workspace's running service in the browser, when exactly one is up.",
+    icon: 'service',
+    chosen: false,
+  },
+  {
+    id: 'refresh',
+    label: 'Read everything again',
+    describes: "Reads this project's Git state and the machine's ports now.",
+    icon: 'refresh',
+    chosen: false,
+  },
+];
+
+/** One of a workspace's actions, in whatever state the test needs. */
+function action(
+  id: string,
+  state: ActionState = { kind: 'ready', detail: null },
+): WorkspaceAction {
+  const row = CATALOGUE.find((offer) => offer.id === id);
+  return {
+    id,
+    label: row?.label ?? '',
+    describes: row?.describes ?? '',
+    icon: row?.icon ?? '',
+    effect: row ? { does: 'observe' } : null,
+    state,
+  };
+}
+
 function backend({
   workspaces = [workspace()],
   canOpen = openable,
@@ -127,6 +171,7 @@ function backend({
   onLaunch,
   chosen,
   watching = new Map<number, WorkspaceService[]>(),
+  doing = new Map<number, WorkspaceAction[]>(),
   offers = [
     { at: 0, port: 3000, address: '127.0.0.1', process: 'node', watched: false },
     { at: 1, port: 5173, address: '127.0.0.1', process: 'vite', watched: false },
@@ -140,8 +185,10 @@ function backend({
   chosen?: ChosenApp;
   watching?: Map<number, WorkspaceService[]>;
   offers?: ServiceOffer[];
+  doing?: Map<number, WorkspaceAction[]>;
 } = {}) {
   const lists = new Map(watching);
+  const acts = new Map(doing);
   invoke.mockImplementation((command: string, args?: Record<string, unknown>) => {
     switch (command) {
       case 'projects_list':
@@ -181,6 +228,32 @@ function backend({
       }
       case 'workspaces_open_service':
         return Promise.resolve({ application: 'Firefox' });
+      case 'workspaces_actions':
+        return Promise.resolve(acts.get(Number(args?.['workspaceId'])) ?? []);
+      case 'workspaces_action_catalogue': {
+        const has = acts.get(Number(args?.['workspaceId'])) ?? [];
+        return Promise.resolve(
+          CATALOGUE.map((offer) => ({
+            ...offer,
+            chosen: has.some((one) => one.id === offer.id),
+          })),
+        );
+      }
+      case 'workspaces_set_action': {
+        const id = Number(args?.['workspaceId']);
+        const named = String(args?.['action']);
+        const has = acts.get(id) ?? [];
+        acts.set(
+          id,
+          args?.['wanted'] ? [...has, action(named)] : has.filter((one) => one.id !== named),
+        );
+        return Promise.resolve(acts.get(id));
+      }
+      case 'workspaces_perform_action':
+        return Promise.resolve({
+          id: String(args?.['action']),
+          happened: 'Opened in Visual Studio Code.',
+        });
       case 'workspaces_open':
         return Promise.resolve(
           workspaces.find((one) => one.id === args?.['workspaceId']) ?? workspaces[0],
@@ -658,5 +731,220 @@ describe('a workspace that chose its own application', () => {
       const asked = invoke.mock.calls.find(([command]) => command === 'workspaces_launch');
       expect(asked?.[1]).toEqual({ workspaceId: 1, kind: 'editor' });
     });
+  });
+});
+
+describe('the actions a workspace has', () => {
+  it('says a workspace has none rather than showing an empty list', async () => {
+    backend();
+    await openWorkspace();
+
+    expect(await screen.findByText(/no actions yet/i)).toBeInTheDocument();
+    expect(screen.queryByRole('list', { name: /workspace actions/i })).not.toBeInTheDocument();
+  });
+
+  it('adds an action by the identity Mira offered, never by text', async () => {
+    backend();
+    await openWorkspace();
+
+    await userEvent.click(await screen.findByRole('button', { name: /add an action/i }));
+    await userEvent.click(await screen.findByRole('menuitem', { name: /open in the editor/i }));
+
+    await waitFor(() =>
+      expect(invoke).toHaveBeenCalledWith('workspaces_set_action', {
+        workspaceId: 1,
+        action: 'open-editor',
+        wanted: true,
+      }),
+    );
+
+    // Nothing runnable crossed the boundary: the payload is an identity.
+    const sent = invoke.mock.calls.find(([name]) => name === 'workspaces_set_action')?.[1];
+    expect(sent).toEqual({ workspaceId: 1, action: 'open-editor', wanted: true });
+    expect(JSON.stringify(sent)).not.toMatch(/npm|cargo|sh|--|\//);
+  });
+
+  it('performs an action by its identity and says what happened', async () => {
+    backend({ doing: new Map([[1, [action('open-editor')]]]) });
+    await openWorkspace();
+
+    const list = await screen.findByRole('list', { name: /workspace actions/i });
+    await userEvent.click(within(list).getByRole('button', { name: 'Open in the editor' }));
+
+    await waitFor(() =>
+      expect(invoke).toHaveBeenCalledWith('workspaces_perform_action', {
+        workspaceId: 1,
+        action: 'open-editor',
+      }),
+    );
+    expect(await screen.findByText(/opened in visual studio code/i)).toBeInTheDocument();
+  });
+
+  it('removes an action by its identity', async () => {
+    backend({ doing: new Map([[1, [action('refresh')]]]) });
+    await openWorkspace();
+
+    await userEvent.click(
+      await screen.findByRole('button', { name: /remove read everything again/i }),
+    );
+
+    await waitFor(() =>
+      expect(invoke).toHaveBeenCalledWith('workspaces_set_action', {
+        workspaceId: 1,
+        action: 'refresh',
+        wanted: false,
+      }),
+    );
+  });
+
+  it('shows each action with a sentence saying what it will do', async () => {
+    // The safety story, made visible. A row nobody can read is a row somebody
+    // presses without knowing what happens.
+    backend({ doing: new Map([[1, [action('open-editor')]]]) });
+    await openWorkspace();
+
+    const list = await screen.findByRole('list', { name: /workspace actions/i });
+    expect(
+      within(list).getByText(/opens this project's folder in the editor/i),
+    ).toBeInTheDocument();
+  });
+
+  it('does not offer an action this workspace already has', async () => {
+    backend({ doing: new Map([[1, [action('refresh')]]]) });
+    await openWorkspace();
+
+    await userEvent.click(await screen.findByRole('button', { name: /add an action/i }));
+    expect(
+      await screen.findByRole('menuitem', { name: /open in the editor/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('menuitem', { name: /read everything again/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('offers no way to run, stop or restart anything', async () => {
+    backend({ doing: new Map([[1, [action('open-editor'), action('refresh')]]]) });
+    await openWorkspace();
+
+    const list = await screen.findByRole('list', { name: /workspace actions/i });
+    for (const destructive of [/kill/i, /terminate/i, /^stop$/i, /^restart$/i, /^run$/i]) {
+      expect(within(list).queryByRole('button', { name: destructive })).not.toBeInTheDocument();
+    }
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
+  });
+});
+
+describe('an action that cannot be done', () => {
+  it('is a sentence rather than a disabled button', async () => {
+    backend({
+      doing: new Map([
+        [
+          1,
+          [
+            action('open-editor', {
+              kind: 'unavailable',
+              reason: 'There is no editor on this machine that Mira can open a folder in.',
+            }),
+          ],
+        ],
+      ]),
+    });
+    await openWorkspace();
+
+    const list = await screen.findByRole('list', { name: /workspace actions/i });
+    expect(within(list).getByText(/no editor on this machine/i)).toBeInTheDocument();
+    expect(
+      within(list).queryByRole('button', { name: 'Open in the editor' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('is refused rather than guessed at when it would be ambiguous', async () => {
+    // Two of this workspace's services running, and no way to know which one
+    // "open the running service" meant. Mira says so instead of choosing.
+    backend({
+      doing: new Map([
+        [
+          1,
+          [
+            action('open-service', {
+              kind: 'unavailable',
+              reason:
+                "2 of this workspace's services are running, so this action cannot say which one you mean. Open the one you want from the Services list.",
+            }),
+          ],
+        ],
+      ]),
+    });
+    await openWorkspace();
+
+    const list = await screen.findByRole('list', { name: /workspace actions/i });
+    expect(within(list).getByText(/cannot say which one you mean/i)).toBeInTheDocument();
+    expect(
+      within(list).queryByRole('button', { name: 'Open the running service' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('names an identity Mira no longer has, and never a different action', async () => {
+    backend({
+      doing: new Map([
+        [
+          1,
+          [
+            {
+              id: 'an-action-mira-removed',
+              label: '',
+              describes: '',
+              icon: '',
+              effect: null,
+              state: { kind: 'unknown' },
+            },
+          ],
+        ],
+      ]),
+    });
+    await openWorkspace();
+
+    const list = await screen.findByRole('list', { name: /workspace actions/i });
+    expect(within(list).getByText('an-action-mira-removed')).toBeInTheDocument();
+    expect(within(list).getByText(/no action by that name/i)).toBeInTheDocument();
+    // It offers removal, not performance — and it did not become another action.
+    expect(
+      within(list).getByRole('button', { name: /remove an-action-mira-removed/i }),
+    ).toBeInTheDocument();
+    expect(within(list).queryByText(/open in the editor/i)).not.toBeInTheDocument();
+  });
+});
+
+describe('two workspaces and their actions', () => {
+  const two = [workspace(), workspace({ id: 2, name: 'API Development' })];
+
+  it("each shows its own and neither shows the other's", async () => {
+    backend({
+      workspaces: two,
+      doing: new Map([
+        [1, [action('open-editor')]],
+        [2, [action('refresh')]],
+      ]),
+    });
+    await openWorkspace('API Development');
+
+    const list = await screen.findByRole('list', { name: /workspace actions/i });
+    expect(within(list).getByText('Read everything again')).toBeInTheDocument();
+    expect(within(list).queryByText('Open in the editor')).not.toBeInTheDocument();
+  });
+
+  it('performs against the workspace being shown', async () => {
+    backend({ workspaces: two, doing: new Map([[2, [action('refresh')]]]) });
+    await openWorkspace('API Development');
+
+    const list = await screen.findByRole('list', { name: /workspace actions/i });
+    await userEvent.click(within(list).getByRole('button', { name: 'Read everything again' }));
+
+    await waitFor(() =>
+      expect(invoke).toHaveBeenCalledWith('workspaces_perform_action', {
+        workspaceId: 2,
+        action: 'refresh',
+      }),
+    );
   });
 });

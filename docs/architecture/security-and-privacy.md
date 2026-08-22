@@ -415,6 +415,57 @@ the feature whose defining input is, everywhere else, a port number.
     reach for first. Termination arrives with its own confirmation and refusal
     design or it does not arrive.
 
+### Doing something in a workspace
+
+Slice 4d gives a workspace a list of things it can be asked to do. It is the
+feature that, built the usual way, would be a table of shell commands.
+
+46. **An action is a row in a catalogue compiled into the binary.**
+    `mira_core::action::CATALOGUE` is a `const` array of six `&'static str`-bearing
+    rows. There is no way to add one except to write it and compile it — not from
+    the interface, not from the database, not from a project directory, not from a
+    settings file. Those paths do not exist rather than being validated
+    ([ADR-0021](../adr/0021-workspace-actions.md)).
+
+47. **No program, no argv, no shell string, anywhere in the feature.** No field,
+    column, parameter or wire type holds an executable, a path to one, an
+    argument list, a template or a placeholder. An `ActionId` is
+    `[a-z0-9-]{1,32}`, so `;`, `&&`, `|`, backticks, `$(`, quotes, spaces,
+    slashes and newlines are characters it cannot contain. Wire tests assert that
+    `npm run dev`, `pnpm -w build`, `cargo run --release`, `/bin/sh`,
+    `open-editor; rm -rf ~` and a dozen others fail to deserialise.
+
+48. **The effect enum is the whole privilege surface, and it is pinned.** Five
+    variants — open the project root in an application, reveal it, open this
+    workspace's running service, mark the workspace opened, take the scheduler's
+    reading now. Every one was already reachable from a button before this slice,
+    so **actions add no new way for Mira to affect the machine.** A guard asserts
+    the variant list *exactly*, so a sixth fails the build until somebody adds it
+    on purpose, and a second guard asserts the dispatch reaches for no process,
+    no filesystem write and no address of its own.
+
+49. **The construction sites did not multiply.** Opening in an application goes
+    through `workspaces.launch`'s own body and opening a service through
+    `workspaces.open_service`'s, so there is still exactly one
+    `LaunchTarget::Directory` site and one address site in the application shell.
+    The guards that count them pass unchanged, which is the point: reuse is what
+    keeps them true.
+
+50. **An unknown identity is a state, never a substitution.** A stored id this
+    build has no row for stays on the list, is shown by its id, offers removal
+    and not performance, and is never matched to the nearest row. A guard asserts
+    the unknown arm reaches for no fallback.
+
+51. **An ambiguous action is impossible rather than disabled.** "Open the running
+    service" is available only when exactly one of this workspace's services is
+    running; two or more is unavailable *with the count* and a sentence pointing
+    at the Services list. Opening the first of three would have been convenient,
+    silent and wrong.
+
+52. **`commands` stays empty.** The table from `0001_init.sql` has
+    `program TEXT NOT NULL`; a guard fails the build if any code issues `FROM`,
+    `INTO`, `UPDATE` or `JOIN` against it.
+
 ### Keeping a machine awake
 
 19. **Keep Awake holds an operating-system power request and nothing else.** Mira
@@ -615,3 +666,10 @@ after the people who wrote it move on.
 | A workspace cannot reach another's configuration | Every `workspace_services` statement names `workspace_id` |
 | No command stops a service | Command name **and** parameter scan for stop/kill/terminate/… |
 | Watching a service starts no observer or clock | No `Instant`, `interval`, `sleep`, `OnceLock` in the resolver |
+| An action is a catalogue identity | Command-signature scan: the parameter's type is `ActionId` |
+| No action names something to run | The catalogue row has no `program`, `args`, `cwd`, `exec`, … |
+| The effects an action can have are pinned | The `Effect` variant list is asserted exactly |
+| The table with a program column is unreachable | No code reads or writes `commands` |
+| An action Mira no longer has never becomes another | The unknown arm reaches for no fallback |
+| An action belongs to the workspace given it | Every `workspace_actions` statement names `workspace_id` |
+| Performing an action reaches no new seam | The dispatch shares the one launch and one address site |

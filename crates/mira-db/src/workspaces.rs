@@ -10,6 +10,7 @@
 //! observed; the project and its workspaces are stated, and both stay
 //! (`prd.md` FR-1.5).
 
+use mira_core::action::ActionId;
 use mira_core::service::{Port, WatchedService};
 use mira_core::{
     AppId, AppKind, AppPreference, MiraError, ProjectId, Result, Workspace, WorkspaceId,
@@ -108,6 +109,27 @@ pub trait WorkspaceRepo {
         id: WorkspaceId,
         service: WorkspaceServiceId,
     ) -> Result<WatchedService>;
+
+    /// The actions this workspace has, in catalogue order.
+    ///
+    /// Ordered by the catalogue rather than by when each was added, so the list
+    /// reads the same every time and removing one does not reshuffle the rest —
+    /// the same rule the application kinds follow.
+    fn workspace_actions(&self, id: WorkspaceId) -> Result<Vec<ActionId>>;
+
+    /// Give this workspace one action, or take it away.
+    ///
+    /// `wanted` is whether the workspace should have it afterwards, so adding
+    /// twice and removing twice are both no-ops rather than errors. The id is a
+    /// catalogue identity the command layer has already resolved against the
+    /// compiled catalogue; this layer does not know a catalogue exists.
+    fn set_workspace_action(
+        &self,
+        id: WorkspaceId,
+        action: &ActionId,
+        wanted: bool,
+        now: i64,
+    ) -> Result<()>;
 }
 
 impl WorkspaceRepo for Db {
@@ -347,6 +369,36 @@ impl WorkspaceRepo for Db {
             what: "That service".to_owned(),
         })
     }
+
+    fn workspace_actions(&self, id: WorkspaceId) -> Result<Vec<ActionId>> {
+        self.with_connection(|conn| actions_of(conn, id))
+    }
+
+    fn set_workspace_action(
+        &self,
+        id: WorkspaceId,
+        action: &ActionId,
+        wanted: bool,
+        now: i64,
+    ) -> Result<()> {
+        self.with_connection(|conn| {
+            if wanted {
+                conn.execute(
+                    "INSERT OR IGNORE INTO workspace_actions (workspace_id, action, added_at) \
+                     VALUES (?1, ?2, ?3)",
+                    params![id.get(), action.as_str(), now],
+                )?;
+            } else {
+                conn.execute(
+                    "DELETE FROM workspace_actions WHERE workspace_id = ?1 AND action = ?2",
+                    params![id.get(), action.as_str()],
+                )?;
+            }
+            Ok(())
+        })?;
+
+        self.touch_updated(id, now)
+    }
 }
 
 impl Db {
@@ -432,6 +484,41 @@ fn services_of(conn: &Connection, id: WorkspaceId) -> rusqlite::Result<Vec<Watch
         .into_iter()
         .flatten()
         .collect())
+}
+
+/// The actions a workspace has, in [`mira_core::CATALOGUE`] order.
+///
+/// Ordered by the catalogue rather than by insertion, and filtered by it too: a
+/// stored id with no row is not returned here. That is deliberate and it is why
+/// the *command* layer reads the stored ids directly instead — an id Mira no
+/// longer has is a state a person should be told about and offered a way to
+/// clear, not a row that silently vanishes (ADR-0021).
+fn actions_of(conn: &Connection, id: WorkspaceId) -> rusqlite::Result<Vec<ActionId>> {
+    let mut statement =
+        conn.prepare("SELECT action FROM workspace_actions WHERE workspace_id = ?1")?;
+    let rows = statement.query_map(params![id.get()], |row| row.get::<_, String>(0))?;
+    let stored: Vec<String> = rows.collect::<rusqlite::Result<_>>()?;
+
+    // Catalogue order first, then anything stored that the catalogue no longer
+    // has — so a stale id is last and visible rather than dropped.
+    let mut ordered: Vec<ActionId> = mira_core::CATALOGUE
+        .iter()
+        .filter(|action| stored.iter().any(|row| row == action.id))
+        .filter_map(|action| action.id.parse().ok())
+        .collect();
+
+    ordered.extend(
+        stored
+            .iter()
+            .filter(|row| {
+                !mira_core::CATALOGUE
+                    .iter()
+                    .any(|action| action.id == row.as_str())
+            })
+            .filter_map(|row| row.parse().ok()),
+    );
+
+    Ok(ordered)
 }
 
 /// One stored service, or `None` where the port column is not a port.
@@ -522,5 +609,17 @@ impl<T: WorkspaceRepo + ?Sized> WorkspaceRepo for &T {
         service: WorkspaceServiceId,
     ) -> Result<WatchedService> {
         (**self).workspace_service(id, service)
+    }
+    fn workspace_actions(&self, id: WorkspaceId) -> Result<Vec<ActionId>> {
+        (**self).workspace_actions(id)
+    }
+    fn set_workspace_action(
+        &self,
+        id: WorkspaceId,
+        action: &ActionId,
+        wanted: bool,
+        now: i64,
+    ) -> Result<()> {
+        (**self).set_workspace_action(id, action, wanted, now)
     }
 }

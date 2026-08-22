@@ -11,7 +11,7 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Product definition, product scope, PRD, information architecture, and design system
 - Architecture, platform abstraction, data model, and security/privacy documents
 - ADRs 0001–0019 covering the foundational technical decisions
-- ADRs 0001–0018 and 0020 covering the foundational technical decisions
+- ADRs 0001–0021 covering the foundational technical decisions
 - Locked phase plan (0.1 through 0.6+) and the fourteen-slice implementation roadmap
 - Open-source project files (licence, contributing, code of conduct, security policy)
 - **Foundation (slice 0).** Cargo workspace with `mira-core`, `mira-platform`, `mira-db`,
@@ -199,6 +199,33 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   five times cheaper below twenty services and five hundred sockets, and fifty workspaces
   resolving against four thousand sockets cost 1.9 ms in total — so there is no cache and
   no new clock ([ADR-0020](docs/adr/0020-workspace-services.md)).
+- **Workspace actions (slice 4d, part).** A workspace now has an **Actions** section: the
+  few things it is actually asked to do. Pick from a catalogue of six — open in the
+  editor, open a terminal here, open the running service, show the project folder, mark
+  as opened, read everything again — and each row says **what it will do** before you
+  press it.
+
+  It is deliberately not a command list. There is no field to type into, no program, no
+  argument list, no shell string and no template: the catalogue is a `const` array
+  compiled into Mira, and a workspace stores only the identity of the rows it picked.
+  `npm run dev`, `pnpm -w build`, `cargo run` and `/bin/sh` are not values any part of
+  this feature can hold — the wire tests assert each one fails at the boundary. Every
+  effect was already reachable from a button somewhere, so the set of things Mira can do
+  is exactly what it was; only the ways to ask for them grew.
+
+  An action that cannot be done is a sentence rather than a greyed-out button, and that
+  includes the ambiguous one: with two of this workspace's services running, "open the
+  running service" says so and points at the Services list instead of opening the first.
+  An identity Mira no longer has says exactly that and offers removal — it is never
+  quietly matched to the nearest action. Nothing here starts a server or stops a process.
+
+  Measuring picked the shape: deciding all six actions costs 0.65 µs, while asking the
+  machine what it can open costs 7.0 µs — so the machine is asked once per request rather
+  than once per action, which is 8.0 µs instead of 47.9. At that price nothing is cached
+  and no clock is added ([ADR-0021](docs/adr/0021-workspace-actions.md)).
+
+  The `commands` table from the original schema — the one with `program TEXT NOT NULL` —
+  is now permanently empty, with a guard enforcing it.
 - macOS and Windows ask the platform for its standard window material — Liquid Glass on
   macOS 26, Mica on Windows 11 — rather than drawing an imitation. Linux stays opaque.
 

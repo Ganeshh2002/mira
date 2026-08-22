@@ -430,7 +430,12 @@ describe('application context', () => {
         stored = { ...stored, applications: args?.['kinds'] as Workspace['applications'] };
         return Promise.resolve(stored);
       }
-      if (command === 'workspaces_services' || command === 'workspaces_service_offers')
+      if (
+        command === 'workspaces_services' ||
+        command === 'workspaces_service_offers' ||
+        command === 'workspaces_actions' ||
+        command === 'workspaces_action_catalogue'
+      )
         return Promise.resolve([]);
       return Promise.resolve(stored);
     });

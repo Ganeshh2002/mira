@@ -632,6 +632,7 @@ fn every_command_parameter_is_one_that_has_been_reviewed() {
     //   become is a `Candidate` Mira already knew about (ADR-0019).
     // - `app`, `state` — injected by Tauri, not sent by the page.
     let reviewed = [
+        "action",
         "app",
         "application",
         "at",
@@ -2915,5 +2916,320 @@ fn watching_a_service_starts_no_observer_and_no_clock() {
     assert!(
         code_only(&service).contains("pub fn resolve("),
         "the resolution is a function of its inputs"
+    );
+}
+
+// ── Workspace actions ────────────────────────────────────────────────────────
+
+#[test]
+fn a_workspace_action_is_a_catalogue_identity_and_nothing_else() {
+    // The parameter is named `action`, which is a word that could just as
+    // easily front a command string. The guard is on the **type**: it is
+    // allowed only where the signature says `ActionId`, so renaming it to
+    // `String` fails the build rather than quietly widening the boundary.
+    let mut violations = Vec::new();
+    for (path, signature) in command_parameters() {
+        for parameter in parameters_of(&signature) {
+            if parameter_name(&parameter).to_lowercase() != "action" {
+                continue;
+            }
+            if !parameter.contains("ActionId") {
+                violations.push(format!("{path}: {parameter}"));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "an action is named by something other than a catalogue identity: {violations:#?}"
+    );
+
+    // Non-vacuous: the parameter exists, so this cannot pass by the commands
+    // having been deleted.
+    let found: Vec<String> = command_parameters()
+        .into_iter()
+        .flat_map(|(path, signature)| {
+            parameters_of(&signature)
+                .into_iter()
+                .filter(|parameter| parameter_name(parameter).to_lowercase() == "action")
+                .map(move |parameter| format!("{path}: {parameter}"))
+                .collect::<Vec<_>>()
+        })
+        .collect();
+    assert!(
+        found.len() >= 2,
+        "the action commands were not found — this guard is checking nothing: {found:#?}"
+    );
+}
+
+#[test]
+fn no_action_can_name_something_to_run() {
+    // The catalogue row is the place a program, an argument list or a working
+    // directory would live if this feature were built the way every other tool
+    // builds it. It has five fields and none of them is any of those.
+    //
+    // Asserted positively as well as negatively, so it cannot pass by the struct
+    // having been renamed out from under it.
+    let source =
+        fs::read_to_string(repo_root().join("crates/mira-core/src/action.rs")).expect("action.rs");
+    let code = code_only(&source);
+
+    let row = code
+        .split("pub struct Action {")
+        .nth(1)
+        .and_then(|rest| rest.split("\n}").next())
+        .expect("an Action definition")
+        .to_owned();
+
+    for expected in ["id:", "label:", "describes:", "icon:", "effect:"] {
+        assert!(
+            row.contains(expected),
+            "the catalogue row lost {expected}: {row}"
+        );
+    }
+
+    for forbidden in [
+        "program", "command", "args", "argv", "exec", "shell", "script", "cwd", "cmd", "run_in",
+        "template", "path",
+    ] {
+        assert!(
+            !row.contains(forbidden),
+            "a catalogue row can name {forbidden}, which is a thing to run rather \
+             than a thing to do: {row}"
+        );
+    }
+}
+
+#[test]
+fn the_effects_an_action_can_have_are_exactly_these_five() {
+    // The privilege surface of the whole feature, pinned. A new variant is a new
+    // thing Mira can be asked to do, and it fails the build until somebody adds
+    // it here on purpose — which is the point, because the review that matters
+    // happens when the variant is written, not when it is used.
+    let source =
+        fs::read_to_string(repo_root().join("crates/mira-core/src/action.rs")).expect("action.rs");
+    let code = code_only(&source);
+
+    let effects = code
+        .split("pub enum Effect {")
+        .nth(1)
+        .and_then(|rest| rest.split("\n}").next())
+        .expect("an Effect definition")
+        .to_owned();
+
+    let declared: Vec<&str> = effects
+        .lines()
+        .map(str::trim)
+        .filter(|line| {
+            line.chars().next().is_some_and(char::is_uppercase)
+                && (line.ends_with(',') || line.ends_with('{'))
+        })
+        .collect();
+
+    assert_eq!(
+        declared,
+        [
+            "OpenIn {",
+            "RevealProject,",
+            "OpenService,",
+            "MarkOpened,",
+            "Observe,",
+        ],
+        "the set of things an action can do changed"
+    );
+
+    for forbidden in [
+        "Run",
+        "Exec",
+        "Spawn",
+        "Shell",
+        "Script",
+        "Stop",
+        "Kill",
+        "Terminate",
+        "Restart",
+        "Delete",
+        "Write",
+        "Install",
+    ] {
+        assert!(
+            !effects.contains(forbidden),
+            "an action can {forbidden}, which is not a thing this catalogue may contain"
+        );
+    }
+}
+
+#[test]
+fn nothing_reads_or_writes_the_table_that_holds_a_program() {
+    // `commands` came from `0001_init.sql` and carries `program TEXT NOT NULL`,
+    // `args`, `cwd` and `run_in`. Its own comment says `args` is a JSON array
+    // "never a shell string" — the right instinct at the wrong altitude, because
+    // the safe version of this feature has no column a program can live in at
+    // all.
+    //
+    // Slice 4d stores catalogue identities somewhere else and leaves this table
+    // empty. Empty is a claim, so it is enforced rather than intended.
+    let mut violations = Vec::new();
+    for (path, source) in sources(&["rs", "ts", "tsx"]) {
+        // The migration set may *name* it in a comment saying why it stays
+        // empty; `code_only` has already removed those lines.
+        if relative(&path).ends_with("migrations.rs") {
+            continue;
+        }
+        let code = code_only(&source);
+        for statement in [
+            "FROM commands",
+            "INTO commands",
+            "UPDATE commands",
+            "JOIN commands",
+        ] {
+            if code.contains(statement) {
+                violations.push(format!("{}: {statement}", relative(&path)));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "a table with a program column is being used; the set of programs Mira \
+         can start is compiled in, not stored: {violations:#?}"
+    );
+}
+
+#[test]
+fn an_action_that_mira_no_longer_has_never_becomes_a_different_one() {
+    // The substitution failure, and the one this feature could plausibly have.
+    // A workspace given an action a later Mira removed must be told so — not
+    // silently matched to the nearest row, and not silently dropped from the
+    // list as though it had never been chosen.
+    let source =
+        fs::read_to_string(repo_root().join("crates/mira-core/src/action.rs")).expect("action.rs");
+    let code = code_only(&source);
+
+    assert!(
+        code.contains("ActionState::Unknown"),
+        "an unknown identity must have a state of its own"
+    );
+
+    // The resolver's unknown arm returns `Unknown` and nothing else. A fallback
+    // here — the first row, the nearest name, the catalogue's default — is
+    // exactly the substitution.
+    let unknown = code
+        .split("let Some(action) = find(id) else {")
+        .nth(1)
+        .and_then(|rest| rest.split("};").next())
+        .expect("an unknown-id arm in `one`")
+        .to_owned();
+
+    assert!(
+        unknown.contains("ActionState::Unknown"),
+        "an id with no row must resolve to Unknown: {unknown}"
+    );
+    for substituting in [
+        "CATALOGUE[0]",
+        "first()",
+        "unwrap_or",
+        "next()",
+        "min_by",
+        "closest",
+    ] {
+        assert!(
+            !unknown.contains(substituting),
+            "an id with no row reaches for {substituting}; it must resolve to \
+             nothing at all: {unknown}"
+        );
+    }
+
+    // And performing refuses it rather than falling through.
+    let commands = fs::read_to_string(repo_root().join("src-tauri/src/commands/actions.rs"))
+        .expect("actions.rs");
+    assert!(
+        code_only(&commands).contains("ActionState::Unknown => {"),
+        "performing an unknown action must be its own refusal"
+    );
+}
+
+#[test]
+fn an_action_belongs_to_the_workspace_that_was_given_it() {
+    // Isolation, at the layer that enforces it. Every statement touching
+    // `workspace_actions` names `workspace_id`, and performing one checks the
+    // workspace's own list before the catalogue's — so an action a sibling has
+    // and this workspace does not is `NotFound`, not a launch.
+    let repo = fs::read_to_string(repo_root().join("crates/mira-db/src/workspaces.rs"))
+        .expect("workspaces.rs");
+    let code = code_only(&repo);
+
+    let mut statements = Vec::new();
+    for keyword in ["FROM ", "INTO ", "UPDATE ", "JOIN "] {
+        for reached in code.split(&format!("{keyword}workspace_actions")).skip(1) {
+            let rest: String = reached.chars().take_while(|c| *c != '"').collect();
+            statements.push(format!("{keyword}workspace_actions{rest}"));
+        }
+    }
+
+    assert!(
+        statements.len() >= 3,
+        "the SQL scan found {} statements — it is broken: {statements:#?}",
+        statements.len()
+    );
+
+    let unscoped: Vec<&String> = statements
+        .iter()
+        .filter(|statement| !statement.contains("workspace_id"))
+        .collect();
+    assert!(
+        unscoped.is_empty(),
+        "a statement reaches workspace_actions without saying whose: {unscoped:#?}"
+    );
+
+    // And the command layer asks the workspace's own list first.
+    let commands = fs::read_to_string(repo_root().join("src-tauri/src/commands/actions.rs"))
+        .expect("actions.rs");
+    assert!(
+        code_only(&commands).contains(".actions(workspace_id)?.contains(&action)"),
+        "performing an action must check this workspace's own list, not the catalogue"
+    );
+}
+
+#[test]
+fn performing_an_action_reaches_no_new_seam() {
+    // The claim that makes this feature safe to add at all: **actions are not a
+    // new way to affect the machine.** Every arm of the dispatch calls something
+    // that already existed, so the set of things Mira can do is unchanged and
+    // only the set of ways to ask for them grew.
+    //
+    // Enforced by absence: the module that performs an action may not reach for
+    // a process, a shell, a filesystem write, or a URL it built itself.
+    let commands = fs::read_to_string(repo_root().join("src-tauri/src/commands/actions.rs"))
+        .expect("actions.rs");
+    let code = code_only(&commands);
+
+    for forbidden in [
+        "Command::new",
+        "std::process",
+        "fs::write",
+        "fs::remove",
+        "fs::create",
+        "OpenOptions",
+        "http://",
+        "https://",
+        "format!(\"http",
+    ] {
+        assert!(
+            !code.contains(forbidden),
+            "performing an action reaches for {forbidden}; every effect must go \
+             through a seam that already existed"
+        );
+    }
+
+    // Positively: the two seams that touch the desktop are the shared bodies of
+    // commands that were already reviewed, not second implementations.
+    assert!(
+        code.contains("crate::commands::workspaces::launch_at_root"),
+        "opening in an application must share the one launch site"
+    );
+    assert!(
+        code.contains("crate::commands::services::open_watched"),
+        "opening a service must share the one address site"
     );
 }

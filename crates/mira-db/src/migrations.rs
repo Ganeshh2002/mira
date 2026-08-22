@@ -36,6 +36,11 @@ pub const MIGRATIONS: &[Migration] = &[
         name: "workspace_services",
         sql: include_str!("../migrations/0004_workspace_services.sql"),
     },
+    Migration {
+        version: 5,
+        name: "workspace_actions",
+        sql: include_str!("../migrations/0005_workspace_actions.sql"),
+    },
 ];
 
 /// The version a fully migrated database reports.

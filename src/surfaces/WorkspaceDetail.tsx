@@ -4,6 +4,7 @@ import type { AppKind } from '../bindings/AppKind';
 import type { Project } from '../bindings/Project';
 import type { ProjectObservation } from '../bindings/ProjectObservation';
 import type { Workspace } from '../bindings/Workspace';
+import { ActionsPanel } from '../components/ActionsPanel';
 import { ContextPanel } from '../components/ContextPanel';
 import { Freshness } from '../components/Freshness';
 import { GitPanel } from '../components/GitPanel';
@@ -125,6 +126,8 @@ export function WorkspaceDetail({
               <GitPanel git={observation.git} labelled={false} />
             </>
           ) : null}
+
+          <ActionsPanel workspaceId={workspace.id} />
 
           {openable.data ? (
             <OpenWith

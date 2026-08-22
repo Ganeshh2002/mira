@@ -19,6 +19,7 @@
 
 use std::path::PathBuf;
 
+use mira_core::action::ActionId;
 use mira_core::service::{Listening, Observed, Port, WatchedService, WorkspaceService as Watched};
 use mira_core::{
     resolve, AppId, AppKind, MiraError, ProjectId, Result, Workspace, WorkspaceId,
@@ -155,6 +156,33 @@ pub trait WorkspaceService {
     ///
     /// [`MiraError::NotFound`] if the workspace is gone or does not watch it.
     fn port_of(&self, id: WorkspaceId, service: WorkspaceServiceId) -> Result<Port>;
+
+    /// The catalogue identities this workspace has, in catalogue order.
+    ///
+    /// Returned as stored, including any id this version of Mira has no row
+    /// for. Resolving one to a state — and refusing an unknown one — is the
+    /// command layer's job, because this crate does not know a catalogue exists.
+    ///
+    /// # Errors
+    ///
+    /// [`MiraError::NotFound`] if the workspace is gone.
+    fn actions(&self, id: WorkspaceId) -> Result<Vec<ActionId>>;
+
+    /// Give this workspace one action, or take it away.
+    ///
+    /// The caller has already resolved `action` against the compiled catalogue;
+    /// an id that names nothing never reaches here.
+    ///
+    /// # Errors
+    ///
+    /// [`MiraError::NotFound`] if the workspace is gone.
+    fn set_action(
+        &self,
+        id: WorkspaceId,
+        action: &ActionId,
+        wanted: bool,
+        now: i64,
+    ) -> Result<Vec<ActionId>>;
 }
 
 /// The repository-backed implementation.
@@ -303,6 +331,25 @@ impl<R: WorkspaceRepo + ProjectRepo> WorkspaceService for Workspaces<R> {
     fn port_of(&self, id: WorkspaceId, service: WorkspaceServiceId) -> Result<Port> {
         self.repo.get_workspace(id)?;
         Ok(self.repo.workspace_service(id, service)?.port)
+    }
+
+    fn actions(&self, id: WorkspaceId) -> Result<Vec<ActionId>> {
+        // Read the workspace first so that one that is gone says so, rather than
+        // resolving an empty list into "this workspace has no actions".
+        self.repo.get_workspace(id)?;
+        self.repo.workspace_actions(id)
+    }
+
+    fn set_action(
+        &self,
+        id: WorkspaceId,
+        action: &ActionId,
+        wanted: bool,
+        now: i64,
+    ) -> Result<Vec<ActionId>> {
+        self.repo.get_workspace(id)?;
+        self.repo.set_workspace_action(id, action, wanted, now)?;
+        self.repo.workspace_actions(id)
     }
 
     fn working_directory(&self, id: WorkspaceId) -> Result<PathBuf> {

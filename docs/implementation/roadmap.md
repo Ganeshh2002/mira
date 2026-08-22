@@ -178,12 +178,15 @@ workspace surface, and the boundary that makes it safe — a launch is asked for
 **kind**, and four guard tests keep it that way. macOS launches through `NSWorkspace`
 rather than `open(1)`, so Mira never becomes the parent of what it starts.
 
-**Still to come in this slice.** The applications registry in `mira-db` and per-project
-or per-workspace *preferences* — which specific application, rather than which kind —
-along with argv templates, open-file-at-line, and the keyboard bindings. The `commands`
-table stays empty until then, deliberately: a stored command string is the thing worth
-not having yet. There is also no "add yours" path, so an unrecognised editor is a table
-row in the next release rather than a setting.
+**Still to come in this slice.** Argv templates, open-file-at-line, and the
+keyboard bindings. Per-workspace application *preferences* landed in 4b
+([ADR-0019](../adr/0019-application-preferences.md)) — as catalogue identities,
+so the `applications` and `app_preferences` tables stayed empty rather than
+filling. The `commands` table stays empty **permanently**, decided in 4d: a
+stored command string is not a thing worth having later either
+([ADR-0021](../adr/0021-workspace-actions.md)). There is still no "add yours"
+path, so an unrecognised editor is a table row in the next release rather than a
+setting.
 
 ---
 
@@ -236,8 +239,21 @@ port-taken, never-observed and unreadable are five distinct states, because
 `workspace_services`. No new observer and no new clock — resolution is a pure
 function measured at microseconds.
 
-**Still to come in this slice.** Per-workspace commands, app groups, the implicit
-default workspace, and the workspace switcher in the project header.
+**Delivered (part), 4d — workspace actions.** The *doing* dimension, and the
+slice where "per-workspace commands" was answered with something that is not a
+command. A workspace picks from a catalogue of six actions compiled into the
+binary — open in the editor, open a terminal here, open the running service, show
+the project folder, mark as opened, read everything again — and stores only the
+catalogue's identity. There is no program, no argv, no shell string, no template
+and no field to type into; `npm run dev` and `/bin/sh` are not values any part of
+this feature can hold. Every effect was already reachable from a button, so the
+set of things Mira can do is unchanged and only the ways to ask for them grew
+([ADR-0021](../adr/0021-workspace-actions.md)). New table: `workspace_actions`.
+
+**Still to come in this slice.** App groups — several actions as one — the
+implicit default workspace, and the workspace switcher in the project header.
+User-defined commands are **not** coming: the `commands` table stays empty, by
+decision rather than by delay.
 
 ## Slice 5a — Git history *(S, 0.1)*
 

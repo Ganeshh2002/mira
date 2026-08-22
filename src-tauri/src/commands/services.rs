@@ -180,10 +180,26 @@ pub fn workspaces_open_service(
     service_id: WorkspaceServiceId,
     state: State<'_, Arc<AppState>>,
 ) -> Result<Launched> {
+    open_watched(&state, workspace_id, service_id)
+}
+
+/// Open one of a workspace's watched services, by the row id Mira issued.
+///
+/// The body of the command above, shared with the action catalogue's
+/// "open the running service" so that both take the same path: the port comes
+/// from a row keyed by **this** workspace, the address is built in Rust from
+/// that port, and the browser is the one this workspace chose. A second
+/// implementation would be a second place for an address to come from, which is
+/// the thing `security-and-privacy.md` §5 rule 5 exists to prevent.
+pub fn open_watched(
+    state: &AppState,
+    workspace_id: WorkspaceId,
+    service_id: WorkspaceServiceId,
+) -> Result<Launched> {
     let observation = state.live.snapshot().services;
     let listening = observation.listening();
 
-    let watched = workspaces(&state)
+    let watched = workspaces(state)
         .services_unobserved(workspace_id, observation.observed(&listening))?
         .into_iter()
         .find(|service| service.watched.id == service_id)
@@ -200,14 +216,13 @@ pub fn workspaces_open_service(
     // Through `port_of` rather than through the value just read, so the number
     // handed to the launcher came from the database keyed by both ids — the same
     // check that makes a sibling's service unreachable.
-    let port = workspaces(&state).port_of(workspace_id, service_id)?;
+    let port = workspaces(state).port_of(workspace_id, service_id)?;
 
     // The workspace's own browser choice, not the machine's first find. A
     // workspace that chose Firefox opens its service in Firefox, and one that
     // chose nothing gets the desktop's default handler — the same answer the
     // Open with row gives (ADR-0019).
-    let preferred =
-        crate::commands::workspaces::preference(&state, workspace_id, AppKind::Browser)?;
+    let preferred = crate::commands::workspaces::preference(state, workspace_id, AppKind::Browser)?;
 
     Launcher::new(state.os, state.platform.clone()).launch(
         AppKind::Browser,

@@ -153,3 +153,86 @@ fn resolving_a_whole_workspace() {
     }
     println!();
 }
+
+// ── Workspace actions (slice 4d) ─────────────────────────────────────────────
+
+/// A workspace's chosen actions, in catalogue order.
+fn chosen(count: usize) -> Vec<mira_core::ActionId> {
+    mira_core::CATALOGUE
+        .iter()
+        .take(count)
+        .map(|action| action.id.parse().expect("a catalogue id"))
+        .collect()
+}
+
+fn support(running: usize) -> mira_core::Support {
+    mira_core::Support {
+        openable: vec![
+            (mira_core::AppKind::Editor, "Visual Studio Code".to_owned()),
+            (mira_core::AppKind::Terminal, "Terminal".to_owned()),
+        ],
+        folder_exists: true,
+        reveal: None,
+        running: (0..running).map(|n| format!(":{}", 3_000 + n)).collect(),
+    }
+}
+
+#[test]
+#[ignore = "measurement, not an assertion"]
+fn resolving_a_workspaces_actions() {
+    // The design question this answers: is `Support` worth gathering once per
+    // request, or should each action ask the machine for itself?
+    //
+    // The answer only means something next to what asking the machine costs.
+    // `Applications::openable()` was measured at 6.9 µs on this machine in slice
+    // 4b, and a `Path::is_dir()` at roughly 2 µs; the numbers below are what
+    // deciding costs once those are in hand.
+    println!();
+    println!("  actions   running       resolve   fifty workspaces");
+    println!("  -------   -------   -----------   ----------------");
+
+    for &(action_count, running) in &[(1_usize, 1_usize), (3, 1), (6, 0), (6, 1), (6, 3), (6, 40)] {
+        let actions = chosen(action_count);
+        let machine = support(running);
+
+        let once = time(|| {
+            std::hint::black_box(mira_core::action::resolve(&actions, &machine));
+        });
+
+        println!(
+            "  {action_count:>7}   {running:>7}   {:>11}   {:>16}",
+            format!("{:.3} us", once.as_secs_f64() * 1e6),
+            format!("{:.3} ms", once.as_secs_f64() * 1e3 * 50.0),
+        );
+    }
+    println!();
+}
+
+#[test]
+#[ignore = "measurement, not an assertion"]
+fn looking_one_action_up_in_the_catalogue() {
+    // `find` is a linear walk of a six-row array. The question is whether the
+    // catalogue needs an index — and, more usefully, what the cost per row is,
+    // so the answer stays true as the catalogue grows.
+    let known: mira_core::ActionId = "refresh".parse().expect("a catalogue id");
+    let unknown: mira_core::ActionId = "not-an-action".parse().expect("a well-formed id");
+
+    let hit = time(|| {
+        std::hint::black_box(mira_core::action::find(&known));
+    });
+    let miss = time(|| {
+        std::hint::black_box(mira_core::action::find(&unknown));
+    });
+
+    println!();
+    println!("  catalogue rows            {}", mira_core::CATALOGUE.len());
+    println!(
+        "  find, last row            {:.4} us",
+        hit.as_secs_f64() * 1e6
+    );
+    println!(
+        "  find, no row (full walk)  {:.4} us",
+        miss.as_secs_f64() * 1e6
+    );
+    println!();
+}

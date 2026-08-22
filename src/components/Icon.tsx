@@ -31,7 +31,11 @@ export type IconName =
   | 'back'
   | 'service'
   | 'add'
-  | 'remove';
+  | 'remove'
+  | 'editor'
+  | 'terminal'
+  | 'folder'
+  | 'refresh';
 
 /** The path geometry for each icon, on a 16×16 grid. */
 const PATHS: Record<IconName, React.ReactNode> = {
@@ -153,6 +157,32 @@ const PATHS: Record<IconName, React.ReactNode> = {
     </>
   ),
   add: <path d="M8 3.5v9M3.5 8h9" />,
+  // A window with a cursor in it: where the code is edited.
+  editor: (
+    <>
+      <rect x="2" y="3" width="12" height="10" rx="1.5" />
+      <path d="M2 6h12M5 9.25l1.5 1.25L5 11.75M8.5 12h3" />
+    </>
+  ),
+  // A prompt: where commands are run — by you, not by Mira.
+  terminal: (
+    <>
+      <rect x="2" y="3" width="12" height="10" rx="1.5" />
+      <path d="M4.75 6.5L7 8.75l-2.25 2.25M8.75 11h2.5" />
+    </>
+  ),
+  folder: (
+    <>
+      <path d="M2 4.5a1 1 0 0 1 1-1h3l1.5 2H13a1 1 0 0 1 1 1v5.5a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1z" />
+    </>
+  ),
+  // Read it again: a cycle, not a loop that runs on its own.
+  refresh: (
+    <>
+      <path d="M13 8a5 5 0 1 1-1.6-3.66" />
+      <path d="M13.5 2.5v3h-3" />
+    </>
+  ),
   remove: <path d="M4 4l8 8M12 4l-8 8" />,
 };
 
