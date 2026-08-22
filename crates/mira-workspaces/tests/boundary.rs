@@ -8,7 +8,10 @@
 //! worse, succeed against a database that was only briefly unhappy. The reason
 //! has to survive the trip.
 
-use mira_core::{AppKind, MiraError, Project, ProjectId, Result, Workspace, WorkspaceId};
+use mira_core::service::{Port, WatchedService};
+use mira_core::{
+    AppKind, MiraError, Project, ProjectId, Result, Workspace, WorkspaceId, WorkspaceServiceId,
+};
 use mira_db::{NewProject, NewWorkspace, ProjectRepo, WorkspaceRepo};
 use mira_workspaces::{WorkspaceService, Workspaces};
 
@@ -49,6 +52,22 @@ impl WorkspaceRepo for BrokenRepo {
         _kinds: &[AppKind],
         _now: i64,
     ) -> Result<()> {
+        Err(self.0.clone())
+    }
+    fn workspace_services(&self, _id: WorkspaceId) -> Result<Vec<WatchedService>> {
+        Err(self.0.clone())
+    }
+    fn watch_service(&self, _id: WorkspaceId, _port: Port, _now: i64) -> Result<WatchedService> {
+        Err(self.0.clone())
+    }
+    fn forget_service(&self, _id: WorkspaceId, _service: WorkspaceServiceId) -> Result<()> {
+        Err(self.0.clone())
+    }
+    fn workspace_service(
+        &self,
+        _id: WorkspaceId,
+        _service: WorkspaceServiceId,
+    ) -> Result<WatchedService> {
         Err(self.0.clone())
     }
 }

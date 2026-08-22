@@ -5,7 +5,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AppReport } from '../bindings/AppReport';
 import type { LiveSnapshot } from '../bindings/LiveSnapshot';
 import type { Project } from '../bindings/Project';
+import type { ServiceOffer } from '../bindings/ServiceOffer';
+import type { ServiceState } from '../bindings/ServiceState';
 import type { Workspace } from '../bindings/Workspace';
+import type { WorkspaceService } from '../bindings/WorkspaceService';
 import { App } from '../App';
 import { renderApp } from '../test/render';
 
@@ -103,17 +106,37 @@ const openable: AppReport[] = [
   { kind: 'terminal', presence: { state: 'available', name: 'Ghostty' } },
 ];
 
+/** One service a workspace watches, in whatever state the test needs. */
+function watched(
+  port: number,
+  state: ServiceState = { kind: 'running', address: '127.0.0.1', process: 'node', pid: 18234 },
+  workspaceId = 1,
+): WorkspaceService {
+  return {
+    watched: { id: port, workspaceId, port, addedAt: 1_800_000_000 },
+    state,
+  };
+}
+
 function backend({
   workspaces = [workspace()],
   canOpen = openable,
   live = snapshot(),
   onLaunch,
+  watching = new Map<number, WorkspaceService[]>(),
+  offers = [
+    { at: 0, port: 3000, address: '127.0.0.1', process: 'node', watched: false },
+    { at: 1, port: 5173, address: '127.0.0.1', process: 'vite', watched: false },
+  ] as ServiceOffer[],
 }: {
   workspaces?: Workspace[];
   canOpen?: AppReport[];
   live?: LiveSnapshot;
   onLaunch?: (kind: string) => { application: string | null } | Error;
+  watching?: Map<number, WorkspaceService[]>;
+  offers?: ServiceOffer[];
 } = {}) {
+  const lists = new Map(watching);
   invoke.mockImplementation((command: string, args?: Record<string, unknown>) => {
     switch (command) {
       case 'projects_list':
@@ -127,6 +150,28 @@ function backend({
         return Promise.resolve(installed);
       case 'workspaces_openable':
         return Promise.resolve(canOpen);
+      case 'workspaces_services':
+        return Promise.resolve(lists.get(Number(args?.['workspaceId'])) ?? []);
+      case 'workspaces_service_offers':
+        return Promise.resolve(offers);
+      case 'workspaces_watch_service': {
+        const offer = offers[Number(args?.['at'])];
+        if (!offer) return Promise.reject({ kind: 'notFound', what: 'That service' });
+        const id = Number(args?.['workspaceId']);
+        const next = [...(lists.get(id) ?? []), watched(offer.port, undefined, id)];
+        lists.set(id, next);
+        return Promise.resolve(next);
+      }
+      case 'workspaces_forget_service': {
+        const id = Number(args?.['workspaceId']);
+        const next = (lists.get(id) ?? []).filter(
+          (service) => service.watched.id !== Number(args?.['serviceId']),
+        );
+        lists.set(id, next);
+        return Promise.resolve(next);
+      }
+      case 'workspaces_open_service':
+        return Promise.resolve({ application: 'Firefox' });
       case 'workspaces_open':
         return Promise.resolve(
           workspaces.find((one) => one.id === args?.['workspaceId']) ?? workspaces[0],
@@ -287,25 +332,224 @@ describe('a launch that fails', () => {
   });
 });
 
-describe('opening a service', () => {
-  it('sends the port, never an address', async () => {
-    backend();
+describe('the services a workspace watches', () => {
+  it('shows only what this workspace chose, not everything the project runs', async () => {
+    // The narrowing. The project is serving :3000 and :5173; this workspace said
+    // one of them is the work (ADR-0020).
+    backend({ watching: new Map([[1, [watched(3000)]]]) });
     await openWorkspace();
 
-    const services = await screen.findByRole('list', { name: /services/i });
+    const services = await screen.findByRole('list', { name: /watched services/i });
+    expect(within(services).getByText(':3000')).toBeInTheDocument();
+    expect(within(services).queryByText(':5173')).not.toBeInTheDocument();
+  });
+
+  it('opens a service by the id Mira issued, never by a port or an address', async () => {
+    backend({ watching: new Map([[1, [watched(3000)]]]) });
+    await openWorkspace();
+
+    const services = await screen.findByRole('list', { name: /watched services/i });
     await userEvent.click(within(services).getByRole('button', { name: /^open$/i }));
 
     await waitFor(() =>
-      expect(invoke).toHaveBeenCalledWith('live_open_service', { port: 3000 }),
+      expect(invoke).toHaveBeenCalledWith('workspaces_open_service', {
+        workspaceId: 1,
+        serviceId: 3000,
+      }),
+    );
+
+    const sent = invoke.mock.calls.find(([name]) => name === 'workspaces_open_service')?.[1];
+    expect(JSON.stringify(sent)).not.toMatch(/http|localhost|127\.0\.0\.1/);
+  });
+
+  it('adds a service by its position in the list Mira offered', async () => {
+    // No port on the wire. The menu shows what Mira found and sends back where
+    // it sat in that list.
+    backend();
+    await openWorkspace();
+
+    await userEvent.click(await screen.findByRole('button', { name: /add a service/i }));
+    await userEvent.click(await screen.findByRole('menuitem', { name: /5173/ }));
+
+    await waitFor(() =>
+      expect(invoke).toHaveBeenCalledWith('workspaces_watch_service', {
+        workspaceId: 1,
+        at: 1,
+      }),
+    );
+
+    const sent = invoke.mock.calls.find(([name]) => name === 'workspaces_watch_service')?.[1];
+    expect(sent).toEqual({ workspaceId: 1, at: 1 });
+  });
+
+  it('removes a service by the id Mira issued', async () => {
+    backend({ watching: new Map([[1, [watched(3000)]]]) });
+    await openWorkspace();
+
+    await userEvent.click(
+      await screen.findByRole('button', { name: /stop watching port 3000/i }),
+    );
+
+    await waitFor(() =>
+      expect(invoke).toHaveBeenCalledWith('workspaces_forget_service', {
+        workspaceId: 1,
+        serviceId: 3000,
+      }),
     );
   });
 
-  it('has nothing to open when nothing is listening', async () => {
-    backend({ live: snapshot({ ports: [] }) });
+  it('says a workspace watches nothing rather than showing an empty list', async () => {
+    backend();
     await openWorkspace();
 
-    await screen.findByRole('group', { name: /open with/i });
-    expect(screen.queryByRole('list', { name: /services/i })).not.toBeInTheDocument();
+    expect(await screen.findByText(/not watching any services yet/i)).toBeInTheDocument();
+    expect(screen.queryByRole('list', { name: /watched services/i })).not.toBeInTheDocument();
+  });
+
+  it('offers nothing when Mira has not seen the project serving anything', async () => {
+    backend({ offers: [] });
+    await openWorkspace();
+
+    await userEvent.click(await screen.findByRole('button', { name: /add a service/i }));
+    expect(
+      await screen.findByText(/has not seen this project serving anything/i),
+    ).toBeInTheDocument();
+  });
+
+  it('does not offer a service this workspace already watches', async () => {
+    backend({
+      watching: new Map([[1, [watched(3000)]]]),
+      offers: [
+        { at: 0, port: 3000, address: '127.0.0.1', process: 'node', watched: true },
+        { at: 1, port: 5173, address: '127.0.0.1', process: 'vite', watched: false },
+      ],
+    });
+    await openWorkspace();
+
+    await userEvent.click(await screen.findByRole('button', { name: /add a service/i }));
+    expect(await screen.findByRole('menuitem', { name: /5173/ })).toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: /3000/ })).not.toBeInTheDocument();
+  });
+});
+
+describe('two workspaces on one project', () => {
+  const two = [workspace(), workspace({ id: 2, name: 'API Development' })];
+
+  it("each shows its own services and neither shows the other's", async () => {
+    // Same project, same observations, two different answers to "which of these
+    // matter". The whole point of the slice, from the outside.
+    backend({
+      workspaces: two,
+      watching: new Map([
+        [1, [watched(3000, undefined, 1)]],
+        [2, [watched(5173, undefined, 2)]],
+      ]),
+    });
+    await openWorkspace('API Development');
+
+    const services = await screen.findByRole('list', { name: /watched services/i });
+    expect(within(services).getByText(':5173')).toBeInTheDocument();
+    expect(within(services).queryByText(':3000')).not.toBeInTheDocument();
+  });
+
+  it('asks about the workspace being shown, not the one opened first', async () => {
+    backend({ workspaces: two, watching: new Map([[2, [watched(5173, undefined, 2)]]]) });
+    await openWorkspace('API Development');
+
+    await screen.findByRole('list', { name: /watched services/i });
+    await waitFor(() =>
+      expect(invoke).toHaveBeenCalledWith('workspaces_services', { workspaceId: 2 }),
+    );
+  });
+
+  it('removes from the workspace being shown', async () => {
+    backend({ workspaces: two, watching: new Map([[2, [watched(5173, undefined, 2)]]]) });
+    await openWorkspace('API Development');
+
+    await userEvent.click(
+      await screen.findByRole('button', { name: /stop watching port 5173/i }),
+    );
+
+    await waitFor(() =>
+      expect(invoke).toHaveBeenCalledWith('workspaces_forget_service', {
+        workspaceId: 2,
+        serviceId: 5173,
+      }),
+    );
+  });
+});
+
+describe('what a watched service says about itself', () => {
+  it('a running service is named as running, with what is behind it', async () => {
+    backend({ watching: new Map([[1, [watched(3000)]]]) });
+    await openWorkspace();
+
+    const services = await screen.findByRole('list', { name: /watched services/i });
+    expect(within(services).getByText('Running')).toBeInTheDocument();
+    expect(within(services).getByText(/node/)).toBeInTheDocument();
+    expect(within(services).getByText(/listening on 127\.0\.0\.1/i)).toBeInTheDocument();
+  });
+
+  it('an expected service that is down reads differently from one that is up', async () => {
+    // The requirement, as a test: the two states must be distinguishable, and
+    // the down one must not offer an Open button that would fail.
+    backend({ watching: new Map([[1, [watched(3000, { kind: 'notRunning' })]]]) });
+    await openWorkspace();
+
+    const services = await screen.findByRole('list', { name: /watched services/i });
+    expect(within(services).getByText('Not running')).toBeInTheDocument();
+    expect(within(services).queryByRole('button', { name: /^open$/i })).not.toBeInTheDocument();
+    expect(within(services).getByText(':3000')).toBeInTheDocument();
+  });
+
+  it('never offers to start or stop the process behind a service', async () => {
+    backend({ watching: new Map([[1, [watched(3000)]]]) });
+    await openWorkspace();
+
+    const services = await screen.findByRole('list', { name: /watched services/i });
+    for (const destructive of [/kill/i, /terminate/i, /restart/i, /^start$/i, /^stop$/i]) {
+      expect(
+        within(services).queryByRole('button', { name: destructive }),
+      ).not.toBeInTheDocument();
+    }
+  });
+
+  it('a port something else took is never shown as running', async () => {
+    // The substitution rule. Reporting a stranger's process as your dev server
+    // would invite somebody to open it.
+    backend({
+      watching: new Map([[1, [watched(3000, { kind: 'taken', process: 'postgres' })]]]),
+    });
+    await openWorkspace();
+
+    const services = await screen.findByRole('list', { name: /watched services/i });
+    expect(within(services).getByText('Port taken')).toBeInTheDocument();
+    expect(within(services).getByText(/postgres/)).toBeInTheDocument();
+    expect(within(services).queryByText('Running')).not.toBeInTheDocument();
+    expect(within(services).queryByRole('button', { name: /^open$/i })).not.toBeInTheDocument();
+  });
+
+  it('says Mira has not looked rather than saying nothing is running', async () => {
+    backend({ watching: new Map([[1, [watched(3000, { kind: 'neverObserved' })]]]) });
+    await openWorkspace();
+
+    const services = await screen.findByRole('list', { name: /watched services/i });
+    expect(within(services).getByText('Never observed')).toBeInTheDocument();
+    expect(within(services).queryByText('Not running')).not.toBeInTheDocument();
+  });
+
+  it('says the reading failed, and what the platform said', async () => {
+    backend({
+      watching: new Map([
+        [1, [watched(3000, { kind: 'unreadable', reason: 'Refused by the platform.' })]],
+      ]),
+    });
+    await openWorkspace();
+
+    const services = await screen.findByRole('list', { name: /watched services/i });
+    expect(within(services).getByText('Cannot tell')).toBeInTheDocument();
+    expect(within(services).getByText(/refused by the platform/i)).toBeInTheDocument();
+    expect(within(services).queryByText('Not running')).not.toBeInTheDocument();
   });
 });
 

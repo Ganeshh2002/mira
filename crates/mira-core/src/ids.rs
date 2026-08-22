@@ -49,3 +49,14 @@ id_type!(
     /// Identifies a workspace — a named way of working on one project.
     WorkspaceId
 );
+
+id_type!(
+    /// Identifies one service a workspace watches.
+    ///
+    /// Issued by Mira when the service is added, and the *only* name the
+    /// interface has for it afterwards. Opening or forgetting a watched service
+    /// names this id, never the port behind it, so there is no request through
+    /// which a page could reach a port Mira did not already put on the row
+    /// (ADR-0020).
+    WorkspaceServiceId
+);

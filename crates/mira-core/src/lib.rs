@@ -13,12 +13,16 @@ pub mod capability;
 pub mod error;
 pub mod ids;
 pub mod project;
+pub mod service;
 pub mod workspace;
 
 pub use capability::{Capability, CapabilityReport, CapabilityStatus};
 pub use error::MiraError;
-pub use ids::{ProjectId, WorkspaceId};
+pub use ids::{ProjectId, WorkspaceId, WorkspaceServiceId};
 pub use project::Project;
+pub use service::{
+    resolve, Listening, NotAPort, Observed, Port, ServiceState, WatchedService, WorkspaceService,
+};
 pub use workspace::{AppKind, Workspace};
 
 /// Convenience alias: every fallible operation in Mira fails with [`MiraError`].

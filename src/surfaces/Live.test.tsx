@@ -372,15 +372,21 @@ describe('services', () => {
     }
   });
 
-  it('opens a service by naming its port, never a URL', async () => {
+  it('opens a service by its place in the list, never a port or a URL', async () => {
+    // Slice 4c narrowed this further. It used to send the port, checked in Rust
+    // against the observed list; it now sends a **position** in that list, so
+    // there is no number of the caller's choosing on the wire at all
+    // (ADR-0020).
     backend([project()], snapshot());
     renderApp(<App surface="main" />);
 
     await userEvent.click(await screen.findByRole('button', { name: /^Open$/ }));
 
-    await waitFor(() =>
-      expect(invoke).toHaveBeenCalledWith('live_open_service', { port: 3000 }),
-    );
+    await waitFor(() => expect(invoke).toHaveBeenCalledWith('live_open_service', { at: 0 }));
+
+    const sent = invoke.mock.calls.find(([name]) => name === 'live_open_service')?.[1];
+    expect(sent).toEqual({ at: 0 });
+    expect(JSON.stringify(sent)).not.toMatch(/http|localhost|3000/);
   });
 });
 

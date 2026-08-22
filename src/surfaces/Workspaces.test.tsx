@@ -5,7 +5,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AppReport } from '../bindings/AppReport';
 import type { LiveSnapshot } from '../bindings/LiveSnapshot';
 import type { Project } from '../bindings/Project';
+import type { ServiceOffer } from '../bindings/ServiceOffer';
 import type { Workspace } from '../bindings/Workspace';
+import type { WorkspaceService } from '../bindings/WorkspaceService';
 import { App } from '../App';
 import { renderApp } from '../test/render';
 
@@ -97,19 +99,41 @@ const everythingInstalled: AppReport[] = [
 ];
 
 /** Serve projects, live state, workspaces, and application availability. */
+/** A watched service that is up, as the backend would resolve it. */
+function running(port: number, workspaceId: number): WorkspaceService {
+  return {
+    watched: { id: port, workspaceId, port, addedAt: 1_800_000_000 },
+    state: { kind: 'running', address: '127.0.0.1', process: 'node', pid: 18234 },
+  };
+}
+
 function backend({
   workspaces = [] as Workspace[],
   apps = everythingInstalled,
   projects = [aviora],
   onCreate,
+  watching,
+  offers = [
+    { at: 0, port: 3000, address: '127.0.0.1', process: 'node', watched: false },
+    { at: 1, port: 5173, address: '127.0.0.1', process: 'vite', watched: false },
+  ],
 }: {
   workspaces?: Workspace[];
   apps?: AppReport[];
   projects?: Project[];
   onCreate?: (name: string) => Workspace | Error;
+  watching?: Map<number, WorkspaceService[]>;
+  offers?: ServiceOffer[];
 } = {}) {
   let listed = workspaces;
+  // What each workspace watches, keyed by workspace id. Stateful, because
+  // adding and removing a service is the thing under test and a stub that
+  // always returned the same list could not show either working.
+  const watched = new Map<number, WorkspaceService[]>(watching ? [...watching.entries()] : []);
+
   invoke.mockImplementation((command: string, args?: Record<string, unknown>) => {
+    const forWorkspace = () => watched.get(Number(args?.['workspaceId'])) ?? [];
+
     switch (command) {
       case 'projects_list':
         return Promise.resolve(projects);
@@ -118,6 +142,26 @@ function backend({
         return Promise.resolve(live);
       case 'workspaces_list':
         return Promise.resolve(listed);
+      case 'workspaces_services':
+        return Promise.resolve(forWorkspace());
+      case 'workspaces_service_offers':
+        return Promise.resolve(offers);
+      case 'workspaces_watch_service': {
+        const offer = offers[Number(args?.['at'])];
+        if (!offer) return Promise.reject({ kind: 'notFound', what: 'That service' });
+        const id = Number(args?.['workspaceId']);
+        const next = [...(watched.get(id) ?? []), running(offer.port, id)];
+        watched.set(id, next);
+        return Promise.resolve(next);
+      }
+      case 'workspaces_forget_service': {
+        const id = Number(args?.['workspaceId']);
+        const next = (watched.get(id) ?? []).filter(
+          (service) => service.watched.id !== Number(args?.['serviceId']),
+        );
+        watched.set(id, next);
+        return Promise.resolve(next);
+      }
       case 'workspaces_applications':
         return Promise.resolve(apps);
       case 'workspaces_openable':
@@ -311,14 +355,28 @@ describe('the workspace surface', () => {
     expect(screen.getByText(/2 changed/i)).toBeInTheDocument();
   });
 
-  it('shows the services running in the project', async () => {
+  it("shows the services this workspace watches, and not the project's others", async () => {
+    // Slice 4c is the narrowing ADR-0012 said was missing. The project is
+    // serving :3000 and :5173; this workspace said one of them is the work, and
+    // the surface shows one row (ADR-0020).
+    backend({ workspaces: [web], watching: new Map([[web.id, [running(3000, web.id)]]]) });
+    renderApp(<App surface="main" />);
+
+    await userEvent.click(await screen.findByRole('button', { name: /Web Development/ }));
+
+    const services = await screen.findByRole('list', { name: /watched services/i });
+    expect(within(services).getByText(':3000')).toBeInTheDocument();
+    expect(within(services).queryByText(':5173')).not.toBeInTheDocument();
+  });
+
+  it('says a workspace watches nothing rather than showing an empty box', async () => {
     backend({ workspaces: [web] });
     renderApp(<App surface="main" />);
 
     await userEvent.click(await screen.findByRole('button', { name: /Web Development/ }));
 
-    const services = await screen.findByRole('list', { name: /services/i });
-    expect(within(services).getByText(':3000')).toBeInTheDocument();
+    expect(await screen.findByText(/not watching any services yet/i)).toBeInTheDocument();
+    expect(screen.queryByRole('list', { name: /watched services/i })).not.toBeInTheDocument();
   });
 });
 
@@ -369,6 +427,8 @@ describe('application context', () => {
         stored = { ...stored, applications: args?.['kinds'] as Workspace['applications'] };
         return Promise.resolve(stored);
       }
+      if (command === 'workspaces_services' || command === 'workspaces_service_offers')
+        return Promise.resolve([]);
       return Promise.resolve(stored);
     });
     renderApp(<App surface="main" />);

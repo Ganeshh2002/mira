@@ -141,8 +141,10 @@ Launching applications is Mira's most dangerous capability, so the rules are abs
 5. **URLs are allowlisted** to `http` and `https`. `file:`, `javascript:`, `data:`, and
    custom schemes are refused. (`file` was in the original list and was dropped when
    the rule was implemented: it would open a local path, which is the thing rule 8
-   exists to prevent.) No command accepts a URL at all — the interface names a
-   **port**, and Mira builds `http://localhost:<port>` in Rust.
+   exists to prevent.) No command accepts a URL at all. **Since slice 4c no command
+   accepts a port either** — the interface names a *position* in a list Mira produced,
+   or a row id Mira issued, and Mira builds `http://localhost:<port>` in Rust from its
+   own observation ([ADR-0020](../adr/0020-workspace-services.md), rules 41–44).
 6. **No auto-run.** Mira never executes anything at startup, on project add, on
    detection, or on any event. Every launch is a user action. This is why automation is
    Future work with a trust model attached rather than a quick win.
@@ -330,6 +332,54 @@ Slice 5e is the feature made of the four strings other tools pass straight to
     match yet — nothing matched in the 2 000 commits examined"* rather than as
     "No results" ([ADR-0018](../adr/0018-history-filters.md)).
 
+### Watching a service
+
+Slice 4c lets a workspace say which of its project's services are the work. It is
+the feature whose defining input is, everywhere else, a port number.
+
+41. **No command accepts a port, an address, a host, a URL, a pid or a process
+    name.** A service is added by `at` — a position in the list
+    `workspaces.service_offers` returned — and is opened or forgotten by
+    `service_id`, the row id Mira issued when it was added. `live.open_service`
+    took `port: u16` before this slice and takes `at: u32` after it; the check
+    against the observed list was real, but the parameter was still a number of
+    the caller's choosing. A guard test enumerates every banned parameter name.
+
+    The direction is deliberate. A port travels *outward* on every reading — the
+    Services panel says `:5173`, and hiding it would make the panel unreadable.
+    Outbound values are information; inbound values are instructions.
+
+42. **A watched service is stored as a port and nothing else.**
+    `workspace_services` has four columns and no label, process name, pid,
+    address, scheme, path or command. Everything except the port is observation,
+    belongs to the project, and is read live — so a service that has stopped is
+    shown as its port rather than as a memory of what used to be there. A guard
+    asserts the column list positively and negatively, and a second asserts that
+    no `workspace*` table anywhere carries `executable`, `working_directory`,
+    `cmdline` or `pid`.
+
+43. **A workspace's configuration is unreachable from another workspace.** Every
+    statement touching `workspace_services` names `workspace_id`, so a sibling's
+    row id resolves to nothing rather than to a row — including on the path that
+    turns a row id into a port to open. A guard scans the SQL and fails on any
+    statement that does not say whose.
+
+44. **A service that is not this project's is never reported as running.** A
+    watched port resolves to `Running` only when the listener on it is attributed
+    to this workspace's project; anything else — including a listener Mira could
+    not attribute at all — is a distinct `Taken` state with no Open button. This
+    is [ADR-0013](../adr/0013-launching-applications.md)'s no-substitution rule,
+    one layer over. `NotRunning` is likewise a claim Mira may only make after
+    looking: before the first scan and after a failed one the row says so instead.
+
+45. **Nothing here can stop anything.** Open is the only action on a watched
+    service, and it goes through the same launcher an editor does. Beyond the
+    existing "nothing in this codebase can terminate a process" guard, a second
+    now asserts that no command is *named* or *parameterised* for stopping,
+    killing, terminating, restarting or starting — the shapes somebody would
+    reach for first. Termination arrives with its own confirmation and refusal
+    design or it does not arrive.
+
 ### Keeping a machine awake
 
 19. **Keep Awake holds an operating-system power request and nothing else.** Mira
@@ -516,3 +566,10 @@ after the people who wrote it move on.
 | No filter value reaches libgit2 | No `--author=`, `--grep=`, `pathspec` or `Revwalk::push_ref` anywhere |
 | A branch is chosen by its tip | `RefTip` carries the commit; `branch` is a `CommitId` |
 | A search is bounded by commits examined | `MAX_FILTER_SCAN`, the stop, and the state that reports it |
+| No command takes a port, address, URL, pid or process | Command-signature scan; proven by injection |
+| A watched service stores a port and nothing else | Column list asserted positively and negatively |
+| No observation is written down as something to run | No `workspace*` table carries `executable`, `cmdline`, `pid` |
+| The URL-shaped table is unreachable | No code reads or writes `expected_ports` |
+| A workspace cannot reach another's configuration | Every `workspace_services` statement names `workspace_id` |
+| No command stops a service | Command name **and** parameter scan for stop/kill/terminate/… |
+| Watching a service starts no observer or clock | No `Instant`, `interval`, `sleep`, `OnceLock` in the resolver |

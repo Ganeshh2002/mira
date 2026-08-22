@@ -213,6 +213,11 @@ pub fn run() {
             commands::workspaces::workspaces_applications,
             commands::workspaces::workspaces_launch,
             commands::workspaces::workspaces_openable,
+            commands::services::workspaces_services,
+            commands::services::workspaces_service_offers,
+            commands::services::workspaces_watch_service,
+            commands::services::workspaces_forget_service,
+            commands::services::workspaces_open_service,
         ])
         .build(tauri::generate_context!())
         .expect("Mira failed to start")

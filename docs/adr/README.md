@@ -26,6 +26,10 @@ one; the old file stays, marked superseded, because the reasoning is the point.
 | [0016](0016-bounded-diffs.md) | Bounded diffs, and a file chosen by ordinal | Accepted |
 | [0017](0017-file-history.md) | File history: bounded by commits examined, named without a path | Accepted |
 | [0018](0018-history-filters.md) | History filters: one budget, four questions, nothing that is an argument | Accepted |
+| [0020](0020-workspace-services.md) | Workspace services: a view over shared observation, named by identity | Accepted |
+
+0019 is reserved for the workspace application-preferences decision, which is in
+review on its own branch. The gap is deliberate: numbers are never reused.
 
 Decisions **not** recorded here because they are reversible in an afternoon: Tailwind,
 TanStack Query, Zustand, Vite, the icon set. Those live in

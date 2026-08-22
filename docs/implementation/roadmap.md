@@ -136,9 +136,13 @@ them, and attribution by working directory — including to the right package in
 monorepo. Read-only actions only. New crates: `mira-scheduler`, `mira-ports`,
 `mira-processes`.
 
-**Still to come in this slice.** The machine-wide Ports view, expected ports, process
-detail, and **termination** — which is the destructive half and keeps its own design
-work, below.
+**Still to come in this slice.** The machine-wide Ports view, process detail, and
+**termination** — which is the destructive half and keeps its own design work, below.
+
+**Expected ports landed in slice 4c**, as part of the workspace rather than as a
+list of its own ([ADR-0020](../adr/0020-workspace-services.md)): a workspace
+expects a service because it selected one Mira observed, and the difference
+between *expected* and *running* is a state resolved on every read.
 
 **Risks.** This slice contains the product's most destructive action. The confirmation
 flow, the refusal rules (PID 0/1, self, other users), and the absence of any keyboard-only
@@ -208,9 +212,22 @@ service, create/list/rename/open/remove, application **context** as a set of kin
 platform discovery behind it, and a workspace surface that composes the project's
 existing observations ([ADR-0012](../adr/0012-workspace-semantics.md)).
 
-**Still to come in this slice.** Expected ports, per-workspace commands, app groups, the
-implicit default workspace, and the workspace switcher in the project header. Slice 3's
-launching remains ahead of them.
+**Delivered (part), 4c — workspace services.** The narrowing ADR-0012 said was
+missing. A workspace now says which of its project's observed services are the
+work, and the workspace surface shows those and not the project's others:
+Project → Packages → Services → Git → Context. Only a port is stored, and only
+against a workspace; a service is added by naming a position in the list Mira
+offered and opened or forgotten by the row id Mira issued, so no port, address or
+URL crosses the IPC boundary inbound at all — `live.open_service` was narrowed
+from a port to an ordinal in the same slice. Expected-but-not-running, running,
+port-taken, never-observed and unreadable are five distinct states, because
+"Mira could not look" must never render as "your server is down"
+([ADR-0020](../adr/0020-workspace-services.md)). New table:
+`workspace_services`. No new observer and no new clock — resolution is a pure
+function measured at microseconds.
+
+**Still to come in this slice.** Per-workspace commands, app groups, the implicit
+default workspace, and the workspace switcher in the project header.
 
 ## Slice 5a — Git history *(S, 0.1)*
 

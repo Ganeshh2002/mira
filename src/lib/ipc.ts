@@ -23,7 +23,9 @@ import type { Launched } from '../bindings/Launched';
 import type { ShaForm } from '../bindings/ShaForm';
 import type { LiveSnapshot } from '../bindings/LiveSnapshot';
 import type { Project } from '../bindings/Project';
+import type { ServiceOffer } from '../bindings/ServiceOffer';
 import type { Workspace } from '../bindings/Workspace';
+import type { WorkspaceService } from '../bindings/WorkspaceService';
 
 /**
  * The typed IPC client.
@@ -134,13 +136,15 @@ export const commands = {
   liveRefresh: (): Promise<LiveSnapshot> => call('live_refresh'),
 
   /**
-   * `live.open_service` — open a listening port in the browser.
+   * `live.open_service` — open one of the observed services in the browser.
    *
-   * The port, never a URL. Mira builds `http://localhost:<port>` in Rust, so
-   * there is no argument here through which a page could ask it to open a
-   * `file://` path (`security-and-privacy.md` §5 rule 5).
+   * A **position** in `live.snapshot`'s service list — not a port, and not a
+   * URL. Mira builds `http://localhost:<port>` in Rust from its own observation,
+   * so there is no argument here through which a page could ask it to open a
+   * `file://` path or a port nobody is serving
+   * (`security-and-privacy.md` §5 rule 5).
    */
-  openService: (port: number): Promise<void> => call('live_open_service', { port }),
+  openService: (at: number): Promise<void> => call('live_open_service', { at }),
 
   /**
    * `git.history` — one page of a project's repository history.
@@ -315,4 +319,48 @@ export const commands = {
    */
   workspacesLaunch: (workspaceId: number, kind: AppKind): Promise<Launched> =>
     call('workspaces_launch', { workspaceId, kind }),
+
+  /**
+   * `workspaces.services` — what this workspace watches, and where each stands.
+   *
+   * Resolved on every call against the reading the observers already took. A
+   * service that has stopped comes back as its port and a state, never as a
+   * remembered copy of what used to be listening there.
+   */
+  workspacesServices: (workspaceId: number): Promise<WorkspaceService[]> =>
+    call('workspaces_services', { workspaceId }),
+
+  /**
+   * `workspaces.service_offers` — the project's services, as things to add.
+   *
+   * The list `at` indexes. It carries ports outward so a person can recognise
+   * what they are picking; the way back is a position in it.
+   */
+  workspacesServiceOffers: (workspaceId: number): Promise<ServiceOffer[]> =>
+    call('workspaces_service_offers', { workspaceId }),
+
+  /**
+   * `workspaces.watch_service` — start watching one of the project's services.
+   *
+   * `at` is a position in the offer list. There is no port here: the interface
+   * can ask for a service Mira already decided to offer, and nothing else.
+   */
+  workspacesWatchService: (workspaceId: number, at: number): Promise<WorkspaceService[]> =>
+    call('workspaces_watch_service', { workspaceId, at }),
+
+  /** `workspaces.forget_service` — stop watching one, by the id Mira issued. */
+  workspacesForgetService: (
+    workspaceId: number,
+    serviceId: number,
+  ): Promise<WorkspaceService[]> =>
+    call('workspaces_forget_service', { workspaceId, serviceId }),
+
+  /**
+   * `workspaces.open_service` — open a watched service in the browser.
+   *
+   * Two row ids. The port comes from the workspace's own row and the address is
+   * built in Rust; a service that is not running is refused rather than opened.
+   */
+  workspacesOpenService: (workspaceId: number, serviceId: number): Promise<Launched> =>
+    call('workspaces_open_service', { workspaceId, serviceId }),
 };

@@ -472,3 +472,143 @@ fn the_search_budget_is_the_only_thing_that_decides_how_far_it_looks() {
     assert_eq!(mira_git::MAX_AUTHORS, 100);
     assert_eq!(mira_git::LONGEST_TERM, 200);
 }
+
+// ── Workspace services (slice 4c) ────────────────────────────────────────────
+
+/// A port, as it would arrive from a page.
+fn port(raw: serde_json::Value) -> Result<mira_core::service::Port, serde_json::Error> {
+    serde_json::from_value(raw)
+}
+
+#[test]
+fn a_port_is_a_number_between_one_and_sixty_five_thousand() {
+    for accepted in [1, 80, 3_000, 5_173, 65_535] {
+        assert!(port(json!(accepted)).is_ok(), "{accepted} must deserialise");
+    }
+}
+
+#[test]
+fn nothing_that_is_not_a_port_is_a_port() {
+    for refused in [
+        // Zero means "any port" — a request rather than an address, and never
+        // something to watch.
+        json!(0),
+        json!(-1),
+        json!(65_536),
+        json!(1_000_000),
+        json!("3000"),
+        json!("3000; rm -rf ~"),
+        json!("http://localhost:3000"),
+        json!(3000.5),
+        json!(null),
+        json!([3000]),
+        json!({ "port": 3000 }),
+    ] {
+        assert!(
+            port(refused.clone()).is_err(),
+            "{refused} must not deserialise into a port"
+        );
+    }
+}
+
+#[test]
+fn a_service_is_named_by_a_row_id_and_never_by_what_is_behind_it() {
+    // `workspaces.open_service` and `workspaces.forget_service` take a
+    // `WorkspaceServiceId`. It is a row id: naming one that is not yours is
+    // `NotFound`, not access to anything.
+    let id: mira_core::WorkspaceServiceId = serde_json::from_value(json!(7)).expect("a row id");
+    assert_eq!(id.get(), 7);
+
+    for refused in [
+        json!("7"),
+        json!("http://localhost:3000"),
+        json!({ "port": 3000 }),
+        json!({ "id": 7, "port": 3000 }),
+        json!(null),
+    ] {
+        assert!(
+            serde_json::from_value::<mira_core::WorkspaceServiceId>(refused.clone()).is_err(),
+            "{refused} must not deserialise into a service id"
+        );
+    }
+}
+
+#[test]
+fn a_forged_service_state_cannot_smuggle_something_to_run() {
+    // `ServiceState` travels outward, but a struct that deserialises is a struct
+    // a page could try to hand back. Every variant is a fixed shape, and none of
+    // them has a field an executable, an argv or a URL could live in.
+    let running: mira_core::service::ServiceState = serde_json::from_value(json!({
+        "kind": "running",
+        "address": "127.0.0.1",
+        "process": "node",
+        "pid": 4_242,
+        "executable": "/bin/sh",
+        "command": "rm -rf ~",
+        "argv": ["-c", "curl evil"],
+        "url": "file:///etc/passwd"
+    }))
+    .expect("a state");
+
+    assert_eq!(
+        running,
+        mira_core::service::ServiceState::Running {
+            address: "127.0.0.1".to_owned(),
+            process: Some("node".to_owned()),
+            pid: Some(4_242),
+        },
+        "every stray key is dropped, not carried"
+    );
+}
+
+#[test]
+fn a_watched_service_carries_a_port_and_three_ids_and_nothing_else() {
+    let watched: mira_core::service::WatchedService = serde_json::from_value(json!({
+        "id": 1,
+        "workspaceId": 2,
+        "port": 5_173,
+        "addedAt": 1_800_000_000,
+        "label": "web",
+        "scheme": "https",
+        "path": "@example.invalid/",
+        "process": "node",
+        "pid": 99
+    }))
+    .expect("a watched service");
+
+    assert_eq!(watched.port.get(), 5_173);
+    assert_eq!(watched.workspace_id.get(), 2);
+    assert_eq!(watched.added_at, 1_800_000_000);
+
+    // Re-serialised, it is four fields. A `path` that survived here would be a
+    // path Mira could later concatenate into an address, which is the shape
+    // `expected_ports` was left empty to avoid.
+    let back = serde_json::to_value(watched).expect("serialise");
+    let object = back.as_object().expect("an object");
+    assert_eq!(object.len(), 4, "got {object:#?}");
+    for absent in ["label", "scheme", "path", "process", "pid"] {
+        assert!(
+            !object.contains_key(absent),
+            "{absent} survived: {object:#?}"
+        );
+    }
+}
+
+#[test]
+fn a_stored_port_that_is_not_a_port_never_becomes_one() {
+    // The database `CHECK` makes this unreachable through Mira; a hand-edited
+    // file is where it would come from. `Port::try_from` is the one gate, and it
+    // is the same gate the wire uses.
+    for refused in [0_i64, -1, 65_536, i64::MAX] {
+        assert!(
+            mira_core::service::Port::try_from(refused).is_err(),
+            "{refused} must not become a port"
+        );
+    }
+    assert_eq!(
+        mira_core::service::Port::try_from(5_173_i64)
+            .expect("a port")
+            .get(),
+        5_173
+    );
+}

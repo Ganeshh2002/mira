@@ -42,12 +42,14 @@ implicit `Default` workspace that stays invisible until a second one exists.
 and offers*; it never starts or stops anything. This is the rule that keeps the concept
 safe to explore.
 
-**As built (slice 3).** A workspace is a name, an optional description, a project, and
-the kinds of application it works with. It has **no directory of its own** and never
-needs one. Everything it displays — Git, packages, services — belongs to the project
-underneath it and is observed once for that project, so two workspaces can never
-disagree and switching between them costs no observation. Opening one records *when*;
-it launches nothing ([ADR-0012](../adr/0012-workspace-semantics.md)).
+**As built (slices 3–4c).** A workspace is a name, an optional description, a project,
+the kinds of application it works with, and **which of the project's services are the
+work**. It has **no directory of its own** and never needs one. Everything it displays —
+Git, packages, services — belongs to the project underneath it and is observed once for
+that project, so two workspaces can never disagree and switching between them costs no
+observation. What differs between them is the *view*: which services are shown. Opening
+one records *when*; it launches nothing ([ADR-0012](../adr/0012-workspace-semantics.md),
+[ADR-0020](../adr/0020-workspace-services.md)).
 
 ### Session — *one stretch of actually working*
 
@@ -242,12 +244,37 @@ Settings holds only global defaults.
 Name, root subdirectory, expected ports, commands (label + program + args + cwd),
 preferred apps, and a session list. Editing here changes configuration only.
 
-**As built (Slices 3–4).** Name and description; the project underneath, with its
-packages, Git and services; **Open with**; and the application context as a set of
-kinds. Expected ports, commands and sessions are not built.
+**As built (Slices 3–4c).** Name and description; the project underneath, with its
+packages; the **services this workspace watches**; Git; **Open with**; and the
+application context as a set of kinds. Commands and sessions are not built.
 
-Open with sits under Services, because that is the order the questions come in: where
-does this stand, then get me into it. It offers **Editor** and **Terminal** — each
+The order is **Project → Packages → Services → Git → Context**: what this is, what it is
+made of, what is running, where the code stands, and what opens it.
+
+**Services here are the workspace's, not the project's.** A monorepo running five
+servers puts five rows on the project surface and, on a workspace whose work is two of
+them, two. A service is added from a menu of what Mira observed for this project —
+never a field to type a port into — and removed by a button that names the port it
+removes. Two workspaces on one project keep separate lists and neither can see or change
+the other's ([ADR-0020](../adr/0020-workspace-services.md)).
+
+Every row says what Mira actually knows, which is why there are five states and not two:
+
+| State | What it means |
+|---|---|
+| **Running** | Listening now, from inside this project. The only state with an Open button. |
+| **Not running** | Mira looked, and nothing is here. Expected, and down. |
+| **Port taken** | Something *else* is on the number. Never reported as running, and never opened in place of yours. |
+| **Never observed** | Mira has not read the socket table yet. |
+| **Cannot tell** | Mira tried and could not, with what the platform said. |
+
+The last two exist because §5's rule cuts both ways: an interface that renders "Mira
+could not look" as "your server is down" is telling somebody something Mira has not
+established. And nothing on this surface starts or stops anything — Open is the only
+action, and there is no disabled Stop button hinting at one.
+
+Open with sits under Git, because that is the order the questions come in: where does
+this stand, then get me into it. It offers **Editor** and **Terminal** — each
 naming the application that will actually open, so the button never claims something
 the machine was not asked to confirm. A browser is not there: a browser opens a
 *service*, so its action lives on the service row and disappears with the service.
@@ -408,6 +435,9 @@ reader who cannot see which controls are lit
 All listening ports, grouped: *this project*, *other projects*, *unattributed*. Same row
 actions as the project section. This is the one place Mira shows machine-wide data
 prominently, because "what has :3000" is asked without a project in mind.
+
+**Not built, and deliberately not.** The machine-wide view is its own surface with its
+own questions; slice 4c narrowed downward instead, to what one workspace watches.
 
 **A project's Services section is not that place.** It answers "what is running in *this*
 project", so a listener Mira positively determined is outside every project stays out of

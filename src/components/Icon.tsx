@@ -27,7 +27,10 @@ export type IconName =
   | 'clock'
   | 'copy'
   | 'awake'
-  | 'back';
+  | 'back'
+  | 'service'
+  | 'add'
+  | 'remove';
 
 /** The path geometry for each icon, on a 16×16 grid. */
 const PATHS: Record<IconName, React.ReactNode> = {
@@ -133,6 +136,16 @@ const PATHS: Record<IconName, React.ReactNode> = {
     </>
   ),
   back: <path d="M10 3L5 8l5 5" />,
+  // A server with a light on it: what a listening service is.
+  service: (
+    <>
+      <rect x="2.5" y="3" width="11" height="4.5" rx="1" />
+      <rect x="2.5" y="8.5" width="11" height="4.5" rx="1" />
+      <path d="M5 5.25h0.01M5 10.75h0.01" />
+    </>
+  ),
+  add: <path d="M8 3.5v9M3.5 8h9" />,
+  remove: <path d="M4 4l8 8M12 4l-8 8" />,
 };
 
 /**

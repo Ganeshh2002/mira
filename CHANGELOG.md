@@ -10,7 +10,7 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Added
 - Product definition, product scope, PRD, information architecture, and design system
 - Architecture, platform abstraction, data model, and security/privacy documents
-- ADRs 0001–0018 covering the foundational technical decisions
+- ADRs 0001–0018 and 0020 covering the foundational technical decisions
 - Locked phase plan (0.1 through 0.6+) and the fourteen-slice implementation roadmap
 - Open-source project files (licence, contributing, code of conduct, security policy)
 - **Foundation (slice 0).** Cargo workspace with `mira-core`, `mira-platform`, `mira-db`,
@@ -150,6 +150,32 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   looking**, which is a different sentence from "No matching commits". A broad filter is
   flat across a hundred-fold repository; a narrow one plateaus at the budget instead of
   climbing ([ADR-0018](docs/adr/0018-history-filters.md)).
+- **Workspace services (slice 4c, part).** A workspace now says which of its project's
+  services are the work. The workspace surface reads **Project → Packages → Services →
+  Git → Context**, and the Services section shows what this workspace watches rather than
+  everything the project happens to be running — so a monorepo with five servers puts two
+  rows on a workspace about two of them. Add one from a menu of what Mira observed, and
+  remove it from a button that names the port it removes. Two workspaces on one project
+  keep separate lists, and neither can see or change the other's.
+
+  You cannot type a port anywhere, and after this slice **no command accepts a port, an
+  address, a URL, a process name or a pid at all** — `live.open_service` used to take the
+  port and now takes a position in the list Mira produced. A service is added by naming
+  where it sat in that list and opened or forgotten by the row id Mira issued; the port
+  lives on Mira's side of the boundary in both directions.
+
+  A row says what Mira actually knows. **Running** and **Not running** are different
+  states, and so are **Port taken** — something else is on the number, and Mira will not
+  open it in place of yours — **Never observed** and **Cannot tell**, because an
+  interface that renders "Mira could not look" as "your server is down" is claiming
+  something Mira has not established. Nothing here starts or stops a process.
+
+  Measuring reversed the design: indexing the observed listeners in a map is the obvious
+  answer and loses everywhere a real machine lives, because the map is built over every
+  socket whether a workspace watches one service or twenty. A linear scan is three to
+  five times cheaper below twenty services and five hundred sockets, and fifty workspaces
+  resolving against four thousand sockets cost 1.9 ms in total — so there is no cache and
+  no new clock ([ADR-0020](docs/adr/0020-workspace-services.md)).
 - macOS and Windows ask the platform for its standard window material — Liquid Glass on
   macOS 26, Mica on Windows 11 — rather than drawing an imitation. Linux stays opaque.
 
