@@ -34,8 +34,9 @@ fn a_fresh_database_reports_the_latest_version() {
     assert_eq!(db.schema_version(), mira_db::target_version());
     assert_eq!(
         db.schema_version(),
-        3,
-        "0001_init, 0002_workspace_context, then 0003_application_preferences"
+        4,
+        "0001_init, 0002_workspace_context, 0003_application_preferences, \
+         then 0004_workspace_services"
     );
 }
 
@@ -66,13 +67,16 @@ fn the_schema_creates_every_table_in_the_data_model() {
         // 0003: which application, as a catalogue id. `applications` and
         // `app_preferences` above stay empty — see the migration for why.
         "workspace_app_preferences",
+        // 0003: which of the project's services this workspace watches. A port
+        // and nothing else — no label, no process, no address, no command.
+        "workspace_services",
     ] {
         assert!(
             tables.iter().any(|t| t == expected),
             "table {expected} is missing; tables were {tables:?}"
         );
     }
-    assert_eq!(tables.len(), 17, "17 tables, no more: {tables:?}");
+    assert_eq!(tables.len(), 18, "18 tables, no more: {tables:?}");
 }
 
 #[test]
@@ -404,4 +408,88 @@ fn a_version_one_database_gains_the_workspace_context_without_losing_anything() 
     );
     assert_eq!(workspace.last_opened_at, None);
     assert!(workspace.applications.is_empty());
+}
+
+#[test]
+fn a_version_two_database_gains_workspace_services_without_losing_anything() {
+    // `data-model.md` §4 again, for 0004. The upgrade path that matters is the
+    // one a person on an earlier release actually takes: v2 → v4, applying both
+    // 0003 and 0004, with projects, workspaces and their application context
+    // already in the file.
+    let dir = TempDir::new().expect("tempdir");
+    let path = dir.path().join("mira.db");
+
+    let baseline: Vec<Migration> = MIGRATIONS
+        .iter()
+        .filter(|migration| migration.version <= 2)
+        .copied()
+        .collect();
+    let old = Db::open_with(&path, &baseline).expect("open at v2");
+    assert_eq!(old.schema_version(), 2);
+    old.with_connection(|conn| {
+        conn.execute(
+            "INSERT INTO projects (id, name, root_path, created_at, updated_at) \
+             VALUES (1, 'Aviora', '/home/dev/aviora', 1, 1)",
+            [],
+        )?;
+        conn.execute(
+            "INSERT INTO workspaces (id, project_id, name, description, last_opened_at, \
+             created_at, updated_at) VALUES (1, 1, 'Web Development', 'the front end', 9, 1, 1)",
+            [],
+        )?;
+        conn.execute(
+            "INSERT INTO workspace_applications (workspace_id, kind, added_at) \
+             VALUES (1, 'editor', 1)",
+            [],
+        )
+    })
+    .expect("seed at v2");
+    drop(old);
+
+    let upgraded = Db::open(&path).expect("upgrade");
+    assert_eq!(upgraded.schema_version(), mira_db::target_version());
+
+    let workspace = upgraded
+        .get_workspace(mira_core::WorkspaceId::new(1))
+        .expect("the workspace survived");
+    assert_eq!(workspace.name, "Web Development");
+    assert_eq!(workspace.description.as_deref(), Some("the front end"));
+    assert_eq!(workspace.last_opened_at, Some(9));
+    assert_eq!(workspace.applications, [mira_core::AppKind::Editor]);
+
+    // The new table exists and starts empty. A migration that invented a watched
+    // service would be Mira deciding something on the user's behalf.
+    assert!(
+        upgraded
+            .workspace_services(mira_core::WorkspaceId::new(1))
+            .expect("services")
+            .is_empty(),
+        "an upgrade adds a table, not rows"
+    );
+
+    // And it is usable immediately, on the upgraded file rather than a fresh one.
+    let added = upgraded
+        .watch_service(
+            mira_core::WorkspaceId::new(1),
+            mira_core::service::Port::try_from(5_173_u16).expect("a port"),
+            2,
+        )
+        .expect("watch");
+    assert_eq!(added.port.get(), 5_173);
+}
+
+#[test]
+fn the_table_that_could_hold_a_url_is_still_empty_after_every_migration() {
+    // `expected_ports` carries `scheme` and `path`, which exist to be
+    // concatenated into an address. 0003 decided it stays empty; this asserts
+    // that no migration has quietly started using it (ADR-0020).
+    let db = Db::open_in_memory().expect("open");
+
+    let rows: i64 = db
+        .with_connection(|conn| {
+            conn.query_row("SELECT count(*) FROM expected_ports", [], |row| row.get(0))
+        })
+        .expect("count");
+
+    assert_eq!(rows, 0, "a migration wrote into the URL-shaped table");
 }

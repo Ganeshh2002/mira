@@ -54,33 +54,34 @@ pub async fn live_refresh(state: State<'_, Arc<AppState>>) -> Result<LiveSnapsho
     }
 }
 
-/// `live.open_service` — open a listening port in the browser.
+/// `live.open_service` — open one of the observed services in the browser.
 ///
-/// The interface names a **port**, never a URL. Mira builds
-/// `http://localhost:<port>` itself, so there is no argument through which a page
-/// could ask Mira to open a `file://` path or a custom scheme — and a guard test
-/// fails the build if a command ever takes a URL (`security-and-privacy.md` §5
-/// rule 5).
+/// The interface names a **position** in the list `live.snapshot` returned —
+/// never a port, and never a URL. Two things follow. A page cannot ask Mira to
+/// open a port nobody is serving, because there is no parameter that could say
+/// which; and the whole space of addresses this command can produce is the set
+/// of loopback addresses Mira is already watching, built in Rust
+/// (`security-and-privacy.md` §5 rule 5).
+///
+/// This used to take the port itself, checked against the observed list. The
+/// check was real, but the parameter was still a number of the caller's
+/// choosing, and slice 4c's rule is that no raw port crosses the boundary in
+/// either direction of a request. An ordinal past the end is a stale selection —
+/// the list moved between the render and the click — and says so
+/// (ADR-0020).
 ///
 /// Read-only, like every action in this slice: opening a service does not touch
 /// the process serving it.
 #[tauri::command]
-pub fn live_open_service(port: u16, state: State<'_, Arc<AppState>>) -> Result<()> {
-    if !state
-        .live
-        .snapshot()
-        .services
-        .services
-        .iter()
-        .any(|service| service.listener.port == port)
-    {
-        // Only a port Mira is actually watching. Without this the command would
-        // open any port on the machine on request, which is a wider door than the
-        // feature needs.
-        return Err(MiraError::NotFound {
-            what: format!("A service on port {port}"),
-        });
-    }
+pub fn live_open_service(at: u32, state: State<'_, Arc<AppState>>) -> Result<()> {
+    let snapshot = state.live.snapshot();
+
+    let service = usize::try_from(at)
+        .ok()
+        .and_then(|at| snapshot.services.services.get(at))
+        .ok_or_else(|| MiraError::NotFound {
+            what: "That service".to_owned(),
+        })?;
 
     // Through the launcher, so a service opens the way an editor does — and on
     // macOS through the window server rather than through a command line
@@ -95,13 +96,19 @@ pub fn live_open_service(port: u16, state: State<'_, Arc<AppState>>) -> Result<(
         .launch(
             AppKind::Browser,
             None,
-            LaunchTarget::WebAddress(localhost(port)),
+            LaunchTarget::WebAddress(localhost(service.listener.port)),
         )
         .map(|_| ())
 }
 
 /// The address a locally listening port is reached at.
-fn localhost(port: u16) -> String {
+///
+/// The one construction site for every address a browser is ever handed, and
+/// a guard test counts it: `LaunchTarget::WebAddress` may only be built from
+/// this call. `workspaces.open_service` shares it rather than writing a second
+/// one, because a second place to build a URL is a second place to get it
+/// wrong (`security-and-privacy.md` §5 rule 5).
+pub fn localhost(port: u16) -> String {
     format!("http://localhost:{port}")
 }
 

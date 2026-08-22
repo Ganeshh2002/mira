@@ -27,6 +27,7 @@ one; the old file stays, marked superseded, because the reasoning is the point.
 | [0017](0017-file-history.md) | File history: bounded by commits examined, named without a path | Accepted |
 | [0018](0018-history-filters.md) | History filters: one budget, four questions, nothing that is an argument | Accepted |
 | [0019](0019-application-preferences.md) | Application preferences: a choice is an identity, never a program | Accepted |
+| [0020](0020-workspace-services.md) | Workspace services: a view over shared observation, named by identity | Accepted |
 
 Decisions **not** recorded here because they are reversible in an afternoon: Tailwind,
 TanStack Query, Zustand, Vite, the icon set. Those live in

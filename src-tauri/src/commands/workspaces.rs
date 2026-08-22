@@ -172,7 +172,11 @@ pub fn workspaces_chosen(
 }
 
 /// This workspace's stored choice for one kind, if it made one.
-fn preference(state: &AppState, id: WorkspaceId, kind: AppKind) -> Result<Option<AppId>> {
+///
+/// Shared with `commands::services`, so a workspace opening one of its own
+/// services opens it in the browser that workspace chose — the same answer the
+/// Open with row would give ([ADR-0019](../../../docs/adr/0019-application-preferences.md)).
+pub fn preference(state: &AppState, id: WorkspaceId, kind: AppKind) -> Result<Option<AppId>> {
     Ok(Workspaces::new(state.db.as_ref())
         .get(id)?
         .preferences

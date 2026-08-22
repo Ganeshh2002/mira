@@ -125,6 +125,7 @@ block the first release.
 | Live context | Scheduler, live Git, listening ports, process attribution | 2 (part) | 🟡 In progress |
 | Workspace context | Workspaces per project, application context, discovery | 4 (part) | 🟡 In progress |
 | Application choice | Pick the editor, terminal and browser a workspace uses | 4b (part) | 🟡 In progress |
+| Workspace services | The project services a workspace watches, and what each is doing | 4c (part) | 🟡 In progress |
 | Git history | Paged commit walk, commit detail, copy SHA; plus Keep Awake | 5a | ✅ Complete |
 | Git graph | Lanes, edges and ref labels over the visible page | 5b (part) | 🟡 In progress |
 | Git diff | Changed files and bounded patches, commit and working tree | 5c (part) | 🟡 In progress |

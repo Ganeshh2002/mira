@@ -10,4 +10,6 @@ export const workspaceKeys = {
   openable: ['workspaces', 'openable'] as const,
   catalogue: (kind: string) => ['workspaces', 'catalogue', kind] as const,
   chosen: (workspaceId: number) => ['workspaces', 'chosen', workspaceId] as const,
+  services: (workspaceId: number) => ['workspaces', workspaceId, 'services'] as const,
+  offers: (workspaceId: number) => ['workspaces', workspaceId, 'offers'] as const,
 };

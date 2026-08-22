@@ -75,7 +75,7 @@ src-tauri/                  # Tauri binary — thin
   src/events.rs             # typed event emitters
   src/scheduler.rs          # visibility-gated pollers
 crates/
-  mira-core/                # domain types, IDs, errors, Capability
+  mira-core/                # domain types, IDs, errors, Capability, service resolution
   mira-db/                  # rusqlite, migrations, repositories
   mira-projects/            # project CRUD + detection
   mira-workspaces/
@@ -505,7 +505,10 @@ every commit:
 - Docker: only `GET` requests are issued;
 - no network request when SSH reachability is disabled;
 - macOS binary links no private framework (`otool -L`);
-- schedulers produce no work while all windows are hidden.
+- schedulers produce no work while all windows are hidden;
+- no command accepts a path, a program, a URL, a port, an address, a pid or a process
+  name — the interface names rows Mira issued and positions in lists Mira produced;
+- no workspace can read or write another workspace's configuration.
 
 TDD is the working default: for anything with logic, the failing test comes first.
 

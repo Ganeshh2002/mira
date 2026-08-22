@@ -143,6 +143,11 @@ a branch, a port, a process. A workspace has no runtime state of its own — Git
 services belong to the project underneath it, are observed once, and are read by every
 workspace on that project, so two workspaces can never disagree about one repository.
 
+**Migration 0004** adds `workspace_services` (§3.5). It is not a counter-example: what is
+stored is *which of the project's services this workspace cares about*, which is intent,
+and the state of each one is resolved live on every read
+([ADR-0020](../adr/0020-workspace-services.md)).
+
 `subpath` is from `0001` and is still unused. A workspace is deliberately *not* a place;
 if the column is still unused at the end of 0.2 it should be dropped by a migration
 rather than left as a suggestion.
@@ -256,6 +261,40 @@ test asserts no code reads or writes the two empty tables
 
 Only *expected* ports are stored — a statement of intent. Live ports are never persisted.
 
+**Migration 0004** is what a workspace actually watches:
+
+```sql
+CREATE TABLE workspace_services (
+  id           INTEGER PRIMARY KEY,
+  workspace_id INTEGER NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  port         INTEGER NOT NULL CHECK (port BETWEEN 1 AND 65535),
+  added_at     INTEGER NOT NULL,
+  UNIQUE (workspace_id, port)
+);
+CREATE INDEX idx_workspace_services_workspace ON workspace_services (workspace_id);
+```
+
+Four columns, and the absences are the design. No label, no process name, no pid, no
+address, no scheme, no path, no command. Everything except the port is *observation*, it
+belongs to the project, and it is read live on every request (§1 rule 2) — so a watched
+service that has stopped is shown as its port and nothing more, rather than as a memory
+of what used to be listening there.
+
+There is no separate "expected port" record. **A workspace expects a service because it
+saw it once:** the row that says *5173 matters here* is the same row whether or not
+anything is listening, and the difference between expected and running is a state
+resolved on each read against the scheduler's own observation
+([ADR-0020](../adr/0020-workspace-services.md)).
+
+`UNIQUE (workspace_id, port)` rather than `UNIQUE (port)`: two workspaces on one project
+may intentionally watch the same shared dev server.
+
+**Deletion policy.** A workspace's services go with the workspace, which goes with the
+project — two `ON DELETE CASCADE` hops, both tested. A service left behind by a deleted
+workspace is a row nobody can see or reach.
+
+The `0001` table below **stays empty**:
+
 ```sql
 CREATE TABLE expected_ports (
   id           INTEGER PRIMARY KEY,
@@ -268,6 +307,14 @@ CREATE TABLE expected_ports (
   UNIQUE (workspace_id, port)
 );
 ```
+
+It was designed before the security rules were written, and `scheme` + `path` exist to be
+concatenated into a URL. A stored path of `@example.invalid/` turns
+`http://localhost:3000` into `http://localhost:3000@example.invalid/` — a request to a
+remote host wearing a loopback address. Mira builds `http://localhost:<port>` in Rust
+from a port and nothing else, so neither column has anywhere to be used, and a guard test
+fails the build if any code reads or writes this table. Left in place rather than dropped
+because dropping is not additive and an unreachable empty table is not a risk.
 
 ### 3.6 SSH
 
