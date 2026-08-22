@@ -3,7 +3,10 @@ import { invoke } from '@tauri-apps/api/core';
 import type { FoundationStatus } from '../bindings/FoundationStatus';
 import type { MiraError } from '../bindings/MiraError';
 import type { AppKind } from '../bindings/AppKind';
+import type { AppId } from '../bindings/AppId';
 import type { AppReport } from '../bindings/AppReport';
+import type { Catalogue } from '../bindings/Catalogue';
+import type { ChosenApp } from '../bindings/ChosenApp';
 import type { ChangedFiles } from '../bindings/ChangedFiles';
 import type { CommitGraph } from '../bindings/CommitGraph';
 import type { CommitId } from '../bindings/CommitId';
@@ -292,6 +295,39 @@ export const commands = {
   /** `workspaces.set_applications` — the whole list of kinds, every time. */
   workspacesSetApplications: (workspaceId: number, kinds: AppKind[]): Promise<Workspace> =>
     call('workspaces_set_applications', { workspaceId, kinds }),
+
+  /**
+   * `workspaces.catalogue` — every application Mira knows to look for, for one
+   * kind, with what is on this machine marked.
+   *
+   * The menu a choice is made from. Because it is **a list Mira produced**, a
+   * choice can be sent back as the identity it came with; the interface has no
+   * way to name an application it was not offered.
+   */
+  workspacesCatalogue: (kind: AppKind): Promise<Catalogue> =>
+    call('workspaces_catalogue', { kind }),
+
+  /**
+   * `workspaces.prefer` — which application this workspace uses for one kind.
+   *
+   * `null` goes back to automatic. The id names a row in Mira's own catalogue —
+   * never a path, a program name or a command — and one that names no row is
+   * refused rather than stored.
+   */
+  workspacesPrefer: (
+    workspaceId: number,
+    kind: AppKind,
+    application: AppId | null,
+  ): Promise<Workspace> => call('workspaces_prefer', { workspaceId, kind, application }),
+
+  /**
+   * `workspaces.chosen` — what this workspace's choice resolves to here.
+   *
+   * Asked before a button is offered, so an application uninstalled since it was
+   * chosen is a sentence on the row rather than an error after a click.
+   */
+  workspacesChosen: (workspaceId: number, kind: AppKind): Promise<ChosenApp> =>
+    call('workspaces_chosen', { workspaceId, kind }),
 
   /** `workspaces.applications` — what this machine actually has. */
   workspacesApplications: (): Promise<AppReport[]> => call('workspaces_applications'),

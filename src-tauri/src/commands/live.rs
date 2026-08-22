@@ -86,8 +86,17 @@ pub fn live_open_service(port: u16, state: State<'_, Arc<AppState>>) -> Result<(
     // macOS through the window server rather than through a command line
     // (ADR-0013). A web address goes to the browser the person actually chose,
     // never to whichever one Mira happened to find first.
+    //
+    // `None` because this is the *machine's* service list rather than a
+    // workspace's: there is no workspace here whose choice could apply, and
+    // borrowing one from somewhere would be a guess about which one
+    // ([ADR-0019](../../../docs/adr/0019-application-preferences.md)).
     Launcher::new(state.os, state.platform.clone())
-        .launch(AppKind::Browser, LaunchTarget::WebAddress(localhost(port)))
+        .launch(
+            AppKind::Browser,
+            None,
+            LaunchTarget::WebAddress(localhost(port)),
+        )
         .map(|_| ())
 }
 

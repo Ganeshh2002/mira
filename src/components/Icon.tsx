@@ -22,6 +22,7 @@ export type IconName =
   | 'binary'
   | 'trace'
   | 'filter'
+  | 'application'
   | 'search'
   | 'person'
   | 'clock'
@@ -93,6 +94,13 @@ const PATHS: Record<IconName, React.ReactNode> = {
       <path d="M9.5 2.5H4.5a1 1 0 0 0-1 1v9a1 1 0 0 0 1 1h7a1 1 0 0 0 1-1V5.5z" />
       <path d="M9.25 2.5v3.25h3.25" />
       <path d="M5.75 8.25h4.5M5.75 10.75h3" />
+    </>
+  ),
+  // A window with a title bar: an application, rather than any one application.
+  application: (
+    <>
+      <rect x="2.5" y="3" width="11" height="10" rx="1.5" />
+      <path d="M2.5 6h11" />
     </>
   ),
   // A funnel: what a filter does to a list.

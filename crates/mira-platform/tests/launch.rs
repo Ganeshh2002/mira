@@ -40,7 +40,7 @@ fn everything(_: &Candidate) -> bool {
 
 #[test]
 fn an_editor_is_handed_the_project_root() {
-    let plan = plan(Os::MacOs, AppKind::Editor, root(), everything).expect("plan");
+    let plan = plan(Os::MacOs, AppKind::Editor, None, root(), everything).expect("plan");
 
     assert_eq!(plan.application, Some("Visual Studio Code"));
     assert_eq!(plan.target, root());
@@ -55,7 +55,7 @@ fn an_editor_is_handed_the_project_root() {
 #[test]
 fn the_first_editor_that_is_actually_there_wins() {
     // Preference order is the list's order, and absence skips rather than fails.
-    let plan = plan(Os::MacOs, AppKind::Editor, root(), only(&["Zed"])).expect("plan");
+    let plan = plan(Os::MacOs, AppKind::Editor, None, root(), only(&["Zed"])).expect("plan");
 
     assert_eq!(plan.application, Some("Zed"));
 }
@@ -66,7 +66,13 @@ fn an_editor_that_needs_a_terminal_is_not_offered() {
     // it from a windowed application gets a headless process nobody can see, so
     // it is discovered but never launched.
     assert!(matches!(
-        plan(Os::MacOs, AppKind::Editor, root(), only(&["Neovim", "Vim"])),
+        plan(
+            Os::MacOs,
+            AppKind::Editor,
+            None,
+            root(),
+            only(&["Neovim", "Vim"])
+        ),
         Err(MiraError::Unsupported { .. })
     ));
 }
@@ -74,7 +80,7 @@ fn an_editor_that_needs_a_terminal_is_not_offered() {
 #[test]
 fn every_platform_can_open_an_editor() {
     for os in [Os::MacOs, Os::Windows, Os::Linux] {
-        let plan = plan(os, AppKind::Editor, root(), everything)
+        let plan = plan(os, AppKind::Editor, None, root(), everything)
             .unwrap_or_else(|error| panic!("{os:?} has no way to open an editor: {error:?}"));
         assert_eq!(plan.target, root(), "{os:?}");
     }
@@ -84,7 +90,14 @@ fn every_platform_can_open_an_editor() {
 
 #[test]
 fn a_terminal_opens_at_the_project_root() {
-    let plan = plan(Os::Linux, AppKind::Terminal, root(), only(&["Konsole"])).expect("plan");
+    let plan = plan(
+        Os::Linux,
+        AppKind::Terminal,
+        None,
+        root(),
+        only(&["Konsole"]),
+    )
+    .expect("plan");
 
     assert_eq!(plan.application, Some("Konsole"));
     assert_eq!(
@@ -130,7 +143,7 @@ fn no_terminal_is_offered_that_cannot_be_told_where_to_open() {
 #[test]
 fn every_platform_can_open_a_terminal() {
     for os in [Os::MacOs, Os::Windows, Os::Linux] {
-        let plan = plan(os, AppKind::Terminal, root(), everything)
+        let plan = plan(os, AppKind::Terminal, None, root(), everything)
             .unwrap_or_else(|error| panic!("{os:?} has no way to open a terminal: {error:?}"));
         assert_eq!(plan.target, root(), "{os:?}");
     }
@@ -144,7 +157,7 @@ fn a_web_address_goes_to_the_browser_the_person_chose() {
     // because Chrome is installed, when the default is Safari, is precisely the
     // "unrelated application" substitution the brief forbids (§6).
     for os in [Os::MacOs, Os::Windows, Os::Linux] {
-        let plan = plan(os, AppKind::Browser, service(), everything).expect("plan");
+        let plan = plan(os, AppKind::Browser, None, service(), everything).expect("plan");
 
         assert_eq!(plan.method, LaunchMethod::DefaultHandler, "{os:?}");
         assert_eq!(plan.application, None, "{os:?}");
@@ -154,7 +167,7 @@ fn a_web_address_goes_to_the_browser_the_person_chose() {
 #[test]
 fn there_is_no_browser_action_when_there_is_no_browser() {
     assert!(matches!(
-        plan(Os::Linux, AppKind::Browser, service(), nothing),
+        plan(Os::Linux, AppKind::Browser, None, service(), nothing),
         Err(MiraError::Unsupported { .. })
     ));
 }
@@ -170,7 +183,7 @@ fn only_a_web_address_reaches_the_browser() {
         " http://localhost:3000",
     ] {
         let target = LaunchTarget::WebAddress(refused.to_owned());
-        match plan(Os::MacOs, AppKind::Browser, target, everything) {
+        match plan(Os::MacOs, AppKind::Browser, None, target, everything) {
             Err(MiraError::Invalid { .. }) => {}
             other => panic!("{refused} must be refused, got {other:?}"),
         }
@@ -182,7 +195,7 @@ fn only_a_web_address_reaches_the_browser() {
 #[test]
 fn an_editor_is_not_handed_a_web_address() {
     assert!(matches!(
-        plan(Os::MacOs, AppKind::Editor, service(), everything),
+        plan(Os::MacOs, AppKind::Editor, None, service(), everything),
         Err(MiraError::Invalid { .. })
     ));
 }
@@ -190,7 +203,7 @@ fn an_editor_is_not_handed_a_web_address() {
 #[test]
 fn a_browser_is_not_handed_a_directory() {
     assert!(matches!(
-        plan(Os::MacOs, AppKind::Browser, root(), everything),
+        plan(Os::MacOs, AppKind::Browser, None, root(), everything),
         Err(MiraError::Invalid { .. })
     ));
 }
@@ -204,7 +217,7 @@ fn every_argument_is_a_literal_from_the_table_or_the_target_itself() {
     // value, and that value is the resolved directory or the address Mira built.
     for os in [Os::MacOs, Os::Windows, Os::Linux] {
         for kind in [AppKind::Editor, AppKind::Terminal] {
-            let Ok(resolved) = plan(os, kind, root(), everything) else {
+            let Ok(resolved) = plan(os, kind, None, root(), everything) else {
                 continue;
             };
             let LaunchMethod::Program { args, .. } = resolved.method else {
@@ -255,7 +268,7 @@ fn what_is_promised_as_openable_is_what_gets_performed() {
         let launcher = Launcher::with(here(), machine(), &wrote);
         let target = LaunchTarget::Directory(PathBuf::from("/tmp"));
 
-        match (report.presence, launcher.launch(report.kind, target)) {
+        match (report.presence, launcher.launch(report.kind, None, target)) {
             (AppPresence::Available { name }, Ok(launched)) => {
                 assert_eq!(
                     launched.application.as_deref(),
@@ -294,6 +307,7 @@ fn nothing_is_performed_when_the_target_is_the_wrong_shape() {
 
     let refused = launcher.launch(
         AppKind::Editor,
+        None,
         LaunchTarget::WebAddress("http://x.dev".into()),
     );
 

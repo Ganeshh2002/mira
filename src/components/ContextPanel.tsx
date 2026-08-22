@@ -1,5 +1,7 @@
 import type { AppKind } from '../bindings/AppKind';
+import type { AppPreference } from '../bindings/AppPreference';
 import type { AppReport } from '../bindings/AppReport';
+import { AppChooser } from './AppChooser';
 import { appKindLabel } from '../lib/applications';
 
 /**
@@ -9,19 +11,30 @@ import { appKindLabel } from '../lib/applications';
  * workspace is something the person stated and Mira stored; whether one is
  * *installed* is read fresh on whichever machine Mira is running on. That split
  * is what lets a row say "Editor · Not installed" — the association survives a
- * move to a machine without VS Code, rather than being quietly dropped.
+ * move to a machine without that editor, rather than being quietly dropped.
  *
- * There is nothing to click *here*. This panel is the association — which kinds
- * belong to this workspace — and opening one is the "Open with" row above it.
- * Keeping them apart is what lets a workspace say it works with an editor on a
- * machine that has none.
+ * **Which one** is the third fact, and it is this workspace's alone. The chooser
+ * on each row offers what Mira looks for on this platform, marked with what is
+ * actually here; leaving it on Automatic is what every workspace did before
+ * anybody chose anything. A choice is stored against this workspace id, so
+ * choosing one editor here changes nothing for the workspace beside it
+ * ([ADR-0019](../../docs/adr/0019-application-preferences.md)).
+ *
+ * Opening one is still the "Open with" row above. Keeping the association, the
+ * choice and the action apart is what lets a workspace say it works with an
+ * editor on a machine that has none.
  */
 export function ContextPanel({
+  workspaceId,
   kinds,
+  preferences,
   available,
   onToggle,
 }: {
+  workspaceId: number;
   kinds: AppKind[];
+  /** This workspace's stored choices, by kind. */
+  preferences: AppPreference[];
   available: AppReport[];
   onToggle: (kind: AppKind, wanted: boolean) => void;
 }) {
@@ -39,7 +52,7 @@ export function ContextPanel({
           return (
             <li
               key={report.kind}
-              className="flex min-h-[var(--row-height)] items-center gap-[var(--space-3)] border-b border-line px-[var(--space-3)] py-[var(--space-2)] last:border-b-0"
+              className="flex min-h-[var(--row-height)] flex-wrap items-center gap-[var(--space-3)] border-b border-line px-[var(--space-3)] py-[var(--space-2)] last:border-b-0"
             >
               <span
                 aria-hidden="true"
@@ -57,6 +70,15 @@ export function ContextPanel({
                   <span className="text-ink-1">Not installed</span>
                 )}
               </span>
+
+              <AppChooser
+                workspaceId={workspaceId}
+                kind={report.kind}
+                preferred={
+                  preferences.find((preference) => preference.kind === report.kind)
+                    ?.application ?? null
+                }
+              />
 
               <label className="t-ui flex shrink-0 cursor-default items-center gap-[var(--space-2)] text-ink-1">
                 <input

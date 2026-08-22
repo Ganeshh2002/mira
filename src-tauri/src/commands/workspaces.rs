@@ -12,8 +12,10 @@
 
 use std::sync::Arc;
 
-use mira_core::{AppKind, ProjectId, Result, Workspace, WorkspaceId};
-use mira_platform::{AppReport, Applications, LaunchHost, LaunchTarget, Launched, Launcher};
+use mira_core::{AppId, AppKind, MiraError, ProjectId, Result, Workspace, WorkspaceId};
+use mira_platform::{
+    AppReport, Applications, Catalogue, ChosenApp, LaunchHost, LaunchTarget, Launched, Launcher,
+};
 use mira_workspaces::{WorkspaceService, Workspaces};
 use tauri::State;
 
@@ -105,6 +107,80 @@ pub fn workspaces_applications(state: State<'_, Arc<AppState>>) -> Vec<AppReport
     Applications::for_os(state.os).survey()
 }
 
+/// `workspaces.catalogue` — every application Mira knows to look for, for one
+/// kind, with what is on this machine marked.
+///
+/// The menu the chooser is built from. It is a **list Mira produced**, which is
+/// what lets a choice be sent back as an identity rather than typed as a name:
+/// the interface can only ever prefer something it was already offered.
+///
+/// Probed on demand. Measured at 0.2 ms for the whole macOS catalogue and 1.0 ms
+/// for the list with the most `PATH` misses in it, so there is nothing kept
+/// between requests and no observer watching for an application to appear
+/// ([ADR-0019](../../../docs/adr/0019-application-preferences.md)).
+#[tauri::command]
+pub fn workspaces_catalogue(kind: AppKind, state: State<'_, Arc<AppState>>) -> Catalogue {
+    Applications::for_os(state.os).choices(kind)
+}
+
+/// `workspaces.prefer` — choose which application this workspace uses for one kind.
+///
+/// `application` is `None` to go back to automatic, or a catalogue id. **An id
+/// that names no row in this platform's catalogue is refused rather than
+/// stored**, so the database can only ever hold identities Mira itself offered —
+/// there is no path here, no program name and no command, and no column one
+/// could be written into.
+///
+/// Per workspace: the row is keyed by workspace id, so choosing here changes this
+/// workspace and no other.
+#[tauri::command]
+pub fn workspaces_prefer(
+    workspace_id: WorkspaceId,
+    kind: AppKind,
+    application: Option<AppId>,
+    state: State<'_, Arc<AppState>>,
+) -> Result<Workspace> {
+    if let Some(chosen) = &application {
+        // The catalogue is the validation. An id is only an application because
+        // Mira's own compiled table says so.
+        if mira_platform::find(state.os, kind, chosen).is_none() {
+            return Err(MiraError::invalid(
+                "application",
+                format!("Mira has no application called {chosen} on this platform."),
+            ));
+        }
+    }
+
+    workspaces(&state).prefer(workspace_id, kind, application.as_ref(), now())
+}
+
+/// `workspaces.chosen` — what this workspace's choice resolves to on this
+/// machine, without starting anything.
+///
+/// Asked before a button is offered, so an application that has been uninstalled
+/// since it was chosen is a sentence on the row rather than an error after a
+/// click.
+#[tauri::command]
+pub fn workspaces_chosen(
+    workspace_id: WorkspaceId,
+    kind: AppKind,
+    state: State<'_, Arc<AppState>>,
+) -> Result<ChosenApp> {
+    let preferred = preference(&state, workspace_id, kind)?;
+
+    Ok(Launcher::new(state.os, state.platform.clone()).chosen(kind, preferred.as_ref()))
+}
+
+/// This workspace's stored choice for one kind, if it made one.
+fn preference(state: &AppState, id: WorkspaceId, kind: AppKind) -> Result<Option<AppId>> {
+    Ok(Workspaces::new(state.db.as_ref())
+        .get(id)?
+        .preferences
+        .into_iter()
+        .find(|preference| preference.kind == kind)
+        .map(|preference| preference.application))
+}
+
 /// `workspaces.launch` — open this workspace's project in an application.
 ///
 /// The whole privilege surface of launching, in two arguments: **which
@@ -123,8 +199,13 @@ pub fn workspaces_launch(
     state: State<'_, Arc<AppState>>,
 ) -> Result<Launched> {
     let root = workspaces(&state).working_directory(workspace_id)?;
+    let preferred = preference(&state, workspace_id, kind)?;
 
-    Launcher::new(state.os, state.platform.clone()).launch(kind, LaunchTarget::Directory(root))
+    Launcher::new(state.os, state.platform.clone()).launch(
+        kind,
+        preferred.as_ref(),
+        LaunchTarget::Directory(root),
+    )
 }
 
 /// `workspaces.openable` — which kinds this machine can open a folder in.

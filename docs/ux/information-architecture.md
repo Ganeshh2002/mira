@@ -404,6 +404,31 @@ far"* above a partial list. What is filtered is also announced in words for a
 reader who cannot see which controls are lit
 ([ADR-0018](../adr/0018-history-filters.md)).
 
+**As built (slice 4b) — choosing an application.** Each Context row carries a
+compact `[ Editor application ▾ ]` menu beside what was found. It offers what Mira
+looks for on this platform, each row marked *installed*, *not installed* or
+*cannot open a folder* — in words, so the state is not carried by shade alone.
+
+**Automatic is the first option and stays the default**, and it says what it does
+today: *"Automatic · Ghostty"* rather than a word whose meaning has to be guessed.
+Going back to it is choosing it, not clearing a field. There is no field: nothing
+here can be typed into, because there is no command that would take a typed
+application.
+
+**A choice that stopped being true says so, on the row.** *"Zed is not on this
+machine. Nothing else will be opened — choose another."* The **Open with** button
+for that kind is replaced by the same sentence rather than offered and left to
+fail — and Mira does not open a different editor, because then nobody would ever
+find out.
+
+**Open with names what will actually open.** If the workspace chose Zed the button
+says *"Editor · Zed"*, whatever Mira would have picked on its own. A button naming
+one application and starting another would be the worst small lie on this surface
+([ADR-0019](../adr/0019-application-preferences.md)).
+
+`Esc` closes a menu and gives the focus back; `↑` and `↓` move through it; the
+chosen row says *"chosen"* in words.
+
 ### Ports view (machine-scoped)
 All listening ports, grouped: *this project*, *other projects*, *unattributed*. Same row
 actions as the project section. This is the one place Mira shows machine-wide data

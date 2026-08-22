@@ -19,7 +19,7 @@ pub use capability::{Capability, CapabilityReport, CapabilityStatus};
 pub use error::MiraError;
 pub use ids::{ProjectId, WorkspaceId};
 pub use project::Project;
-pub use workspace::{AppKind, Workspace};
+pub use workspace::{AppId, AppKind, AppPreference, MalformedAppId, Workspace, LONGEST_APP_ID};
 
 /// Convenience alias: every fallible operation in Mira fails with [`MiraError`].
 pub type Result<T> = std::result::Result<T, MiraError>;
