@@ -399,3 +399,218 @@ fn nothing_observed_about_a_workspace_is_stored() {
         );
     }
 }
+
+// ── Which application, per workspace ─────────────────────────────────────────
+//
+// The kind is intent and lives above; this is the *choice*, and the property
+// worth holding is that it is per workspace and stored as an identity rather
+// than as anything that could be run.
+
+fn app(id: &str) -> mira_core::AppId {
+    id.parse().expect("an application id")
+}
+
+#[test]
+fn a_workspace_remembers_which_application_it_was_given() {
+    let db = Db::open_in_memory().expect("open");
+    let aviora = project(&db, "Aviora", "/home/dev/aviora");
+    let web = db
+        .create(&new(aviora, "Web"), 1_800_000_000)
+        .expect("create");
+
+    db.set_workspace_preference(web.id, AppKind::Editor, Some(&app("zed")), 1_800_000_100)
+        .expect("prefer");
+
+    let read = db.get_workspace(web.id).expect("read");
+    assert_eq!(read.preferences.len(), 1);
+    assert_eq!(read.preferences[0].kind, AppKind::Editor);
+    assert_eq!(read.preferences[0].application, app("zed"));
+}
+
+#[test]
+fn a_choice_survives_being_closed_and_opened_again() {
+    // Persistence across a restart, which for a file-backed database is the same
+    // question as persistence across a reconnect.
+    let file = tempfile::tempdir().expect("temp");
+    let path = file.path().join("mira.db");
+
+    let id = {
+        let db = Db::open(&path).expect("open");
+        let aviora = project(&db, "Aviora", "/home/dev/aviora");
+        let web = db
+            .create(&new(aviora, "Web"), 1_800_000_000)
+            .expect("create");
+        db.set_workspace_preference(web.id, AppKind::Terminal, Some(&app("ghostty")), 1)
+            .expect("prefer");
+        web.id
+    };
+
+    let reopened = Db::open(&path).expect("reopen");
+    let read = reopened.get_workspace(id).expect("read");
+
+    assert_eq!(read.preferences[0].application, app("ghostty"));
+}
+
+#[test]
+fn choosing_for_one_workspace_leaves_every_other_alone() {
+    // The isolation property, asserted across two workspaces on the *same*
+    // project — which is the case where sharing would be easiest to do by
+    // accident, because everything else about them is shared.
+    let db = Db::open_in_memory().expect("open");
+    let aviora = project(&db, "Aviora", "/home/dev/aviora");
+    let web = db.create(&new(aviora, "Web"), 1).expect("create");
+    let api = db.create(&new(aviora, "API"), 1).expect("create");
+    let other = project(&db, "Other", "/home/dev/other");
+    let apart = db.create(&new(other, "Apart"), 1).expect("create");
+
+    db.set_workspace_preference(web.id, AppKind::Editor, Some(&app("zed")), 2)
+        .expect("prefer");
+
+    assert_eq!(
+        db.get_workspace(web.id).expect("read").preferences[0].application,
+        app("zed")
+    );
+    assert!(db
+        .get_workspace(api.id)
+        .expect("read")
+        .preferences
+        .is_empty());
+    assert!(db
+        .get_workspace(apart.id)
+        .expect("read")
+        .preferences
+        .is_empty());
+}
+
+#[test]
+fn choosing_again_replaces_rather_than_accumulates() {
+    let db = Db::open_in_memory().expect("open");
+    let aviora = project(&db, "Aviora", "/home/dev/aviora");
+    let web = db.create(&new(aviora, "Web"), 1).expect("create");
+
+    db.set_workspace_preference(web.id, AppKind::Editor, Some(&app("zed")), 2)
+        .expect("prefer");
+    db.set_workspace_preference(web.id, AppKind::Editor, Some(&app("cursor")), 3)
+        .expect("prefer");
+
+    let read = db.get_workspace(web.id).expect("read");
+    assert_eq!(read.preferences.len(), 1, "one choice per kind");
+    assert_eq!(read.preferences[0].application, app("cursor"));
+}
+
+#[test]
+fn clearing_a_choice_puts_that_kind_back_on_automatic() {
+    let db = Db::open_in_memory().expect("open");
+    let aviora = project(&db, "Aviora", "/home/dev/aviora");
+    let web = db.create(&new(aviora, "Web"), 1).expect("create");
+
+    db.set_workspace_preference(web.id, AppKind::Editor, Some(&app("zed")), 2)
+        .expect("prefer");
+    db.set_workspace_preference(web.id, AppKind::Terminal, Some(&app("iterm")), 2)
+        .expect("prefer");
+    db.set_workspace_preference(web.id, AppKind::Editor, None, 3)
+        .expect("clear");
+
+    let read = db.get_workspace(web.id).expect("read");
+    assert_eq!(read.preferences.len(), 1, "only the terminal is chosen now");
+    assert_eq!(read.preferences[0].kind, AppKind::Terminal);
+}
+
+#[test]
+fn choices_come_back_in_the_vocabulary_order() {
+    // So the list reads the same every time, whichever order they were made in.
+    let db = Db::open_in_memory().expect("open");
+    let aviora = project(&db, "Aviora", "/home/dev/aviora");
+    let web = db.create(&new(aviora, "Web"), 1).expect("create");
+
+    for (kind, id) in [
+        (AppKind::Browser, "firefox"),
+        (AppKind::Terminal, "iterm"),
+        (AppKind::Editor, "zed"),
+    ] {
+        db.set_workspace_preference(web.id, kind, Some(&app(id)), 2)
+            .expect("prefer");
+    }
+
+    let kinds: Vec<AppKind> = db
+        .get_workspace(web.id)
+        .expect("read")
+        .preferences
+        .into_iter()
+        .map(|preference| preference.kind)
+        .collect();
+
+    assert_eq!(
+        kinds,
+        vec![AppKind::Editor, AppKind::Terminal, AppKind::Browser]
+    );
+}
+
+#[test]
+fn a_choice_goes_when_its_workspace_goes() {
+    let db = Db::open_in_memory().expect("open");
+    let aviora = project(&db, "Aviora", "/home/dev/aviora");
+    let web = db.create(&new(aviora, "Web"), 1).expect("create");
+
+    db.set_workspace_preference(web.id, AppKind::Editor, Some(&app("zed")), 2)
+        .expect("prefer");
+    db.remove_workspace(web.id).expect("remove");
+
+    let orphans: i64 = db
+        .with_connection(|conn| {
+            conn.query_row(
+                "SELECT COUNT(*) FROM workspace_app_preferences",
+                [],
+                |row| row.get(0),
+            )
+        })
+        .expect("count");
+
+    assert_eq!(
+        orphans, 0,
+        "ON DELETE CASCADE, like every other workspace row"
+    );
+}
+
+#[test]
+fn choosing_for_a_workspace_that_is_gone_says_so() {
+    let db = Db::open_in_memory().expect("open");
+
+    let refused =
+        db.set_workspace_preference(WorkspaceId::new(404), AppKind::Editor, Some(&app("zed")), 1);
+
+    assert!(matches!(refused, Err(MiraError::NotFound { .. })));
+}
+
+#[test]
+fn the_column_cannot_hold_anything_shaped_like_a_program() {
+    // Defence in depth: the wall is that an id only becomes an application by
+    // being found in the compiled catalogue. But a column that cannot hold a
+    // slash, a space or a quote is a column nobody has to wonder about.
+    let db = Db::open_in_memory().expect("open");
+    let aviora = project(&db, "Aviora", "/home/dev/aviora");
+    let web = db.create(&new(aviora, "Web"), 1).expect("create");
+
+    for smuggled in [
+        "/usr/bin/env",
+        "code --wait",
+        "rm -rf ~",
+        "../../etc/passwd",
+        "Visual Studio Code",
+        "",
+        &"x".repeat(33),
+    ] {
+        let written = db.with_connection(|conn| {
+            conn.execute(
+                "INSERT INTO workspace_app_preferences \
+                 (workspace_id, kind, application_id, chosen_at) VALUES (?1, 'editor', ?2, 1)",
+                rusqlite::params![web.id.get(), smuggled],
+            )
+        });
+
+        assert!(
+            written.is_err(),
+            "the schema accepted {smuggled:?} as an application id"
+        );
+    }
+}

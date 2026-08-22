@@ -621,9 +621,14 @@ fn every_command_parameter_is_one_that_has_been_reviewed() {
     //   change-set position, and author and subject as validated terms that are
     //   only ever compared in Rust. There is no ref name, no path and no pattern
     //   in it; nothing it holds reaches libgit2 as an argument (ADR-0018).
+    // - `application` — an `AppId`: a slug naming a row in the catalogue compiled
+    //   into the binary, refused by `workspaces.prefer` unless that row exists.
+    //   It is not a path, a program name or a command, and the only thing it can
+    //   become is a `Candidate` Mira already knew about (ADR-0019).
     // - `app`, `state` — injected by Tauri, not sent by the page.
     let reviewed = [
         "app",
+        "application",
         "at",
         "commit",
         "cursor",
@@ -885,7 +890,6 @@ fn no_command_names_something_to_run() {
         "argv",
         "args",
         "arguments",
-        "application",
         "bundle",
         "launch",
         "shell",
@@ -897,6 +901,16 @@ fn no_command_names_something_to_run() {
             let name = parameter_name(&parameter).to_lowercase();
             if banned.contains(&name.as_str()) {
                 violations.push(format!("{path}: {parameter}"));
+            }
+
+            // `application` is allowed, and only as an `AppId`. A caller may say
+            // *which row of Mira's catalogue* to use; a `String` there would be
+            // the thing this guard exists to prevent, wearing the same name
+            // (ADR-0019).
+            if name == "application" && !parameter.contains("AppId") {
+                violations.push(format!(
+                    "{path}: {parameter} — an application is chosen by catalogue id"
+                ));
             }
         }
     }
@@ -992,9 +1006,10 @@ fn the_interface_never_names_an_application() {
     let table = fs::read_to_string(repo_root().join("crates/mira-platform/src/applications.rs"))
         .expect("applications.rs");
 
-    // Only the rows of the table: every candidate is declared by one of four
-    // constructors, so the names are exactly what follows the first quote on
-    // those lines.
+    // Only the rows of the table: every candidate is declared by one of five
+    // constructors, each spelled `f("id", "Name", …)`. The **second** quoted
+    // string is the name — the first is the catalogue id, which is a different
+    // invariant and has its own assertion below.
     let names: BTreeSet<String> = table
         .lines()
         .map(str::trim)
@@ -1009,10 +1024,7 @@ fn the_interface_never_names_an_application() {
             .iter()
             .any(|constructor| line.starts_with(constructor))
         })
-        .filter_map(|line| {
-            let quoted = line.split_once('"')?.1;
-            Some(quoted.split_once('"')?.0.to_owned())
-        })
+        .filter_map(|line| Some(quoted(line).get(1)?.clone()))
         // "Terminal" is both an application on macOS and the name of a *kind*.
         // The interface says the kind, and no scanner can tell the two apart, so
         // the kind vocabulary keeps its own words.
@@ -1043,6 +1055,87 @@ fn the_interface_never_names_an_application() {
         "the interface names an application instead of showing what was found: \
          {violations:#?}"
     );
+}
+
+#[test]
+fn the_interface_never_writes_down_a_catalogue_id() {
+    // The other half of the rule above, and the one this slice adds. A choice
+    // travels as an id, so the interface *handles* ids — but it must only ever
+    // hand back one it was given. An id written into a source file would be the
+    // interface deciding which application to prefer, which is the substitution
+    // §6 forbids wearing the shape of a choice (ADR-0019).
+    let table = fs::read_to_string(repo_root().join("crates/mira-platform/src/applications.rs"))
+        .expect("applications.rs");
+
+    let ids: BTreeSet<String> = table
+        .lines()
+        .map(str::trim)
+        .filter(|line| {
+            [
+                "bundle(",
+                "program(",
+                "opens_at(",
+                "found_only(",
+                "desktop(",
+            ]
+            .iter()
+            .any(|constructor| line.starts_with(constructor))
+        })
+        .filter_map(|line| Some(quoted(line).first()?.clone()))
+        .collect();
+
+    assert!(
+        ids.len() > 20,
+        "the application table was not read: {ids:#?}"
+    );
+    assert!(
+        ids.contains("vscode") && ids.contains("ghostty"),
+        "the ids were not read from the first column: {ids:#?}"
+    );
+
+    // Matched as whole string literals rather than as substrings: `cursor` is an
+    // editor *and* a CSS property, and `arc` is inside `search`.
+    let mut violations = Vec::new();
+    for (path, text) in sources(&["ts", "tsx"]) {
+        if relative(&path).contains(".test.") {
+            continue;
+        }
+        for literal in literals(&text) {
+            if ids.contains(&literal) {
+                violations.push(format!("{}: \"{literal}\"", relative(&path)));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "the interface writes an application id down instead of sending back one \
+         it was given: {violations:#?}"
+    );
+}
+
+/// Every double-quoted string on one line of Rust, in order.
+fn quoted(line: &str) -> Vec<String> {
+    line.split('"')
+        .skip(1)
+        .step_by(2)
+        .map(str::to_owned)
+        .collect()
+}
+
+/// Every quoted string literal in a TypeScript source, single or double.
+fn literals(text: &str) -> BTreeSet<String> {
+    let mut found = BTreeSet::new();
+
+    for (quote, _) in [('\'', 0), ('"', 0)] {
+        for (index, part) in text.split(quote).enumerate() {
+            if index % 2 == 1 && !part.contains('\n') {
+                found.insert(part.to_owned());
+            }
+        }
+    }
+
+    found
 }
 
 // ── No telemetry, no phone-home, no background work ──────────────────────────
@@ -2243,4 +2336,253 @@ fn a_branch_is_chosen_by_its_tip_rather_than_by_its_name() {
         !code.contains("branch: Option<String>"),
         "a branch filter must carry a commit id"
     );
+}
+
+// ── Choosing which application ───────────────────────────────────────────────
+
+#[test]
+fn a_preference_is_stored_as_a_catalogue_id_and_nothing_else() {
+    // The type is the guarantee, twice over: `AppPreference` holds a kind and an
+    // `AppId`, and the column it lands in cannot hold a slash, a space or a
+    // quote. Positive assertions first, so neither parse can pass vacuously.
+    let model = fs::read_to_string(repo_root().join("crates/mira-core/src/workspace.rs"))
+        .expect("workspace.rs");
+    let code = code_only(&model);
+
+    let fields = code
+        .split("pub struct AppPreference {")
+        .nth(1)
+        .and_then(|rest| rest.split("\n}").next())
+        .expect("an AppPreference definition")
+        .to_owned();
+
+    assert!(fields.contains("kind: AppKind"), "got: {fields}");
+    assert!(fields.contains("application: AppId"), "got: {fields}");
+
+    for smuggled in [
+        "String", "PathBuf", "&str", "program", "command", "argv", "args", "path", "bundle", "exec",
+    ] {
+        assert!(
+            !fields.contains(smuggled),
+            "an application preference carries `{smuggled}`"
+        );
+    }
+
+    // Statements only. The migration's comment explains at length which columns
+    // it is *not* creating, and those sentences are the point of it.
+    let migration: String = fs::read_to_string(
+        repo_root().join("crates/mira-db/migrations/0003_application_preferences.sql"),
+    )
+    .expect("0003_application_preferences.sql")
+    .lines()
+    .filter(|line| !line.trim_start().starts_with("--"))
+    .collect::<Vec<_>>()
+    .join("\n");
+
+    assert!(
+        migration.contains("application_id TEXT"),
+        "the choice is stored as a slug"
+    );
+    assert!(
+        migration.contains("GLOB '[a-z0-9-]*'"),
+        "and the column refuses anything else"
+    );
+    assert!(
+        migration.contains("PRIMARY KEY (workspace_id, kind)"),
+        "one choice per kind per workspace, so it cannot be shared by accident"
+    );
+
+    for column in ["program", "args_template", "executable", "path", "command"] {
+        assert!(
+            !migration.contains(column),
+            "the preference table has a `{column}` column"
+        );
+    }
+}
+
+#[test]
+fn nothing_reads_or_writes_the_table_that_could_hold_a_program() {
+    // `0001_init.sql` created `applications` and `app_preferences` from
+    // `data-model.md` §3.4, and `applications.program` is documented as "an
+    // executable path, bundle id, or .desktop id". Slice 4b stores a choice
+    // *without* them, and this is what keeps that a decision rather than a
+    // coincidence: the tables exist, they stay empty, and no code touches them.
+    let mut violations = Vec::new();
+
+    for (path, source) in sources(&["rs", "ts", "tsx"]) {
+        // The migration that creates them, and the test that counts them, are
+        // where their names are supposed to appear.
+        let name = relative(&path);
+        if name.contains("migrations") {
+            continue;
+        }
+
+        let code = code_only(&source);
+        for table in [
+            "FROM applications",
+            "INTO applications",
+            "FROM app_preferences",
+            "INTO app_preferences",
+            "UPDATE applications",
+            "UPDATE app_preferences",
+        ] {
+            if code.contains(table) {
+                violations.push(format!("{name}: {table}"));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "a stored program table is being used; a program is a row in the compiled \
+         catalogue and nothing else: {violations:#?}"
+    );
+}
+
+#[test]
+fn a_chosen_application_that_is_gone_never_becomes_a_different_one() {
+    // §6: never silently substitute an unrelated application — and a stated
+    // choice makes a substitution worse rather than more excusable. Every way a
+    // choice can fail ends in a `return Err`, and none of them falls through to
+    // the automatic path.
+    let launch = fs::read_to_string(repo_root().join("crates/mira-platform/src/launch.rs"))
+        .expect("launch.rs");
+    let code = code_only(&launch);
+
+    let deciding = code
+        .split("pub fn plan(")
+        .nth(1)
+        .and_then(|rest| rest.split("\nfn gone(").next())
+        .expect("the body of plan")
+        .to_owned();
+
+    for refusal in [
+        "ChosenApp::Missing { name, .. } => return Err(gone(&name))",
+        "ChosenApp::NotOpenable { name, .. } => return Err(not_from_here(&name))",
+        "ChosenApp::Unknown { id } => return Err(unknown_choice(&id))",
+    ] {
+        assert!(
+            deciding.contains(refusal),
+            "a failing choice must refuse rather than fall through: {refusal}"
+        );
+    }
+
+    // And the shapes somebody would reach for to make it "just work".
+    for fallback in [
+        "unwrap_or_else(|| automatic",
+        "unwrap_or(automatic",
+        "or_else(|| automatic",
+        ".or(automatic",
+    ] {
+        assert!(
+            !deciding.contains(fallback),
+            "a missing choice falls back to another application: {fallback}"
+        );
+    }
+}
+
+#[test]
+fn an_application_is_chosen_from_a_list_mira_produced() {
+    // The command refuses an id that names no row, so the database can only ever
+    // hold identities Mira itself offered. Without this, `AppId`'s shape would be
+    // the only check, and a well-formed id for an application Mira does not know
+    // would be stored and then fail at every launch instead of at the choice.
+    let commands = fs::read_to_string(repo_root().join("src-tauri/src/commands/workspaces.rs"))
+        .expect("workspaces.rs");
+    let code = code_only(&commands);
+
+    let preferring = code
+        .split("pub fn workspaces_prefer(")
+        .nth(1)
+        .and_then(|rest| rest.split("\n}").next())
+        .expect("workspaces_prefer")
+        .to_owned();
+
+    assert!(
+        preferring.contains("mira_platform::find(state.os, kind, chosen).is_none()"),
+        "a choice must be looked up in the catalogue before it is stored: {preferring}"
+    );
+    assert!(
+        preferring.contains("return Err("),
+        "and an unknown one must be refused: {preferring}"
+    );
+}
+
+#[test]
+fn what_is_installed_is_asked_for_and_never_remembered() {
+    // Availability is read fresh on every request, which is what makes an
+    // application that was uninstalled ten seconds ago show as missing. A cache
+    // would need something to invalidate it, and the only honest thing to
+    // invalidate it with is a clock — which `only_the_scheduler_owns_a_clock`
+    // forbids here. Measured at 0.2 ms for the whole macOS catalogue, so there
+    // is nothing to gain by keeping one (ADR-0019).
+    let discovery =
+        fs::read_to_string(repo_root().join("crates/mira-platform/src/applications.rs"))
+            .expect("applications.rs");
+    let code = code_only(&discovery);
+
+    for remembering in [
+        "OnceLock",
+        "OnceCell",
+        "lazy_static",
+        "static mut",
+        "RwLock",
+        "Mutex<",
+        "cache",
+        "Cache",
+        "memo",
+    ] {
+        assert!(
+            !code.contains(remembering),
+            "discovery keeps an answer between requests: {remembering}"
+        );
+    }
+}
+
+#[test]
+fn the_power_request_says_who_made_it_and_why() {
+    // The other half of "never defeat monitoring". Not simulating input is one
+    // rule; being *attributable* is the other. macOS lists held assertions in
+    // `pmset -g assertions` with the reason string the application supplied, so
+    // the reason is what a machine's owner or administrator reads when they ask
+    // what is keeping the machine awake. An empty, vague or borrowed reason
+    // would make Mira's request harder to attribute than it needs to be, which
+    // is the same goal as hiding it (ADR-0014).
+    let inhibit = fs::read_to_string(repo_root().join("crates/mira-platform/src/inhibit.rs"))
+        .expect("inhibit.rs");
+    let code = code_only(&inhibit);
+
+    let reason = code
+        .split("const REASON: &str = \"")
+        .nth(1)
+        .and_then(|rest| rest.split('"').next())
+        .expect("a reason string");
+
+    assert!(
+        reason.contains("Mira"),
+        "the request must name the application that made it: {reason:?}"
+    );
+    assert!(
+        reason.len() > 20,
+        "and say why, in words somebody reading a list of assertions can use: {reason:?}"
+    );
+
+    // Only the two idle flags, plus the one that says a person asked for this.
+    // Anything that suppresses power behaviour the person did not ask about —
+    // closing the lid, for instance — is a wider request than the feature needs.
+    assert!(code.contains("NSActivityOptions::IdleSystemSleepDisabled"));
+    assert!(code.contains("NSActivityOptions::IdleDisplaySleepDisabled"));
+
+    for wider in [
+        "SuddenTerminationDisabled",
+        "AutomaticTerminationDisabled",
+        "LatencyCritical",
+        "AnimationTrackingEnabled",
+        "Background",
+    ] {
+        assert!(
+            !code.contains(wider),
+            "Keep Awake asks for more than staying awake: {wider}"
+        );
+    }
 }

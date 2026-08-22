@@ -179,6 +179,41 @@ stops being hypothetical. ADR-0013 is the full argument; these are the rules.
     state. Starting an editor is something that happened, not something a
     workspace becomes.
 
+### Choosing which application
+
+Slice 4b lets a person pick their editor, terminal and browser — the feature whose
+obvious implementation is a settings field holding a program.
+
+15. **A choice is a catalogue id, and the catalogue is the validation.** `AppId`
+    is one to thirty-two lower-case letters, digits and hyphens, so a path or a
+    command line is not a value it can hold. That is defence in depth; the wall is
+    that the only thing an id becomes is a row of the table compiled into the
+    binary, and `workspaces.prefer` **refuses an id that names no row before
+    storing it**. `code` and `sh` are well-formed ids that resolve to nothing.
+
+16. **There is still no column a program could live in.** `0001_init.sql` created
+    `applications` (with `program TEXT` — "an executable path, bundle id, or
+    .desktop id") and `app_preferences` from `data-model.md` §3.4. Both stay
+    empty; `workspace_app_preferences` holds a slug instead, its column checked
+    against `[a-z0-9-]` at the schema level, and a guard test asserts no code
+    reads or writes either baseline table.
+
+17. **A choice is obeyed or refused, never substituted.** A chosen application
+    that is no longer installed produces an error **naming it** — not a different
+    editor opening. §6's rule against silent substitution applies with more force
+    to a stated choice, not less, because the person would otherwise never learn
+    their editor was gone. A guard asserts every failing branch returns an error
+    and that no fallback-to-automatic shape is present, and it is proven able to
+    fail by injection.
+
+18. **Per workspace, by primary key.** `(workspace_id, kind)` — there is no row
+    two workspaces could both read.
+
+19. **The interface never writes an id down.** A guard asserts no frontend source
+    contains a catalogue id as a whole string literal. The interface handles ids
+    constantly and originates none of them
+    ([ADR-0019](../adr/0019-application-preferences.md)).
+
 ### Reading history, and copying a commit id
 
 Slice 5a adds the first Git value the interface may **name**, and the first thing
@@ -516,3 +551,10 @@ after the people who wrote it move on.
 | No filter value reaches libgit2 | No `--author=`, `--grep=`, `pathspec` or `Revwalk::push_ref` anywhere |
 | A branch is chosen by its tip | `RefTip` carries the commit; `branch` is a `CommitId` |
 | A search is bounded by commits examined | `MAX_FILTER_SCAN`, the stop, and the state that reports it |
+| A preference is a catalogue id and nothing else | `AppPreference` holds a kind and an `AppId`; the column refuses anything else |
+| Nothing uses the table that could hold a program | No code reads or writes `applications` / `app_preferences` |
+| A choice is chosen from a list Mira produced | `workspaces.prefer` looks the id up before storing it |
+| A missing choice never becomes a different application | Every failing branch of `plan` returns an error; no fallback shape |
+| The interface never writes a catalogue id down | No frontend source holds one as a string literal |
+| Discovery remembers nothing between requests | No cache, lock or `OnceLock` in `applications.rs` |
+| A power request says who made it and why | `REASON` names Mira; only the two idle-sleep flags are asked for |

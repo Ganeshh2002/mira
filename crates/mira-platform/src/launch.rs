@@ -23,11 +23,11 @@
 use std::ffi::OsString;
 use std::path::PathBuf;
 
-use mira_core::{AppKind, Capability, MiraError, Result};
+use mira_core::{AppId, AppKind, Capability, MiraError, Result};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
-use crate::applications::{candidates, first_openable, present, Candidate, Launch, Probe};
+use crate::applications::{candidates, first_openable, probe_for, Candidate, Launch, Probe};
 use crate::env::Os;
 use crate::macos;
 use crate::platform::PlatformCapabilities;
@@ -114,37 +114,163 @@ pub struct Launched {
     pub application: Option<String>,
 }
 
+/// What a workspace's choice for one kind resolves to on this machine.
+///
+/// Five shapes because there are five different sentences, and collapsing any
+/// two of them would be a lie about somebody's machine. In particular
+/// [`ChosenApp::Missing`] is **not** a reason to open something else: quietly
+/// starting a different editor than the one that was chosen is the
+/// unrelated-application substitution ADR-0013 refused, and a choice makes it
+/// worse rather than better (ADR-0019).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(tag = "state", rename_all = "camelCase")]
+#[ts(export)]
+pub enum ChosenApp {
+    /// Nothing was chosen. Mira takes the first row this machine has.
+    #[serde(rename_all = "camelCase")]
+    Automatic {
+        /// What that is today, or `None` when nothing here fits.
+        application: Option<String>,
+    },
+    /// Chosen, here, and openable.
+    #[serde(rename_all = "camelCase")]
+    Ready {
+        /// The catalogue row.
+        id: AppId,
+        /// What to call it.
+        name: String,
+    },
+    /// Chosen, and not on this machine any more.
+    #[serde(rename_all = "camelCase")]
+    Missing {
+        /// The catalogue row, kept so the choice survives the application coming back.
+        id: AppId,
+        /// What to call it.
+        name: String,
+    },
+    /// Chosen and here, and not something Mira can open a directory in.
+    #[serde(rename_all = "camelCase")]
+    NotOpenable {
+        /// The catalogue row.
+        id: AppId,
+        /// What to call it.
+        name: String,
+    },
+    /// Chosen on some other machine, and not in this platform's list at all.
+    #[serde(rename_all = "camelCase")]
+    Unknown {
+        /// What was stored, so the interface can say which one it was.
+        id: AppId,
+    },
+}
+
+/// Resolve a workspace's choice against this machine, without touching anything.
+///
+/// Pure, and takes its existence test as a parameter, so every case is assertable
+/// from any platform.
+pub fn chosen(
+    os: Os,
+    kind: AppKind,
+    preferred: Option<&AppId>,
+    exists: impl FnMut(&Candidate) -> bool,
+) -> ChosenApp {
+    let mut exists = exists;
+
+    let Some(id) = preferred else {
+        return ChosenApp::Automatic {
+            application: automatic(os, kind, &mut exists)
+                .map(|candidate| candidate.name.to_owned()),
+        };
+    };
+
+    let Some(candidate) = crate::applications::find(os, kind, id) else {
+        return ChosenApp::Unknown { id: id.clone() };
+    };
+    let name = candidate.name.to_owned();
+
+    if !exists(candidate) {
+        return ChosenApp::Missing {
+            id: id.clone(),
+            name,
+        };
+    }
+    if candidate.launch == Launch::NotFromHere {
+        return ChosenApp::NotOpenable {
+            id: id.clone(),
+            name,
+        };
+    }
+
+    ChosenApp::Ready {
+        id: id.clone(),
+        name,
+    }
+}
+
+/// What automatic resolves to for one kind: the first row here Mira can open with.
+fn automatic<'a>(
+    os: Os,
+    kind: AppKind,
+    exists: impl FnMut(&Candidate) -> bool,
+) -> Option<&'a Candidate> {
+    first_openable(candidates(os, kind), exists)
+}
+
 /// Decide what to open `target` with, without touching anything.
+///
+/// `preferred` is a workspace's choice, and it is obeyed or refused — never
+/// substituted. A chosen application that is not here is an error naming it, so
+/// the person finds out which one went missing rather than finding out that
+/// something else opened.
 ///
 /// # Errors
 ///
 /// [`MiraError::Invalid`] if the kind and the target disagree, or if a web
-/// address is not one Mira will open; [`MiraError::Unsupported`] if this machine
+/// address is not one Mira will open; [`MiraError::NotFound`] if a chosen
+/// application is not on this machine; [`MiraError::Unsupported`] if this machine
 /// has no application of that kind that Mira can open something with.
 pub fn plan(
     os: Os,
     kind: AppKind,
+    preferred: Option<&AppId>,
     target: LaunchTarget,
     exists: impl FnMut(&Candidate) -> bool,
 ) -> Result<LaunchPlan> {
     let target = agreed(kind, target)?;
+    let mut exists = exists;
 
-    // A browser is resolved differently on purpose: presence decides whether the
-    // action exists, and the desktop decides which browser runs.
-    if kind == AppKind::Browser {
-        let mut exists = exists;
-        if !candidates(os, kind).iter().any(&mut exists) {
-            return Err(nothing_here(kind));
+    let candidate = match preferred {
+        // A choice is answered by the choice. Every way it can fail is its own
+        // sentence, and none of them is "so Mira opened something else".
+        Some(id) => match chosen(os, kind, Some(id), &mut exists) {
+            ChosenApp::Ready { .. } => {
+                crate::applications::find(os, kind, id).ok_or_else(|| unknown_choice(id))?
+            }
+            ChosenApp::Missing { name, .. } => return Err(gone(&name)),
+            ChosenApp::NotOpenable { name, .. } => return Err(not_from_here(&name)),
+            ChosenApp::Unknown { id } => return Err(unknown_choice(&id)),
+            // `chosen` only answers Automatic when nothing was preferred.
+            ChosenApp::Automatic { .. } => return Err(unknown_choice(id)),
+        },
+
+        // Nothing chosen, and a browser: presence decides whether the action
+        // exists, and the desktop decides which browser runs. *Which* browser you
+        // use is a choice already made elsewhere, so Mira does not overrule it
+        // with the first row in a list.
+        None if kind == AppKind::Browser => {
+            if !candidates(os, kind).iter().any(&mut exists) {
+                return Err(nothing_here(kind));
+            }
+            return Ok(LaunchPlan {
+                application: None,
+                method: LaunchMethod::DefaultHandler,
+                target,
+            });
         }
-        return Ok(LaunchPlan {
-            application: None,
-            method: LaunchMethod::DefaultHandler,
-            target,
-        });
-    }
 
-    let candidate =
-        first_openable(candidates(os, kind), exists).ok_or_else(|| nothing_here(kind))?;
+        None => automatic(os, kind, &mut exists).ok_or_else(|| nothing_here(kind))?,
+    };
+
     let Launch::With(args) = candidate.launch else {
         return Err(nothing_here(kind));
     };
@@ -152,9 +278,9 @@ pub fn plan(
     let method = match candidate.probe {
         Probe::Bundle(bundle) => LaunchMethod::Bundle { bundle },
         Probe::Program(program) => LaunchMethod::Program { program, args },
-        // `first_openable` never returns one: a desktop entry proves an
-        // application is installed and is not a program name.
-        Probe::Desktop(_) => return Err(nothing_here(kind)),
+        // Neither path returns one: a desktop entry proves an application is
+        // installed and is not a program name, so it is never openable.
+        Probe::Desktop(_) => return Err(not_from_here(candidate.name)),
     };
 
     Ok(LaunchPlan {
@@ -162,6 +288,29 @@ pub fn plan(
         method,
         target,
     })
+}
+
+fn gone(name: &str) -> MiraError {
+    MiraError::NotFound {
+        what: format!(
+            "{name}, which this workspace uses. Mira did not open anything else — choose \
+             another application and it will remember"
+        ),
+    }
+}
+
+fn not_from_here(name: &str) -> MiraError {
+    MiraError::Unsupported {
+        capability: Capability::LaunchApplication,
+        reason: format!("{name} is here, and is not something Mira can open a folder in."),
+    }
+}
+
+fn unknown_choice(id: &AppId) -> MiraError {
+    MiraError::invalid(
+        "application",
+        format!("Mira has no application called {id} on this platform."),
+    )
 }
 
 /// The target, if it is the shape this kind opens.
@@ -283,14 +432,27 @@ pub trait LaunchHost {
     /// The kinds this machine can open a directory in, and with what.
     fn openable(&self) -> Vec<AppReport>;
 
-    /// Open `target` in an application of `kind`.
+    /// What a workspace's choice resolves to here, without starting anything.
+    ///
+    /// The question the interface asks *before* offering a button, so a chosen
+    /// application that has been uninstalled is a sentence on the row rather
+    /// than an error after a click.
+    fn chosen(&self, kind: AppKind, preferred: Option<&AppId>) -> ChosenApp;
+
+    /// Open `target` in an application of `kind`, obeying a choice if there is one.
     ///
     /// # Errors
     ///
     /// [`MiraError::Unsupported`] where launching is off or no such application
-    /// is here, [`MiraError::Invalid`] if the target is the wrong shape, and
+    /// is here, [`MiraError::NotFound`] if a chosen application is gone,
+    /// [`MiraError::Invalid`] if the target is the wrong shape, and
     /// [`MiraError::External`] if the application refused to start.
-    fn launch(&self, kind: AppKind, target: LaunchTarget) -> Result<Launched>;
+    fn launch(
+        &self,
+        kind: AppKind,
+        preferred: Option<&AppId>,
+        target: LaunchTarget,
+    ) -> Result<Launched>;
 }
 
 /// Launching on this machine.
@@ -336,7 +498,18 @@ impl<P: PlatformCapabilities, E: Perform> LaunchHost for Launcher<P, E> {
         Applications::for_os(self.os).openable()
     }
 
-    fn launch(&self, kind: AppKind, target: LaunchTarget) -> Result<Launched> {
+    fn chosen(&self, kind: AppKind, preferred: Option<&AppId>) -> ChosenApp {
+        chosen(self.os, kind, preferred, |candidate| {
+            probe_for(self.os, candidate)
+        })
+    }
+
+    fn launch(
+        &self,
+        kind: AppKind,
+        preferred: Option<&AppId>,
+        target: LaunchTarget,
+    ) -> Result<Launched> {
         let status = self.platform.status(Capability::LaunchApplication);
         if !status.is_usable() {
             return Err(MiraError::Unsupported {
@@ -348,7 +521,9 @@ impl<P: PlatformCapabilities, E: Perform> LaunchHost for Launcher<P, E> {
             });
         }
 
-        let plan = plan(self.os, kind, target, present)?;
+        let plan = plan(self.os, kind, preferred, target, |candidate| {
+            probe_for(self.os, candidate)
+        })?;
         self.desktop.perform(&plan)?;
 
         Ok(Launched {

@@ -20,15 +20,16 @@ pub mod shell;
 pub mod surface;
 
 pub use applications::{
-    candidates, first_openable, first_present, AppPresence, AppReport, Applications, Candidate,
-    Launch, Probe,
+    candidates, find, first_openable, first_present, probe_for, AppOption, AppPresence, AppReport,
+    Applications, Candidate, Catalogue, Launch, Probe,
 };
 pub use awake::{Inhibit, KeepAwake, KeepAwakeHost, KeepAwakeSpan, KeepAwakeState};
 pub use clipboard::{is_copyable, Clipboard, ClipboardHost};
 pub use env::{DisplayServer, EnvFacts, LinuxPackaging, Os};
 pub use inhibit::SystemInhibitor;
 pub use launch::{
-    plan, Desktop, LaunchHost, LaunchMethod, LaunchPlan, LaunchTarget, Launched, Launcher, Perform,
+    chosen, plan, ChosenApp, Desktop, LaunchHost, LaunchMethod, LaunchPlan, LaunchTarget, Launched,
+    Launcher, Perform,
 };
 pub use platform::{Platform, PlatformCapabilities};
 pub use resolve::{resolve, resolve_all};

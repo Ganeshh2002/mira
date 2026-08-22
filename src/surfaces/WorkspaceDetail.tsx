@@ -128,7 +128,11 @@ export function WorkspaceDetail({
           />
 
           {openable.data ? (
-            <OpenWith workspaceId={workspace.id} openable={openable.data} />
+            <OpenWith
+              workspaceId={workspace.id}
+              openable={openable.data}
+              preferences={workspace.preferences}
+            />
           ) : null}
         </>
       )}
@@ -141,7 +145,9 @@ export function WorkspaceDetail({
         </p>
       ) : (
         <ContextPanel
+          workspaceId={workspace.id}
           kinds={workspace.applications}
+          preferences={workspace.preferences}
           available={available.data}
           onToggle={toggle}
         />

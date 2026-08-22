@@ -19,7 +19,7 @@
 
 use std::path::PathBuf;
 
-use mira_core::{AppKind, MiraError, ProjectId, Result, Workspace, WorkspaceId};
+use mira_core::{AppId, AppKind, MiraError, ProjectId, Result, Workspace, WorkspaceId};
 use mira_db::{NewWorkspace, ProjectRepo, WorkspaceRepo};
 
 /// What the application shell may ask about workspaces.
@@ -59,6 +59,21 @@ pub trait WorkspaceService {
 
     /// Replace the kinds of application this workspace works with.
     fn set_applications(&self, id: WorkspaceId, kinds: &[AppKind], now: i64) -> Result<Workspace>;
+
+    /// Choose which application this workspace uses for one kind.
+    ///
+    /// `None` puts that kind back on automatic. The id is **not** checked here:
+    /// whether an id names something Mira can start is a question about the
+    /// machine, and this crate does not know there is one. The command layer
+    /// resolves it against the platform catalogue before it ever arrives
+    /// ([ADR-0019](../../../docs/adr/0019-application-preferences.md)).
+    fn prefer(
+        &self,
+        id: WorkspaceId,
+        kind: AppKind,
+        application: Option<&AppId>,
+        now: i64,
+    ) -> Result<Workspace>;
 
     /// The directory this workspace's applications open at.
     ///
@@ -155,6 +170,18 @@ impl<R: WorkspaceRepo + ProjectRepo> WorkspaceService for Workspaces<R> {
         // and three inserts quietly affecting nothing.
         self.repo.get_workspace(id)?;
         self.repo.set_workspace_applications(id, kinds, now)?;
+        self.repo.get_workspace(id)
+    }
+
+    fn prefer(
+        &self,
+        id: WorkspaceId,
+        kind: AppKind,
+        application: Option<&AppId>,
+        now: i64,
+    ) -> Result<Workspace> {
+        self.repo
+            .set_workspace_preference(id, kind, application, now)?;
         self.repo.get_workspace(id)
     }
 

@@ -208,9 +208,16 @@ service, create/list/rename/open/remove, application **context** as a set of kin
 platform discovery behind it, and a workspace surface that composes the project's
 existing observations ([ADR-0012](../adr/0012-workspace-semantics.md)).
 
+**Delivered (part), 4b — application preferences.** Slice 3's launching arrived
+and brought ADR-0013's stated debt with it: the candidate table's order decided
+which editor opened, and there was no way to correct a row that was wrong for you.
+A workspace can now choose its editor, terminal and browser from Mira's own
+catalogue. The choice is a **catalogue id**, not a path or a program; it is per
+workspace; and one that stops being true is refused **by name** rather than
+quietly replaced ([ADR-0019](../adr/0019-application-preferences.md)).
+
 **Still to come in this slice.** Expected ports, per-workspace commands, app groups, the
-implicit default workspace, and the workspace switcher in the project header. Slice 3's
-launching remains ahead of them.
+implicit default workspace, and the workspace switcher in the project header.
 
 ## Slice 5a — Git history *(S, 0.1)*
 

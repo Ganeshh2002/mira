@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { AppReport } from '../bindings/AppReport';
+import type { ChosenApp } from '../bindings/ChosenApp';
 import type { LiveSnapshot } from '../bindings/LiveSnapshot';
 import type { Project } from '../bindings/Project';
 import type { Workspace } from '../bindings/Workspace';
@@ -45,6 +46,7 @@ function workspace(overrides: Partial<Workspace> = {}): Workspace {
     name: 'Web Development',
     description: null,
     applications: [],
+    preferences: [],
     lastOpenedAt: null,
     createdAt: NOW,
     updatedAt: NOW,
@@ -108,11 +110,14 @@ function backend({
   canOpen = openable,
   live = snapshot(),
   onLaunch,
+  chosen,
 }: {
   workspaces?: Workspace[];
   canOpen?: AppReport[];
   live?: LiveSnapshot;
   onLaunch?: (kind: string) => { application: string | null } | Error;
+  /** What a workspace's choice resolves to, when a test is about one. */
+  chosen?: ChosenApp;
 } = {}) {
   invoke.mockImplementation((command: string, args?: Record<string, unknown>) => {
     switch (command) {
@@ -127,6 +132,10 @@ function backend({
         return Promise.resolve(installed);
       case 'workspaces_openable':
         return Promise.resolve(canOpen);
+      case 'workspaces_chosen':
+        return Promise.resolve(chosen ?? { state: 'automatic', application: null });
+      case 'workspaces_catalogue':
+        return Promise.resolve({ kind: args?.['kind'], options: [], automatic: null });
       case 'workspaces_open':
         return Promise.resolve(
           workspaces.find((one) => one.id === args?.['workspaceId']) ?? workspaces[0],
@@ -346,5 +355,64 @@ describe('more than one workspace', () => {
         kind: 'terminal',
       }),
     );
+  });
+});
+
+// ── Opening what was chosen ──────────────────────────────────────────────────
+
+describe('a workspace that chose its own application', () => {
+  it('names the choice on the button rather than what Mira found first', async () => {
+    // The lie this prevents: "Editor · Visual Studio Code" on a workspace that
+    // chose Zed, where pressing it opens Zed.
+    backend({
+      workspaces: [workspace({ preferences: [{ kind: 'editor', application: 'zed' }] })],
+      canOpen: [
+        { kind: 'editor', presence: { state: 'available', name: 'Visual Studio Code' } },
+      ],
+      chosen: { state: 'ready', id: 'zed', name: 'Zed' },
+    });
+    await openWorkspace();
+
+    const actions = await screen.findByRole('group', { name: /open with/i });
+    expect(within(actions).getByRole('button', { name: 'Editor · Zed' })).toBeInTheDocument();
+    expect(
+      within(actions).queryByRole('button', { name: /Visual Studio Code/ }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('offers no button for a chosen application that is gone', async () => {
+    // A button that could only fail, on a surface where the alternative would be
+    // opening something else, is worse than a sentence.
+    backend({
+      workspaces: [workspace({ preferences: [{ kind: 'editor', application: 'zed' }] })],
+      canOpen: [
+        { kind: 'editor', presence: { state: 'available', name: 'Visual Studio Code' } },
+      ],
+      chosen: { state: 'missing', id: 'zed', name: 'Zed' },
+    });
+    await openWorkspace();
+
+    const actions = await screen.findByRole('group', { name: /open with/i });
+    expect(within(actions).getByText('Editor · Zed is not available here')).toBeInTheDocument();
+    expect(within(actions).queryByRole('button')).not.toBeInTheDocument();
+  });
+
+  it('still sends only a workspace and a kind when it opens', async () => {
+    backend({
+      workspaces: [workspace({ preferences: [{ kind: 'editor', application: 'zed' }] })],
+      canOpen: [
+        { kind: 'editor', presence: { state: 'available', name: 'Visual Studio Code' } },
+      ],
+      chosen: { state: 'ready', id: 'zed', name: 'Zed' },
+    });
+    await openWorkspace();
+
+    const actions = await screen.findByRole('group', { name: /open with/i });
+    await userEvent.click(within(actions).getByRole('button', { name: 'Editor · Zed' }));
+
+    await waitFor(() => {
+      const asked = invoke.mock.calls.find(([command]) => command === 'workspaces_launch');
+      expect(asked?.[1]).toEqual({ workspaceId: 1, kind: 'editor' });
+    });
   });
 });

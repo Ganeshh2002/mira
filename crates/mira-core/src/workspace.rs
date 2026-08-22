@@ -17,7 +17,8 @@
 //! two workspaces on one project see the same observations rather than each
 //! keeping a copy (`data-model.md` §1 rule 2).
 
-use serde::{Deserialize, Serialize};
+use serde::de::Error as _;
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use ts_rs::TS;
 
 use crate::ids::{ProjectId, WorkspaceId};
@@ -72,6 +73,107 @@ impl AppKind {
     }
 }
 
+/// The identity of one application in Mira's catalogue.
+///
+/// **Not a path, not a program name, not a command.** It is a slug naming a row
+/// in a table compiled into the binary — `vscode`, `iterm`, `ghostty` — and the
+/// only thing it can be turned into is that row. A caller who invents one gets a
+/// refusal rather than a launch, because there is nothing for an unknown id to
+/// resolve to ([ADR-0019](../../../docs/adr/0019-application-preferences.md)).
+///
+/// Validated as it deserialises, like a commit id: lower-case ASCII letters,
+/// digits and hyphens, one to [`LONGEST_APP_ID`] of them. That is defence in
+/// depth — the catalogue lookup is the real wall — but a type that cannot hold a
+/// path is a type nobody has to check for one.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, TS)]
+#[ts(export)]
+pub struct AppId(#[ts(type = "string")] String);
+
+/// The longest an application id may be.
+pub const LONGEST_APP_ID: usize = 32;
+
+impl AppId {
+    /// The id as written.
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl Serialize for AppId {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(&self.0)
+    }
+}
+
+impl<'de> Deserialize<'de> for AppId {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        Self::try_from(String::deserialize(deserializer)?).map_err(D::Error::custom)
+    }
+}
+
+impl std::fmt::Display for AppId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl TryFrom<String> for AppId {
+    type Error = MalformedAppId;
+
+    fn try_from(raw: String) -> Result<Self, Self::Error> {
+        if raw.is_empty()
+            || raw.len() > LONGEST_APP_ID
+            || !raw
+                .bytes()
+                .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
+        {
+            return Err(MalformedAppId);
+        }
+
+        Ok(Self(raw))
+    }
+}
+
+impl std::str::FromStr for AppId {
+    type Err = MalformedAppId;
+
+    fn from_str(raw: &str) -> Result<Self, Self::Err> {
+        Self::try_from(raw.to_owned())
+    }
+}
+
+/// What arrived was not an application id.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MalformedAppId;
+
+impl std::fmt::Display for MalformedAppId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "an application id is 1 to {LONGEST_APP_ID} lower-case letters, digits or hyphens"
+        )
+    }
+}
+
+impl std::error::Error for MalformedAppId {}
+
+/// Which application a workspace uses for one kind.
+///
+/// Stored per workspace, so choosing Zed here leaves every other workspace on
+/// whatever it was using. Absent means *automatic*: Mira takes the first entry in
+/// its own list that this machine has, which is what every workspace did before
+/// anybody chose anything.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct AppPreference {
+    /// Which kind the choice is for.
+    pub kind: AppKind,
+    /// The catalogue row chosen.
+    pub application: AppId,
+}
+
 /// One workspace, as stored and as shown.
 ///
 /// Deliberately absent: anything observed. There is no branch here, no port, no
@@ -91,6 +193,12 @@ pub struct Workspace {
     pub description: Option<String>,
     /// The kinds of application the user associated with it.
     pub applications: Vec<AppKind>,
+    /// Which application each kind uses here, where the user chose one.
+    ///
+    /// Per workspace by construction: the rows are keyed by workspace id, so a
+    /// choice made here is invisible to every other workspace on the same
+    /// project. A kind absent from this list is on automatic.
+    pub preferences: Vec<AppPreference>,
     /// When it was last opened; `None` means never.
     #[ts(type = "number | null")]
     pub last_opened_at: Option<i64>,
