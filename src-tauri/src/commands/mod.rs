@@ -9,6 +9,7 @@ pub mod app;
 pub mod awake;
 pub mod git;
 pub mod live;
+pub mod ports;
 pub mod projects;
 pub mod services;
 pub mod workspaces;

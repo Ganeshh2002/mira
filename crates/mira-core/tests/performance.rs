@@ -41,6 +41,9 @@ fn listeners(count: usize, project: ProjectId) -> Vec<Listening> {
             address: "127.0.0.1".to_owned(),
             process: Some("node".to_owned()),
             pid: Some(1_000 + n as u32),
+            cpu_share: Some(1.0),
+            memory_bytes: Some(1_048_576),
+            uptime_seconds: Some(60),
         })
         .collect()
 }

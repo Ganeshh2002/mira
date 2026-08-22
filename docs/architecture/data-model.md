@@ -26,6 +26,11 @@ exists.
    and restarting starts off. A guard test fails the build if a migration ever mentions
    one ([ADR-0014](../adr/0014-keep-awake.md)).
 
+   Slice 2b extends this to process _detail_. CPU share, memory and uptime are readings
+   taken by the scheduler and held in memory for as long as the process runs; there is no
+   column for any of them and slice 2b adds no migration at all. A guard test fails the
+   build if one appears ([ADR-0022](../adr/0022-process-detail.md)).
+
 3. **References, never copies.** The Shelf stores paths. Mira never copies file content
    into its database.
 4. **No secrets.** No passwords, tokens, keys, passphrases, or environment values are

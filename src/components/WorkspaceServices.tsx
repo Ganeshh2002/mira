@@ -8,6 +8,7 @@ import { commands, describeUnknown } from '../lib/ipc';
 import { workspaceKeys } from '../lib/workspaces';
 import { Button } from './Button';
 import { Icon } from './Icon';
+import { ProcessDetail } from './ProcessDetail';
 
 /**
  * The services this workspace watches.
@@ -147,6 +148,26 @@ function ServiceRow({
       </div>
 
       <p className="t-ui m-0 text-ink-1">{explain(service.state, service.watched.port)}</p>
+
+      {/*
+        Only when it is actually running. A stopped service has no process, and
+        a row of "not measured yet" under one would be three absences pretending
+        to be information.
+      */}
+      {service.state.kind === 'running' ? (
+        <ProcessDetail
+          process={{
+            pid: service.state.pid ?? 0,
+            name: service.state.process ?? 'unknown process',
+            executable: null,
+            parent: null,
+            workingDirectory: null,
+            cpuShare: service.state.cpuShare,
+            memoryBytes: service.state.memoryBytes,
+            uptimeSeconds: service.state.uptimeSeconds,
+          }}
+        />
+      ) : null}
 
       {open.error ? (
         <p role="alert" className="t-ui m-0 text-signal-danger">

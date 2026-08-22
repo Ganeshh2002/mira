@@ -98,6 +98,15 @@ impl ServiceObservation {
                     address: service.listener.local_address.clone(),
                     process: service.process.as_ref().map(|facts| facts.name.clone()),
                     pid: service.listener.pid,
+                    cpu_share: service.process.as_ref().and_then(|facts| facts.cpu_share),
+                    memory_bytes: service
+                        .process
+                        .as_ref()
+                        .and_then(|facts| facts.memory_bytes),
+                    uptime_seconds: service
+                        .process
+                        .as_ref()
+                        .and_then(|facts| facts.uptime_seconds),
                 })
             })
             .collect()

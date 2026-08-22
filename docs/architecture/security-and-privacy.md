@@ -466,6 +466,57 @@ feature that, built the usual way, would be a table of shell commands.
     `program TEXT NOT NULL`; a guard fails the build if any code issues `FROM`,
     `INTO`, `UPDATE` or `JOIN` against it.
 
+### Looking at a process
+
+Slice 2b completes the 0.1 capability that reads other people's processes, which
+makes it the widest read Mira performs.
+
+53. **The command line is never read.** A process's argv routinely carries
+    credentials — `--password=`, `PGPASSWORD=`, a token inside a `DATABASE_URL`,
+    an API key a task runner passed down — and Mira sits open all day beside the
+    work, which is the worst place for one to be permanently legible. There is no
+    field on `ProcessFacts`, nothing calls `sysinfo`'s `Process::cmd()`, and a
+    guard test fails the build if anything starts to.
+
+    **Redaction was considered and rejected.** It means a blocklist, and
+    blocklists leak: `--db=postgres://user:hunter2@host` contains none of the
+    obvious words. A redactor that is wrong once is worse than no feature,
+    because it teaches people the output is safe to screenshot
+    ([ADR-0022](../adr/0022-process-detail.md)).
+
+54. **A CPU share is absent until it has been measured.** `sysinfo` returns `0.0`
+    both for an idle process and for one it has not sampled twice, so Mira tracks
+    which pids it has seen and reports `None` for a first sighting. The interface
+    renders *"not measured yet"*, never *"0%"* — calling a process idle that
+    might be saturating a core is a claim Mira has not established.
+
+55. **The reading rides the scheduler's own ticks.** CPU needs two samples, and
+    the tempting shortcut is two refreshes 200 ms apart inside one request — a
+    sleep on the observer thread, which is a clock. Instead one reading is kept
+    and refreshed by the ticks that already exist (ADR-0011). Measurement made
+    the choice easy: the same busy process read 238% over 200 ms and 100.3% over
+    five seconds, so the free window is also the steadiest one. A guard asserts
+    the process reader contains no `Instant`, `Duration`, `sleep`, `spawn` or
+    `interval`.
+
+56. **Nothing observed about a process is written down.** CPU, memory, uptime and
+    pids are readings (`data-model.md` §1 rule 2). Slice 2b adds **no migration**,
+    and a guard asserts both that no migration mentions any of them and that the
+    migration set is unchanged at five files.
+
+57. **The machine-wide Ports view arranges an observation and takes none of its
+    own.** A guard asserts it reaches for no filesystem, no socket scanner, no
+    process provider and no clock — it reads `live.snapshot()` and groups it. A
+    second source of truth about what is running could disagree with the one the
+    workspace surfaces use.
+
+58. **Nothing on that surface can stop anything.** Open is the only action and it
+    sends a **position** in the list Mira produced, so no port, pid, address or
+    process name travels inward. A guard asserts the surface contains no
+    `kill`/`terminate`/`signal` and that the module exposes exactly one command,
+    which is a read. Termination arrives with its own confirmation and refusal
+    design or it does not arrive.
+
 ### Keeping a machine awake
 
 19. **Keep Awake holds an operating-system power request and nothing else.** Mira
@@ -673,3 +724,8 @@ after the people who wrote it move on.
 | An action Mira no longer has never becomes another | The unknown arm reaches for no fallback |
 | An action belongs to the workspace given it | Every `workspace_actions` statement names `workspace_id` |
 | Performing an action reaches no new seam | The dispatch shares the one launch and one address site |
+| No command line is read, stored or shown | Source scan for `.cmd()`, `cmdline`, `commandLine`, … |
+| No observed process fact is persisted | No migration mentions cpu/memory/uptime; the set stays at five |
+| The Ports view reads the observation, not the disk | No `fs::`, `PortScanner`, `facts_for` or clock in `ports.rs` |
+| CPU is sampled by the scheduler, not a timer | No `Instant`/`Duration`/`sleep`/`spawn` in the process reader |
+| Nothing on the Ports surface can stop anything | Surface scan for kill/terminate; one command, and it reads |

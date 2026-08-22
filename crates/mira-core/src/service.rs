@@ -150,7 +150,7 @@ pub struct WatchedService {
 /// interface that says "not running" when the truth is "cannot say" — the same
 /// failure as reporting "no results" for a search that ran out of budget
 /// (ADR-0018).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 #[ts(export)]
 pub enum ServiceState {
@@ -164,6 +164,18 @@ pub enum ServiceState {
         /// The owning process id, where the platform says.
         #[ts(type = "number | null")]
         pid: Option<u32>,
+        /// Share of one CPU, averaged over the interval between the last two
+        /// readings. `None` until there have been two — a share is a rate, and
+        /// "not measured yet" is not the same claim as "idle"
+        /// ([ADR-0022](../../../docs/adr/0022-process-detail.md)).
+        #[ts(type = "number | null")]
+        cpu_share: Option<f32>,
+        /// Resident memory in bytes, where the platform reports it.
+        #[ts(type = "number | null")]
+        memory_bytes: Option<u64>,
+        /// How long the process has been running, in seconds.
+        #[ts(type = "number | null")]
+        uptime_seconds: Option<u64>,
     },
 
     /// Mira looked, and nothing is listening on this port.
@@ -204,7 +216,7 @@ impl ServiceState {
 }
 
 /// A watched service and where it stands.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
 pub struct WorkspaceService {
@@ -221,7 +233,7 @@ pub struct WorkspaceService {
 /// Not a wire type and not stored: the observers build these from a live
 /// snapshot on each read, so this module needs no dependency on the crates that
 /// do the observing and stays a pure function of its inputs.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Listening {
     /// The port.
     pub port: Port,
@@ -233,10 +245,16 @@ pub struct Listening {
     pub process: Option<String>,
     /// The owning process id.
     pub pid: Option<u32>,
+    /// Share of one CPU, where two readings have been taken.
+    pub cpu_share: Option<f32>,
+    /// Resident memory in bytes.
+    pub memory_bytes: Option<u64>,
+    /// How long it has been running, in seconds.
+    pub uptime_seconds: Option<u64>,
 }
 
 /// What the last look at the socket table produced.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Observed<'a> {
     /// Never read.
     NotYet,
@@ -329,5 +347,8 @@ fn state_of(
         address: listening.address.clone(),
         process: listening.process.clone(),
         pid: listening.pid,
+        cpu_share: listening.cpu_share,
+        memory_bytes: listening.memory_bytes,
+        uptime_seconds: listening.uptime_seconds,
     }
 }

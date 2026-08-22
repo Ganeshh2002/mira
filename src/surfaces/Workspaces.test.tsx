@@ -80,6 +80,9 @@ const live: LiveSnapshot = {
           executable: null,
           parent: null,
           workingDirectory: '/home/dev/aviora/apps/web',
+          cpuShare: null,
+          memoryBytes: null,
+          uptimeSeconds: null,
         },
         attribution: {
           kind: 'project',
@@ -104,7 +107,15 @@ const everythingInstalled: AppReport[] = [
 function running(port: number, workspaceId: number): WorkspaceService {
   return {
     watched: { id: port, workspaceId, port, addedAt: 1_800_000_000 },
-    state: { kind: 'running', address: '127.0.0.1', process: 'node', pid: 18234 },
+    state: {
+      kind: 'running',
+      address: '127.0.0.1',
+      process: 'node',
+      pid: 18234,
+      cpuShare: 2.4,
+      memoryBytes: 188_743_680,
+      uptimeSeconds: 3_600,
+    },
   };
 }
 

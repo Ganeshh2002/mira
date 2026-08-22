@@ -3233,3 +3233,270 @@ fn performing_an_action_reaches_no_new_seam() {
         "opening a service must share the one address site"
     );
 }
+
+// ── Process detail and the machine-wide Ports view ───────────────────────────
+
+#[test]
+fn no_command_line_is_ever_read_stored_or_shown() {
+    // Slice 2b's defining decision. A process's argv routinely carries
+    // credentials — `--password=`, `PGPASSWORD=`, a token inside a
+    // `DATABASE_URL`, an API key a task runner passed down. Mira does not read
+    // it, so there is nothing to leak, nothing to redact, and no blocklist to
+    // get wrong ([ADR-0022](../../docs/adr/0022-process-detail.md)).
+    //
+    // Enforced at the source: nothing calls `sysinfo`'s accessor, and no type
+    // carries a field it could be written into.
+    let mut violations = Vec::new();
+    for (path, source) in sources(&["rs", "ts", "tsx"]) {
+        // Test files name the forbidden thing on purpose, to assert it is
+        // absent — the same reason `wire.rs` is on the ADVERSARIAL list. The
+        // guarantee is about shipped code, and a test is not shipped.
+        let name = relative(&path);
+        if name.contains("/tests/") || name.contains(".test.") {
+            continue;
+        }
+        let code = code_only(&source);
+        // Reads and fields, not prose: `command_line` also appears in the name
+        // of a `mira-platform` test asserting that a candidate is a program name
+        // rather than a command line, which is the rule agreeing with this one
+        // rather than breaking it.
+        for reaching in [
+            ".cmd()",
+            "with_cmd(",
+            "cmd_line",
+            "cmdline",
+            "command_line:",
+            ".command_line",
+            "commandLine",
+        ] {
+            if code.contains(reaching) {
+                violations.push(format!("{}: {reaching}", relative(&path)));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "something reads a process's command line; argv carries credentials and \
+         Mira does not look at it: {violations:#?}"
+    );
+
+    // And positively: the facts that *are* carried are the three this slice
+    // added plus the four that were already there — so this cannot pass by the
+    // struct having been emptied.
+    let source = fs::read_to_string(repo_root().join("crates/mira-processes/src/lib.rs"))
+        .expect("mira-processes lib.rs");
+    let facts = code_only(&source)
+        .split("pub struct ProcessFacts {")
+        .nth(1)
+        .and_then(|rest| rest.split("\n}").next())
+        .expect("a ProcessFacts definition")
+        .to_owned();
+
+    for expected in [
+        "pid:",
+        "name:",
+        "executable:",
+        "parent:",
+        "working_directory:",
+        "cpu_share:",
+        "memory_bytes:",
+        "uptime_seconds:",
+    ] {
+        assert!(
+            facts.contains(expected),
+            "ProcessFacts lost {expected}: {facts}"
+        );
+    }
+    for forbidden in ["cmd", "argv", "args", "environ", "env:"] {
+        assert!(
+            !facts.contains(forbidden),
+            "ProcessFacts can hold {forbidden}, which is where a credential would \
+             end up: {facts}"
+        );
+    }
+}
+
+#[test]
+fn observed_process_information_is_never_written_down() {
+    // `data-model.md` §1 rule 2. CPU, memory and uptime are readings; a column
+    // for any of them would be a cache that goes wrong silently, and a stored
+    // pid would be a process identity outliving the process.
+    let migrations = repo_root().join("crates/mira-db/migrations");
+    let mut violations = Vec::new();
+
+    for (path, source) in sources(&["sql"]) {
+        if !path.starts_with(&migrations) {
+            continue;
+        }
+        let schema = code_only(&source);
+        for forbidden in [
+            "cpu",
+            "memory",
+            "uptime",
+            "run_time",
+            "resident",
+            "process_name",
+            "cmdline",
+        ] {
+            if schema.contains(forbidden) {
+                violations.push(format!("{}: {forbidden}", relative(&path)));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "a migration writes down something observed about a process: {violations:#?}"
+    );
+
+    // Slice 2b adds no migration at all, which is the strongest form of this.
+    let count = fs::read_dir(&migrations)
+        .expect("migrations")
+        .filter_map(std::result::Result::ok)
+        .filter(|entry| entry.path().extension().is_some_and(|ext| ext == "sql"))
+        .count();
+    assert_eq!(
+        count, 5,
+        "slice 2b stores nothing, so the migration set must be unchanged at five"
+    );
+}
+
+#[test]
+fn the_ports_view_reads_the_observation_and_never_the_disk() {
+    // The machine-wide view is an arrangement of a reading the scheduler already
+    // took. If it reached for the filesystem, a socket, a repository or the
+    // database it would be a second source of truth about what is running — and
+    // the one on screen could disagree with the one the workspace surfaces use.
+    let source =
+        fs::read_to_string(repo_root().join("src-tauri/src/commands/ports.rs")).expect("ports.rs");
+    let code = code_only(&source);
+
+    for forbidden in [
+        "fs::",
+        "File::",
+        "Path::new",
+        "PathBuf",
+        "listening()",
+        "PortScanner",
+        "Processes::new",
+        "facts_for",
+        "Command::new",
+        "Instant",
+        "SystemTime",
+        "thread::spawn",
+        "interval",
+        "sleep",
+    ] {
+        assert!(
+            !code.contains(forbidden),
+            "the Ports view reaches for {forbidden}; it must arrange the \
+             observation the scheduler took, not take one of its own"
+        );
+    }
+
+    // Positively: it reads the snapshot, and the grouping is a pure function.
+    assert!(
+        code.contains("state.live.snapshot()"),
+        "the Ports view must read the live snapshot"
+    );
+    assert!(
+        code.contains("pub fn group(observation: &ServiceObservation"),
+        "the grouping must be a pure function of an observation"
+    );
+}
+
+#[test]
+fn cpu_share_is_sampled_by_the_scheduler_and_not_by_a_timer_of_its_own() {
+    // ADR-0011, at the one place slice 2b could have broken it. CPU share needs
+    // two samples, and the tempting fix is to take them 200 ms apart inside one
+    // request — a sleep on the observer thread, or worse a timer. Instead one
+    // reading is kept and refreshed by the ticks that already exist.
+    let source = fs::read_to_string(repo_root().join("crates/mira-processes/src/lib.rs"))
+        .expect("mira-processes lib.rs");
+    let code = code_only(&source);
+
+    for forbidden in [
+        "thread::sleep",
+        "thread::spawn",
+        "Instant",
+        "SystemTime",
+        "interval",
+        "Duration",
+        "MINIMUM_CPU_UPDATE_INTERVAL",
+    ] {
+        assert!(
+            !code.contains(forbidden),
+            "the process reader reaches for {forbidden}; the scheduler owns \
+             every clock and the reader only answers when asked"
+        );
+    }
+
+    // Positively: the reading is kept across calls, which is the only way a
+    // share can be computed at all.
+    assert!(
+        code.contains("system: Mutex<System>"),
+        "the reading must be kept between ticks, or cpu share is always zero"
+    );
+
+    // And the observer uses the kept one rather than building its own.
+    let observers =
+        fs::read_to_string(repo_root().join("src-tauri/src/observers.rs")).expect("observers.rs");
+    let observers = code_only(&observers);
+    assert!(
+        observers.contains("self.state.processes.facts_for"),
+        "the observer must use the kept reader"
+    );
+    assert!(
+        !observers.contains("Processes::new()"),
+        "building a reader per tick throws away the previous sample"
+    );
+}
+
+#[test]
+fn nothing_on_the_ports_surface_can_stop_anything() {
+    // The companion to `nothing_can_stop_a_process`, at the surface that would
+    // most obviously want one. A machine-wide list of running servers is exactly
+    // where a Kill button feels natural; termination arrives with its own
+    // confirmation and refusal design or it does not arrive.
+    let mut violations = Vec::new();
+
+    for (path, source) in sources(&["tsx", "ts"]) {
+        let name = relative(&path);
+        if !name.contains("Ports") && !name.contains("ProcessDetail") {
+            continue;
+        }
+        if name.contains(".test.") {
+            continue;
+        }
+        let code = code_only(&source);
+        for forbidden in [
+            "kill",
+            "Kill",
+            "terminate",
+            "Terminate",
+            "SIGTERM",
+            "SIGKILL",
+            "signal(",
+        ] {
+            if code.contains(forbidden) {
+                violations.push(format!("{name}: {forbidden}"));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "the Ports surface offers to stop something: {violations:#?}"
+    );
+
+    // And the command module has one action, which is opening.
+    let source =
+        fs::read_to_string(repo_root().join("src-tauri/src/commands/ports.rs")).expect("ports.rs");
+    let commands = command_signatures(&code_only(&source));
+    assert_eq!(
+        commands.len(),
+        1,
+        "the Ports view should expose exactly one command, a read: {commands:#?}"
+    );
+}

@@ -647,8 +647,11 @@ fn a_forged_service_state_cannot_smuggle_something_to_run() {
             address: "127.0.0.1".to_owned(),
             process: Some("node".to_owned()),
             pid: Some(4_242),
+            cpu_share: None,
+            memory_bytes: None,
+            uptime_seconds: None,
         },
-        "every stray key is dropped, not carried"
+        "every stray key is dropped, not carried — including the command line"
     );
 }
 
@@ -878,4 +881,96 @@ fn the_catalogue_is_small_and_every_row_says_what_it_does() {
     let before = ids.len();
     ids.dedup();
     assert_eq!(ids.len(), before, "two catalogue rows share an id");
+}
+
+// ── Process detail and the Ports view (slice 2b) ─────────────────────────────
+
+#[test]
+fn a_forged_process_fact_cannot_smuggle_a_command_line() {
+    // `ProcessFacts` travels outward, but a type that deserialises is a type a
+    // page could try to hand back. Every credential-bearing shape somebody would
+    // reach for is dropped, because there is no field for it (ADR-0022).
+    let facts: mira_processes::ProcessFacts = serde_json::from_value(json!({
+        "pid": 4_242,
+        "name": "node",
+        "executable": "/usr/local/bin/node",
+        "parent": 1,
+        "workingDirectory": "/home/dev/aviora",
+        "cpuShare": 2.5,
+        "memoryBytes": 188_743_680u64,
+        "uptimeSeconds": 3_600,
+        "cmd": ["node", "--inspect", "--db-url=postgres://user:hunter2@host/db"],
+        "argv": ["-c", "curl evil.example"],
+        "commandLine": "psql --password=hunter2",
+        "environ": ["AWS_SECRET_ACCESS_KEY=abc"]
+    }))
+    .expect("facts");
+
+    assert_eq!(facts.pid, 4_242);
+    assert_eq!(facts.cpu_share, Some(2.5));
+    assert_eq!(facts.memory_bytes, Some(188_743_680));
+    assert_eq!(facts.uptime_seconds, Some(3_600));
+
+    // Re-serialised, it is eight fields and none of them is a command line.
+    let back = serde_json::to_value(facts).expect("serialise");
+    let object = back.as_object().expect("an object");
+    assert_eq!(object.len(), 8, "got {object:#?}");
+    for absent in ["cmd", "argv", "commandLine", "environ"] {
+        assert!(
+            !object.contains_key(absent),
+            "{absent} survived: {object:#?}"
+        );
+    }
+    assert!(
+        !serde_json::to_string(&back)
+            .expect("string")
+            .contains("hunter2"),
+        "a credential passed in survived the round trip"
+    );
+}
+
+#[test]
+fn no_command_carries_a_pid_a_port_or_a_process_name_for_the_ports_view() {
+    // `live.ports` takes nothing at all, and opening still goes through the
+    // ordinal. Asserted on the command signatures rather than on prose.
+    let source = std::fs::read_to_string(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/commands/ports.rs"),
+    )
+    .expect("ports.rs");
+
+    assert!(
+        source.contains("pub fn live_ports(state: State<'_, Arc<AppState>>)"),
+        "the Ports view must take nothing but the injected state"
+    );
+    for forbidden in ["pid:", "port:", "process:", "address:", "url:"] {
+        assert!(
+            !source.contains(&format!(
+                "pub fn live_ports(state: State<'_, Arc<AppState>>, {forbidden}"
+            )),
+            "the Ports command takes {forbidden}"
+        );
+    }
+}
+
+#[test]
+fn a_cpu_share_that_was_never_measured_is_absent_rather_than_zero() {
+    // The distinction the whole first-sample rule exists for. `None` and
+    // `Some(0.0)` are different claims, and they must survive the wire as
+    // different claims.
+    let unmeasured: mira_processes::ProcessFacts = serde_json::from_value(json!({
+        "pid": 1, "name": "node", "executable": null, "parent": null,
+        "workingDirectory": null, "cpuShare": null,
+        "memoryBytes": null, "uptimeSeconds": null
+    }))
+    .expect("facts");
+    let idle: mira_processes::ProcessFacts = serde_json::from_value(json!({
+        "pid": 1, "name": "node", "executable": null, "parent": null,
+        "workingDirectory": null, "cpuShare": 0.0,
+        "memoryBytes": null, "uptimeSeconds": null
+    }))
+    .expect("facts");
+
+    assert_eq!(unmeasured.cpu_share, None);
+    assert_eq!(idle.cpu_share, Some(0.0));
+    assert_ne!(unmeasured, idle, "not measured is not the same as idle");
 }

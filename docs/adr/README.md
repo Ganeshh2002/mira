@@ -29,6 +29,7 @@ one; the old file stays, marked superseded, because the reasoning is the point.
 | [0019](0019-application-preferences.md) | Application preferences: a choice is an identity, never a program | Accepted |
 | [0020](0020-workspace-services.md) | Workspace services: a view over shared observation, named by identity | Accepted |
 | [0021](0021-workspace-actions.md) | Workspace actions: a compiled catalogue, an identity, and no command | Accepted |
+| [0022](0022-process-detail.md) | Process detail: a rate needs two samples, and argv is not shown | Accepted |
 
 Decisions **not** recorded here because they are reversible in an afternoon: Tailwind,
 TanStack Query, Zustand, Vite, the icon set. Those live in
